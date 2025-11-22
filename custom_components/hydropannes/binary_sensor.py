@@ -64,13 +64,22 @@ class HydroPannesEtatServiceBinarySensor(CoordinatorEntity, BinarySensorEntity):
             return False
         
         etat = self.coordinator.data.get("etat")
-        
-        # If main state is "A", no outage
-        if etat = "A":
+
+        # Si etat n'est pas défini, on considère qu'il n'y a pas de panne
+        if etat is None:
             return False
 
-        if etat = "N":
+        # A = Aucun problème
+        if etat == "A":
+            return False
+
+        # N = Panne active
+        if etat == "N":
             return True
+
+        # Tout autre état = par défaut pas de panne
+        return False
+
 
     @property
     def icon(self):
@@ -84,22 +93,22 @@ class HydroPannesEtatServiceBinarySensor(CoordinatorEntity, BinarySensorEntity):
         """Return extra attributes."""
         if not self.coordinator.data:
             return {}
-        
+
         interruptions = self.coordinator.data.get("interruptions", [])
-        if not interruptions or len(interruptions) == 0:
+        if not interruptions:
             return {}
-        
-        # Find the first active outage (non-planned)
+
+        # Panne non planifiée = priorité
         active_outage = None
         for interruption in interruptions:
-            if interruption.get("interruptionPlanifiee") is not True:
+            if not interruption.get("interruptionPlanifiee", False):
                 active_outage = interruption
                 break
-        
-        # If no active outage, use first interruption
-        if not active_outage:
+
+        # Sinon prendre la première interruption
+        if active_outage is None:
             active_outage = interruptions[0]
-        
+
         return {
             "dateDebut": active_outage.get("dateDebut"),
             "dateFin": active_outage.get("dateFin"),
