@@ -44,7 +44,6 @@ async def async_setup_entry(
         HydroPannesCausePanneSensor(coordinator, entry, nom_lieu),
         HydroPannesDureePanneSensor(coordinator, entry, nom_lieu),
         HydroPannesDureeAvantRetablissementSensor(coordinator, entry, nom_lieu),
-        HydroPannesNombrePannesSensor(coordinator, entry, nom_lieu),
         HydroPannesDerniereMAJSensor(coordinator, entry, nom_lieu),
         HydroPannesLieuConsoSensor(coordinator, entry, nom_lieu),
     ]
@@ -126,31 +125,6 @@ class HydroPannesSensorBase(CoordinatorEntity, SensorEntity):
         # Check if outage is not completed
         return outage.get("etat") != "C" and not outage.get("dateFin")
 
-
-class HydroPannesNombrePannesSensor(HydroPannesSensorBase):
-    """Sensor for number of outages."""
-
-    def __init__(self, coordinator, entry: ConfigEntry, nom_lieu: str) -> None:
-        """Initialize the sensor."""
-        super().__init__(coordinator, entry, nom_lieu)
-        self._attr_name = "Nombre Pannes"
-        self._attr_unique_id = f"{entry.entry_id}_nombre_pannes"
-        self._attr_native_unit_of_measurement = "pannes"
-        self._attr_icon = "mdi:counter"
-
-    @property
-    def native_value(self):
-        """Return the state."""
-        if not self.coordinator.data or "interruptions" not in self.coordinator.data:
-            return 0
-        
-        interruptions = self.coordinator.data["interruptions"]
-        count = 0
-        for interruption in interruptions:
-            if interruption.get("etat") != "C":
-                count += 1
-        
-        return count
 
 
 class HydroPannesDerniereMAJSensor(HydroPannesSensorBase):
@@ -354,7 +328,7 @@ class HydroPannesInfoPannesSensor(HydroPannesSensorBase):
         planned = self._get_planned_intervention()
         if planned:
             # Intervention planifiée terminée
-            if etat == "A" and (planned.get("dateFin") or planned.get("etat") == "T"):
+            if etat == "A" and planned.get("dateFin"):
                 return "Intervention planifiée terminée"
             
             # Intervention planifiée en cours
@@ -421,6 +395,7 @@ class HydroPannesInfoPannesSensor(HydroPannesSensorBase):
             "dureePrevu": interruption.get("dureePrevu"),
             "probabilite": interruption.get("probabilite"),
             "interruptionPlanifiee": interruption.get("interruptionPlanifiee"),
+            "attribution": "Données fournies par Hydro-Québec",
         }
 
 
