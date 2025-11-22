@@ -1,0 +1,22 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Configure Hydro-Pannes",
+        "description": "Enter your consumption location information",
+        "data": {
+          "lieu_consommation": "Consumption location number",
+          "nom_lieu": "Location name (e.g., Home, Cottage)"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Unable to connect to Hydro-Québec API",
+      "invalid_lieu": "Invalid consumption location number",
+      "unknown": "Unexpected error"
+    },
+    "abort": {
+      "already_configured": "This consumption location is already configured"
+    }
+  }
+}
