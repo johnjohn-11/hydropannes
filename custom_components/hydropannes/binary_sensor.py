@@ -62,24 +62,19 @@ class HydroPannesEtatServiceBinarySensor(CoordinatorEntity, BinarySensorEntity):
         """Return true if there's an outage."""
         if not self.coordinator.data:
             return False
-        
-        etat = self.coordinator.data.get("etat")
 
-        # Si etat n'est pas défini, on considère qu'il n'y a pas de panne
-        if etat is None:
-            return False
+        # Hydro API retourne une liste
+        data = self.coordinator.data[0]
 
-        # A = Aucun problème
+        etat = data.get("etat")
+
         if etat == "A":
             return False
 
-        # N = Panne active
         if etat == "N":
             return True
 
-        # Tout autre état = par défaut pas de panne
         return False
-
 
     @property
     def icon(self):
@@ -91,40 +86,39 @@ class HydroPannesEtatServiceBinarySensor(CoordinatorEntity, BinarySensorEntity):
     @property
     def extra_state_attributes(self):
         """Return extra attributes."""
+
         if not self.coordinator.data:
             return {}
 
-        interruptions = self.coordinator.data.get("interruptions", [])
+        # Hydro-Pannes retourne une LISTE
+        data = self.coordinator.data[0]
+
+        interruptions = data.get("interruptions", [])
         if not interruptions:
             return {}
 
-        # Panne non planifiée = priorité
-        active_outage = None
-        for interruption in interruptions:
-            if not interruption.get("interruptionPlanifiee", False):
-                active_outage = interruption
+        # On préfère une interruption non planifiée
+        active = None
+        for intr in interruptions:
+            if not intr.get("interruptionPlanifiee", False):
+                active = intr
                 break
 
-        # Sinon prendre la première interruption
-        if active_outage is None:
-            active_outage = interruptions[0]
+        # sinon on prend la première (planifiée)
+        if active is None:
+            active = interruptions[0]
 
         return {
-            "dateDebut": active_outage.get("dateDebut"),
-            "dateFin": active_outage.get("dateFin"),
-            "etat": active_outage.get("etat"),
-            "dateFinEstimeeMin": active_outage.get("dateFinEstimeeMin"),
-            "dateFinEstimeeMax": active_outage.get("dateFinEstimeeMax"),
-            "codeIntervention": active_outage.get("codeIntervention"),
-            "niveauUrgence": active_outage.get("niveauUrgence"),
-            "nbClient": active_outage.get("nbClient"),
-            "codeCause": active_outage.get("codeCause"),
-            "codeMunicipal": active_outage.get("codeMunicipal"),
-            "datePublication": active_outage.get("datePublication"),
-            "codeRemarque": active_outage.get("codeRemarque"),
-            "dureePrevu": active_outage.get("dureePrevu"),
-            "probabilite": active_outage.get("probabilite"),
-            "interruptionPlanifiee": active_outage.get("interruptionPlanifiee"),
+            "dateDebut": active.get("dateDebut"),
+            "dateFin": active.get("dateFin"),
+            "etat": active.get("etat"),
+            "planifie": active.get("interruptionPlanifiee"),
+            "niveauUrgence": active.get("niveauUrgence"),
+            "nbClient": active.get("nbClient"),
+            "codeCause": active.get("codeCause"),
+            "codeMunicipal": active.get("codeMunicipal"),
+            "dureePrevu": active.get("dureePrevu"),
+            "typeFinPrevue": active.get("typeFinPrevue"),
             "attribution": "Données fournies par Hydro-Québec",
         }
 
