@@ -1,0 +1,22 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Configurer Hydro-Pannes",
+        "description": "Entrez les informations de votre lieu de consommation",
+        "data": {
+          "lieu_consommation": "Numéro de lieu de consommation",
+          "nom_lieu": "Nom du lieu (ex: Maison, Chalet)"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Impossible de se connecter à l'API Hydro-Québec",
+      "invalid_lieu": "Numéro de lieu de consommation invalide",
+      "unknown": "Erreur inattendue"
+    },
+    "abort": {
+      "already_configured": "Ce lieu de consommation est déjà configuré"
+    }
+  }
+}
