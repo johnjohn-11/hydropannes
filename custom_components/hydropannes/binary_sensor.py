@@ -53,7 +53,7 @@ class HydroPannesEtatServiceBinarySensor(CoordinatorEntity, BinarySensorEntity):
         return {
             "identifiers": {(DOMAIN, self._entry.entry_id)},
             "name": f"HydroPannes {self._nom_lieu}",
-            "manufacturer": "Hydro-Québec",
+            "manufacturer": "HQ",
             "model": "Surveillance de pannes",
         }
 
@@ -65,35 +65,12 @@ class HydroPannesEtatServiceBinarySensor(CoordinatorEntity, BinarySensorEntity):
         
         etat = self.coordinator.data.get("etat")
         
-        # If main state is not "N", no outage
-        if etat != "N":
+        # If main state is "A", no outage
+        if etat = "A":
             return False
-        
-        # Check if there's an active outage (non-planned)
-        interruptions = self.coordinator.data.get("interruptions", [])
-        
-        if not interruptions or len(interruptions) == 0:
+
+        if etat = "N":
             return True
-        
-        # Look for active outage (skip planned interventions)
-        for interruption in interruptions:
-            # Skip planned interventions
-            if interruption.get("interruptionPlanifiee") is True:
-                continue
-            
-            # Check if this outage has dateFin (restored)
-            if interruption.get("dateFin") is not None:
-                return False
-            
-            # Check if interruption is marked finished (etat = "C")
-            if interruption.get("etat") == "C":
-                return False
-            
-            # Active outage found
-            return True
-        
-        # No active outage found (only planned interventions)
-        return False
 
     @property
     def icon(self):
@@ -161,8 +138,8 @@ class HydroPannesInterventionPlanifieeBinarySensor(CoordinatorEntity, BinarySens
         return {
             "identifiers": {(DOMAIN, self._entry.entry_id)},
             "name": f"HydroPannes {self._nom_lieu}",
-            "manufacturer": "Hydro-Québec",
-            "model": "Surveillance de pannes",
+            "manufacturer": "HQ",
+            "model": "Surveillance des pannes",
         }
 
     @property
