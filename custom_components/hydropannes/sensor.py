@@ -292,10 +292,14 @@ class HydroPannesInfoPannesSensor(HydroPannesSensorBase):
         self._attr_unique_id = f"{entry.entry_id}_info_pannes"
         self._attr_icon = "mdi:information-outline"
 
-    @property
-    def native_value(self):
-        """Return the state."""
+@property
+def native_value(self):
+    """Return the state."""
+    try:
+        _LOGGER.debug("InfoPannes - Starting native_value")
+        
         if not self.coordinator.data:
+            _LOGGER.warning("InfoPannes - No coordinator data")
             return "Indisponible"
         
         # Gestion des deux formats possibles
@@ -306,6 +310,8 @@ class HydroPannesInfoPannesSensor(HydroPannesSensorBase):
         
         etat = data.get("etat")
         interruptions = data.get("interruptions", [])
+        
+        _LOGGER.debug(f"InfoPannes - etat principal: {etat}, nb interruptions: {len(interruptions)}")
         
         # No interruptions
         if not interruptions or len(interruptions) == 0:
@@ -319,50 +325,75 @@ class HydroPannesInfoPannesSensor(HydroPannesSensorBase):
         for interruption in interruptions:
             if not interruption.get("interruptionPlanifiee", False):
                 active_outage = interruption
+                _LOGGER.debug(f"InfoPannes - Found active outage with etat: {interruption.get('etat')}")
                 break
         
-        if active_outage:
-            # If etat is "N", there's an active outage
-            if etat == "N":
-                return "Panne en cours"
-            
-            # If etat is "A", check if outage was restored
-            if etat == "A" and active_outage.get("dateFin"):
-                return "Courant rétabli"
-        
-        # Check for planned intervention - PRIORITY 2 (only if no active outage)
+        # Check for planned intervention - PRIORITY 2
         planned = None
         for interruption in interruptions:
             if interruption.get("interruptionPlanifiee", False):
                 planned = interruption
+                _LOGGER.debug(f"InfoPannes - Found planned intervention with etat: {interruption.get('etat')}")
                 break
         
+        # Process active outage first (if exists)
+        if active_outage:
+            outage_etat = active_outage.get("etat")
+            
+            # Check if outage is ongoing (C = en cours, P = prévu)
+            if outage_etat in ["C", "P"]:
+                return "Panne en cours"
+            
+            # Check if outage was restored (T = terminé)
+            if outage_etat == "T" or active_outage.get("dateFin"):
+                return "Courant rétabli"
+        
+        # Process planned intervention (if no active outage or after outage processed)
         if planned:
-            # Intervention planifiée terminée
-            if etat == "A" and planned.get("dateFin"):
+            planned_etat = planned.get("etat")
+            
+            _LOGGER.debug(f"InfoPannes - Planned etat: {planned_etat}, has dateFin: {planned.get('dateFin') is not None}")
+            
+            # Intervention planifiée terminée (T = terminé)
+            if planned_etat == "T":
                 return "Intervention planifiée terminée"
             
-            # Intervention planifiée en cours
-            if etat == "N":
+            # Also check if has dateFin and etat is A
+            if planned.get("dateFin") and etat == "A":
+                return "Intervention planifiée terminée"
+            
+            # Intervention planifiée en cours (C = en cours)
+            if planned_etat == "C":
                 return "Intervention planifiée en cours"
             
-            # Intervention planifiée à venir (in the future)
-            if etat == "A" and planned.get("dateDebut"):
+            # Also check if etat is N (panne détectée)
+            if etat == "N" and planned_etat in ["C", "P"]:
+                return "Intervention planifiée en cours"
+            
+            # Intervention planifiée à venir (P = prévu)
+            if planned_etat == "P" and etat == "A":
+                return "Interruption planifiée à venir"
+            
+            # Check date for future intervention
+            if etat == "A" and planned.get("dateDebut") and not planned.get("dateFin"):
                 try:
                     date_debut = datetime.fromisoformat(planned["dateDebut"].replace("Z", "+00:00"))
                     maintenant = dt_util.now()
                     
                     if date_debut > maintenant:
                         return "Interruption planifiée à venir"
-                except Exception:
-                    pass
+                except Exception as e:
+                    _LOGGER.error(f"InfoPannes - Error parsing date: {e}")
         
         # Default based on etat
         if etat == "A":
             return "Aucune panne détectée"
         
         return "Indisponible"
-
+        
+    except Exception as e:
+        _LOGGER.error(f"InfoPannes - Error in native_value: {e}", exc_info=True)
+        return "Indisponible"
     @property
     def icon(self):
         """Return the icon."""
