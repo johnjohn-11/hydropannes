@@ -9,12 +9,11 @@ from homeassistant.components.sensor import (
     SensorStateClass,
 )
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import EntityCategory
+from homeassistant.const import EntityCategory, UnitOfTime
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.util import dt as dt_util
-from homeassistant.const import EntityCategory, UnitOfTime
 
 from .const import (
     DOMAIN,
@@ -509,6 +508,45 @@ class HydroPannesCauseSensor(HydroPannesSensorBase):
         return None
 
 
+class HydroPannesDureeSensor(HydroPannesSensorBase):
+    """Sensor for outage duration."""
+
+    def __init__(self, coordinator, entry: ConfigEntry, nom_lieu: str) -> None:
+        """Initialize the sensor."""
+        super().__init__(coordinator, entry, nom_lieu)
+        self._attr_name = "Durée"
+        self._attr_unique_id = f"{entry.entry_id}_duree"
+        self._attr_native_unit_of_measurement = UnitOfTime.HOURS
+        self._attr_device_class = "duration"
+        self._attr_icon = "mdi:timer-outline"
+        self._attr_state_class = SensorStateClass.MEASUREMENT
+
+    @property
+    def native_value(self):
+        """Return the state."""
+        # Priorité à la panne en cours
+        outage = self._get_active_outage()
+        
+        # Si pas de panne en cours, prendre l'intervention planifiée
+        if not outage:
+            outage = self._get_planned_intervention()
+        
+        if not outage or "dateDebut" not in outage:
+            return None
+        
+        try:
+            date_debut = datetime.fromisoformat(outage["dateDebut"].replace("Z", "+00:00"))
+            
+            if outage.get("dateFin"):
+                date_fin = datetime.fromisoformat(outage["dateFin"].replace("Z", "+00:00"))
+                duree = (date_fin - date_debut).total_seconds() / 3600
+            else:
+                maintenant = dt_util.now()
+                duree = (maintenant - date_debut).total_seconds() / 3600
+            
+            return round(duree, 1)
+        except Exception:
+            return None
 
 
 class HydroPannesDureeAvantRetablissementSensor(HydroPannesSensorBase):
@@ -519,8 +557,8 @@ class HydroPannesDureeAvantRetablissementSensor(HydroPannesSensorBase):
         super().__init__(coordinator, entry, nom_lieu)
         self._attr_name = "Durée avant rétablissement"
         self._attr_unique_id = f"{entry.entry_id}_duree_avant_retablissement"
-        self._attr_native_unit_of_measurement = UnitOfTime.HOURS  # <-- Changé ici
-        self._attr_device_class = "duration"  # <-- Ajouté ici
+        self._attr_native_unit_of_measurement = UnitOfTime.HOURS
+        self._attr_device_class = "duration"
         self._attr_icon = "mdi:timer-sand"
         self._attr_state_class = SensorStateClass.MEASUREMENT
 
@@ -538,51 +576,6 @@ class HydroPannesDureeAvantRetablissementSensor(HydroPannesSensorBase):
             return None
         
         # Si terminé, retourner None
-        if outage.get("dateFin") or outage.get("etat") == "T":
-            return None
-        
-        if "dateFinEstimeeMax" not in outage:
-            return None
-        
-        try:
-            date_fin_estimee = datetime.fromisoformat(outage["dateFinEstimeeMax"].replace("Z", "+00:00"))
-            maintenant = dt_util.now()
-            
-            duree = (date_fin_estimee - maintenant).total_seconds() / 3600
-            
-            if duree < 0:
-                return None
-            
-            return round(duree, 1)
-        except Exception:
-            return None
-
-class HydroPannesDureeAvantRetablissementSensor(HydroPannesSensorBase):
-    """Sensor for time until power restoration."""
-
-    def __init__(self, coordinator, entry: ConfigEntry, nom_lieu: str) -> None:
-        """Initialize the sensor."""
-        super().__init__(coordinator, entry, nom_lieu)
-        self._attr_name = "Durée avant rétablissement"
-        self._attr_unique_id = f"{entry.entry_id}_duree_avant_retablissement"
-        self._attr_native_unit_of_measurement = "heures"
-        self._attr_icon = "mdi:timer-sand"
-        self._attr_state_class = SensorStateClass.MEASUREMENT
-
-    @property
-    def native_value(self):
-        """Return the state."""
-        # Priorité à la panne en cours
-        outage = self._get_active_outage()
-        
-        # Si pas de panne en cours, prendre l'intervention planifiée
-        if not outage:
-            outage = self._get_planned_intervention()
-        
-        if not outage:
-            return None
-        
-        # Si terminé, retourner 0
         if outage.get("dateFin") or outage.get("etat") == "T":
             return None
         
