@@ -320,13 +320,21 @@ def native_value(self):
             else:
                 return "Indisponible"
         
+        # Log all interruptions
+        for idx, inter in enumerate(interruptions):
+            _LOGGER.debug(f"InfoPannes - Interruption {idx}: planifiee={inter.get('interruptionPlanifiee')}, etat={inter.get('etat')}")
+        
         # Check for active outage (non-planned) - PRIORITY 1
         active_outage = None
         for interruption in interruptions:
-            if not interruption.get("interruptionPlanifiee", False):
+            is_planned = interruption.get("interruptionPlanifiee", False)
+            _LOGGER.debug(f"InfoPannes - Checking interruption: interruptionPlanifiee={is_planned}")
+            if not is_planned:
                 active_outage = interruption
                 _LOGGER.debug(f"InfoPannes - Found active outage with etat: {interruption.get('etat')}")
                 break
+        
+        _LOGGER.debug(f"InfoPannes - active_outage is None: {active_outage is None}")
         
         # Check for planned intervention - PRIORITY 2
         planned = None
@@ -336,42 +344,53 @@ def native_value(self):
                 _LOGGER.debug(f"InfoPannes - Found planned intervention with etat: {interruption.get('etat')}")
                 break
         
+        _LOGGER.debug(f"InfoPannes - planned is None: {planned is None}")
+        
         # Process active outage first (if exists)
         if active_outage:
+            _LOGGER.debug("InfoPannes - Processing active_outage")
             outage_etat = active_outage.get("etat")
             
             # Check if outage is ongoing (C = en cours, P = prévu)
             if outage_etat in ["C", "P"]:
+                _LOGGER.debug("InfoPannes - Returning: Panne en cours")
                 return "Panne en cours"
             
             # Check if outage was restored (T = terminé)
             if outage_etat == "T" or active_outage.get("dateFin"):
+                _LOGGER.debug("InfoPannes - Returning: Courant rétabli")
                 return "Courant rétabli"
         
         # Process planned intervention (if no active outage or after outage processed)
         if planned:
+            _LOGGER.debug("InfoPannes - Processing planned intervention")
             planned_etat = planned.get("etat")
             
-            _LOGGER.debug(f"InfoPannes - Planned etat: {planned_etat}, has dateFin: {planned.get('dateFin') is not None}")
+            _LOGGER.debug(f"InfoPannes - Planned etat: {planned_etat}, has dateFin: {planned.get('dateFin') is not None}, etat principal: {etat}")
             
             # Intervention planifiée terminée (T = terminé)
             if planned_etat == "T":
+                _LOGGER.debug("InfoPannes - Returning: Intervention planifiée terminée (etat=T)")
                 return "Intervention planifiée terminée"
             
             # Also check if has dateFin and etat is A
             if planned.get("dateFin") and etat == "A":
+                _LOGGER.debug("InfoPannes - Returning: Intervention planifiée terminée (dateFin + etat=A)")
                 return "Intervention planifiée terminée"
             
             # Intervention planifiée en cours (C = en cours)
             if planned_etat == "C":
+                _LOGGER.debug("InfoPannes - Returning: Intervention planifiée en cours (etat=C)")
                 return "Intervention planifiée en cours"
             
             # Also check if etat is N (panne détectée)
             if etat == "N" and planned_etat in ["C", "P"]:
+                _LOGGER.debug("InfoPannes - Returning: Intervention planifiée en cours (etat=N)")
                 return "Intervention planifiée en cours"
             
             # Intervention planifiée à venir (P = prévu)
             if planned_etat == "P" and etat == "A":
+                _LOGGER.debug("InfoPannes - Returning: Interruption planifiée à venir (etat=P)")
                 return "Interruption planifiée à venir"
             
             # Check date for future intervention
@@ -381,14 +400,21 @@ def native_value(self):
                     maintenant = dt_util.now()
                     
                     if date_debut > maintenant:
+                        _LOGGER.debug("InfoPannes - Returning: Interruption planifiée à venir (future date)")
                         return "Interruption planifiée à venir"
                 except Exception as e:
                     _LOGGER.error(f"InfoPannes - Error parsing date: {e}")
         
         # Default based on etat
         if etat == "A":
+            _LOGGER.debug("InfoPannes - Returning: Aucune panne détectée (default)")
             return "Aucune panne détectée"
         
+        _LOGGER.debug("InfoPannes - Returning: Indisponible (fallback)")
+        return "Indisponible"
+        
+    except Exception as e:
+        _LOGGER.error(f"InfoPannes - Error in native_value: {e}", exc_info=True)
         return "Indisponible"
         
     except Exception as e:
