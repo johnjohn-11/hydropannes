@@ -151,7 +151,9 @@ class HydroPannesInterventionPlanifieeBinarySensor(CoordinatorEntity, BinarySens
         if not self.coordinator.data:
             return False
         
-        interruptions = self.coordinator.data.get("interruptions", [])
+        # CORRECTION: accès cohérent comme dans l'autre sensor
+        data = self.coordinator.data[0]
+        interruptions = data.get("interruptions", [])
         
         if not interruptions or len(interruptions) == 0:
             return False
