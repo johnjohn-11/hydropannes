@@ -63,8 +63,7 @@ class HydroPannesEtatServiceBinarySensor(CoordinatorEntity, BinarySensorEntity):
         if not self.coordinator.data:
             return False
 
-        # Le coordinator retourne directement le dictionnaire (pas une liste)
-        # Si l'API retourne une liste, c'est géré dans le coordinator
+        # Gestion des deux formats possibles
         if isinstance(self.coordinator.data, list):
             data = self.coordinator.data[0]
         else:
@@ -72,12 +71,10 @@ class HydroPannesEtatServiceBinarySensor(CoordinatorEntity, BinarySensorEntity):
 
         etat = data.get("etat")
 
-        if etat == "A":
-            return False
-
+        # N = panne en cours, A = service normal
         if etat == "N":
             return True
-
+        
         return False
 
     @property
@@ -104,28 +101,30 @@ class HydroPannesEtatServiceBinarySensor(CoordinatorEntity, BinarySensorEntity):
         if not interruptions:
             return {}
 
-        # On préfère une interruption non planifiée
-        active = None
+        # Chercher la panne EN COURS (non planifiée)
+        panne_en_cours = None
         for intr in interruptions:
             if not intr.get("interruptionPlanifiee", False):
-                active = intr
+                panne_en_cours = intr
                 break
 
-        # sinon on prend la première (planifiée)
-        if active is None:
-            active = interruptions[0]
+        # Si aucune panne en cours, prendre la première disponible
+        if panne_en_cours is None:
+            panne_en_cours = interruptions[0]
 
         return {
-            "dateDebut": active.get("dateDebut"),
-            "dateFin": active.get("dateFin"),
-            "etat": active.get("etat"),
-            "planifie": active.get("interruptionPlanifiee"),
-            "niveauUrgence": active.get("niveauUrgence"),
-            "nbClient": active.get("nbClient"),
-            "codeCause": active.get("codeCause"),
-            "codeMunicipal": active.get("codeMunicipal"),
-            "dureePrevu": active.get("dureePrevu"),
-            "typeFinPrevue": active.get("typeFinPrevue"),
+            "dateDebut": panne_en_cours.get("dateDebut"),
+            "dateFin": panne_en_cours.get("dateFin"),
+            "dateFinEstimeeMax": panne_en_cours.get("dateFinEstimeeMax"),
+            "etat": panne_en_cours.get("etat"),
+            "planifie": panne_en_cours.get("interruptionPlanifiee"),
+            "codeIntervention": panne_en_cours.get("codeIntervention"),
+            "niveauUrgence": panne_en_cours.get("niveauUrgence"),
+            "nbClient": panne_en_cours.get("nbClient"),
+            "codeCause": panne_en_cours.get("codeCause"),
+            "codeMunicipal": panne_en_cours.get("codeMunicipal"),
+            "dureePrevu": panne_en_cours.get("dureePrevu"),
+            "typeFinPrevue": panne_en_cours.get("typeFinPrevue"),
             "attribution": "Données fournies par Hydro-Québec",
         }
 
@@ -155,49 +154,74 @@ class HydroPannesInterventionPlanifieeBinarySensor(CoordinatorEntity, BinarySens
     @property
     def is_on(self) -> bool:
         """Return true if there's a planned intervention."""
-        try:
-            _LOGGER.debug("InterventionPlanifiee - Starting is_on check")
-            
-            if not self.coordinator.data:
-                _LOGGER.warning("InterventionPlanifiee - No coordinator data")
-                return False
-            
-            # Gestion des deux formats possibles
-            if isinstance(self.coordinator.data, list):
-                _LOGGER.debug("InterventionPlanifiee - Data is a list")
-                data = self.coordinator.data[0]
-            else:
-                _LOGGER.debug("InterventionPlanifiee - Data is a dict")
-                data = self.coordinator.data
-            
-            _LOGGER.debug(f"InterventionPlanifiee - Data keys: {data.keys()}")
-            
-            interruptions = data.get("interruptions", [])
-            _LOGGER.debug(f"InterventionPlanifiee - Interruptions count: {len(interruptions)}")
-            
-            if not interruptions or len(interruptions) == 0:
-                _LOGGER.debug("InterventionPlanifiee - No interruptions found")
-                return False
-            
-            interruption = interruptions[0]
-            _LOGGER.debug(f"InterventionPlanifiee - First interruption: {interruption}")
-            
-            planifiee = interruption.get("interruptionPlanifiee", False)
-            _LOGGER.debug(f"InterventionPlanifiee - interruptionPlanifiee value: {planifiee}")
-            
-            return planifiee
-            
-        except Exception as e:
-            _LOGGER.error(f"InterventionPlanifiee - Error in is_on: {e}", exc_info=True)
+        if not self.coordinator.data:
             return False
+        
+        # Gestion des deux formats possibles
+        if isinstance(self.coordinator.data, list):
+            data = self.coordinator.data[0]
+        else:
+            data = self.coordinator.data
+            
+        interruptions = data.get("interruptions", [])
+        
+        if not interruptions:
+            return False
+        
+        # Chercher une interruption planifiée
+        for interruption in interruptions:
+            if interruption.get("interruptionPlanifiee", False):
+                return True
+        
+        return False
 
     @property
     def icon(self):
         """Return the icon."""
-        try:
-            if self.is_on:
-                return "mdi:calendar-clock"
-            return "mdi:calendar-check"
-        except Exception as e:
-            _LOGGER.error(f"InterventionPlanifiee - Error in icon: {e}", exc_info=True)
-            return "mdi:calendar-check"
+        if self.is_on:
+            return "mdi:calendar-clock"
+        return "mdi:calendar-check"
+
+    @property
+    def extra_state_attributes(self):
+        """Return extra attributes."""
+
+        if not self.coordinator.data:
+            return {}
+
+        # Gestion des deux formats possibles
+        if isinstance(self.coordinator.data, list):
+            data = self.coordinator.data[0]
+        else:
+            data = self.coordinator.data
+
+        interruptions = data.get("interruptions", [])
+        if not interruptions:
+            return {}
+
+        # Chercher l'intervention PLANIFIÉE
+        intervention_planifiee = None
+        for intr in interruptions:
+            if intr.get("interruptionPlanifiee", False):
+                intervention_planifiee = intr
+                break
+
+        # Si aucune intervention planifiée, prendre la première disponible
+        if intervention_planifiee is None:
+            intervention_planifiee = interruptions[0]
+
+        return {
+            "dateDebut": intervention_planifiee.get("dateDebut"),
+            "dateFin": intervention_planifiee.get("dateFin"),
+            "dateFinEstimeeMax": intervention_planifiee.get("dateFinEstimeeMax"),
+            "etat": intervention_planifiee.get("etat"),
+            "planifie": intervention_planifiee.get("interruptionPlanifiee"),
+            "codeIntervention": intervention_planifiee.get("codeIntervention"),
+            "niveauUrgence": intervention_planifiee.get("niveauUrgence"),
+            "nbClient": intervention_planifiee.get("nbClient"),
+            "codeCause": intervention_planifiee.get("codeCause"),
+            "codeMunicipal": intervention_planifiee.get("codeMunicipal"),
+            "dureePrevu": intervention_planifiee.get("dureePrevu"),
+            "typeFinPrevue": intervention_planifiee.get("typeFinPrevue"),
+            "attribution": "Données fournies par Hydro-Québec",
+        }
