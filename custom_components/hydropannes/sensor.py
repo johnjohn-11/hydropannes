@@ -67,7 +67,7 @@ class HydroPannesSensorBase(CoordinatorEntity, SensorEntity):
         return {
             "identifiers": {(DOMAIN, self._entry.entry_id)},
             "name": f"HydroPannes {self._nom_lieu}",
-            "manufacturer": "Hydro-Québec",
+            "manufacturer": "HQ",
             "model": "Surveillance de pannes",
         }
 
@@ -502,7 +502,7 @@ class HydroPannesCausePanneSensor(HydroPannesSensorBase):
         
         code = str(outage.get("codeCause", ""))
         if code:
-            cause_text = CAUSE_CODES.get(code, "Bris d'équipement")
+            cause_text = CAUSE_CODES.get(code, "Inconnu")
             return f"{cause_text} ({code})"
         
         return "Aucune panne"
