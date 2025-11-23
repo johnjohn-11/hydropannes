@@ -465,7 +465,7 @@ class HydroPannesNiveauUrgenceSensor(HydroPannesSensorBase):
         interruption = self._get_interruption()
         
         if not interruption or "niveauUrgence" not in interruption:
-            return none
+            return None
         
         niveau = interruption.get("niveauUrgence")
         
@@ -571,14 +571,14 @@ class HydroPannesDureeAvantRetablissementSensor(HydroPannesSensorBase):
             outage = self._get_planned_intervention()
         
         if not outage:
-            return none
+            return None
         
         # Si terminé, retourner 0
         if outage.get("dateFin") or outage.get("etat") == "T":
-            return none
+            return None
         
         if "dateFinEstimeeMax" not in outage:
-            return none
+            return None
         
         try:
             date_fin_estimee = datetime.fromisoformat(outage["dateFinEstimeeMax"].replace("Z", "+00:00"))
@@ -587,11 +587,11 @@ class HydroPannesDureeAvantRetablissementSensor(HydroPannesSensorBase):
             duree = (date_fin_estimee - maintenant).total_seconds() / 3600
             
             if duree < 0:
-                return none
+                return None
             
             return round(duree, 1)
         except Exception:
-            return none
+            return None
 
 
 class HydroPannesLieuConsoSensor(HydroPannesSensorBase):
