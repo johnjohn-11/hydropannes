@@ -37,12 +37,12 @@ async def async_setup_entry(
     sensors = [
         HydroPannesInfoPannesSensor(coordinator, entry, nom_lieu),
         HydroPannesNiveauUrgenceSensor(coordinator, entry, nom_lieu),
-        HydroPannesClientsAffectesSensor(coordinator, entry, nom_lieu),
-        HydroPannesDebutPanneSensor(coordinator, entry, nom_lieu),
+        HydroPannesAdressesToucheesSensor(coordinator, entry, nom_lieu),
+        HydroPannesDebutSensor(coordinator, entry, nom_lieu),
         HydroPannesFinEstimeeSensor(coordinator, entry, nom_lieu),
         HydroPannesStatutInterventionSensor(coordinator, entry, nom_lieu),
-        HydroPannesCausePanneSensor(coordinator, entry, nom_lieu),
-        HydroPannesDureePanneSensor(coordinator, entry, nom_lieu),
+        HydroPannesCausSensor(coordinator, entry, nom_lieu),
+        HydroPannesDureeSensor(coordinator, entry, nom_lieu),
         HydroPannesDureeAvantRetablissementSensor(coordinator, entry, nom_lieu),
         HydroPannesDerniereMAJSensor(coordinator, entry, nom_lieu),
         HydroPannesLieuConsoSensor(coordinator, entry, nom_lieu),
@@ -313,14 +313,14 @@ class HydroPannesDerniereMAJSensor(HydroPannesSensorBase):
         return None
 
 
-class HydroPannesClientsAffectesSensor(HydroPannesSensorBase):
+class HydroPannesAdressesToucheesSensor(HydroPannesSensorBase):
     """Sensor for affected clients."""
 
     def __init__(self, coordinator, entry: ConfigEntry, nom_lieu: str) -> None:
         """Initialize the sensor."""
         super().__init__(coordinator, entry, nom_lieu)
         self._attr_name = "Clients Affectés"
-        self._attr_unique_id = f"{entry.entry_id}_clients_affectes"
+        self._attr_unique_id = f"{entry.entry_id}_adresses_touchees"
         self._attr_native_unit_of_measurement = "clients"
         self._attr_icon = "mdi:account-multiple"
         self._attr_state_class = SensorStateClass.MEASUREMENT
@@ -341,14 +341,14 @@ class HydroPannesClientsAffectesSensor(HydroPannesSensorBase):
         return outage.get("nbClient", 0)
 
 
-class HydroPannesDebutPanneSensor(HydroPannesSensorBase):
+class HydroPannesDebutSensor(HydroPannesSensorBase):
     """Sensor for outage start time."""
 
     def __init__(self, coordinator, entry: ConfigEntry, nom_lieu: str) -> None:
         """Initialize the sensor."""
         super().__init__(coordinator, entry, nom_lieu)
-        self._attr_name = "Début Panne"
-        self._attr_unique_id = f"{entry.entry_id}_debut_panne"
+        self._attr_name = "Début"
+        self._attr_unique_id = f"{entry.entry_id}_debut"
         self._attr_icon = "mdi:clock-start"
         self._attr_device_class = "timestamp"
 
@@ -477,14 +477,14 @@ class HydroPannesNiveauUrgenceSensor(HydroPannesSensorBase):
             return "Inconnu"
 
 
-class HydroPannesCausePanneSensor(HydroPannesSensorBase):
+class HydroPannesCauseSensor(HydroPannesSensorBase):
     """Sensor for outage cause."""
 
     def __init__(self, coordinator, entry: ConfigEntry, nom_lieu: str) -> None:
         """Initialize the sensor."""
         super().__init__(coordinator, entry, nom_lieu)
-        self._attr_name = "Cause Panne"
-        self._attr_unique_id = f"{entry.entry_id}_cause_panne"
+        self._attr_name = "Cause"
+        self._attr_unique_id = f"{entry.entry_id}_cause"
         self._attr_icon = "mdi:help-circle-outline"
 
     @property
@@ -508,14 +508,14 @@ class HydroPannesCausePanneSensor(HydroPannesSensorBase):
         return "Aucune panne"
 
 
-class HydroPannesDureePanneSensor(HydroPannesSensorBase):
+class HydroPannesDureeSensor(HydroPannesSensorBase):
     """Sensor for outage duration."""
 
     def __init__(self, coordinator, entry: ConfigEntry, nom_lieu: str) -> None:
         """Initialize the sensor."""
         super().__init__(coordinator, entry, nom_lieu)
-        self._attr_name = "Durée Panne"
-        self._attr_unique_id = f"{entry.entry_id}_duree_panne"
+        self._attr_name = "Durée"
+        self._attr_unique_id = f"{entry.entry_id}_duree"
         self._attr_native_unit_of_measurement = "heures"
         self._attr_icon = "mdi:timer-outline"
         self._attr_state_class = SensorStateClass.MEASUREMENT
