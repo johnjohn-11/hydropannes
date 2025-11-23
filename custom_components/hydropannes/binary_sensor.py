@@ -155,27 +155,49 @@ class HydroPannesInterventionPlanifieeBinarySensor(CoordinatorEntity, BinarySens
     @property
     def is_on(self) -> bool:
         """Return true if there's a planned intervention."""
-        if not self.coordinator.data:
-            return False
-        
-        # Gestion des deux formats possibles
-        if isinstance(self.coordinator.data, list):
-            data = self.coordinator.data[0]
-        else:
-            data = self.coordinator.data
+        try:
+            _LOGGER.debug("InterventionPlanifiee - Starting is_on check")
             
-        interruptions = data.get("interruptions", [])
-        
-        if not interruptions or len(interruptions) == 0:
+            if not self.coordinator.data:
+                _LOGGER.warning("InterventionPlanifiee - No coordinator data")
+                return False
+            
+            # Gestion des deux formats possibles
+            if isinstance(self.coordinator.data, list):
+                _LOGGER.debug("InterventionPlanifiee - Data is a list")
+                data = self.coordinator.data[0]
+            else:
+                _LOGGER.debug("InterventionPlanifiee - Data is a dict")
+                data = self.coordinator.data
+            
+            _LOGGER.debug(f"InterventionPlanifiee - Data keys: {data.keys()}")
+            
+            interruptions = data.get("interruptions", [])
+            _LOGGER.debug(f"InterventionPlanifiee - Interruptions count: {len(interruptions)}")
+            
+            if not interruptions or len(interruptions) == 0:
+                _LOGGER.debug("InterventionPlanifiee - No interruptions found")
+                return False
+            
+            interruption = interruptions[0]
+            _LOGGER.debug(f"InterventionPlanifiee - First interruption: {interruption}")
+            
+            planifiee = interruption.get("interruptionPlanifiee", False)
+            _LOGGER.debug(f"InterventionPlanifiee - interruptionPlanifiee value: {planifiee}")
+            
+            return planifiee
+            
+        except Exception as e:
+            _LOGGER.error(f"InterventionPlanifiee - Error in is_on: {e}", exc_info=True)
             return False
-        
-        interruption = interruptions[0]
-        
-        return interruption.get("interruptionPlanifiee", False)
 
     @property
     def icon(self):
         """Return the icon."""
-        if self.is_on:
-            return "mdi:calendar-clock"
-        return "mdi:calendar-check"
+        try:
+            if self.is_on:
+                return "mdi:calendar-clock"
+            return "mdi:calendar-check"
+        except Exception as e:
+            _LOGGER.error(f"InterventionPlanifiee - Error in icon: {e}", exc_info=True)
+            return "mdi:calendar-check"
