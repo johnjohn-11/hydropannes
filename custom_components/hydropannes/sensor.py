@@ -41,7 +41,7 @@ async def async_setup_entry(
         HydroPannesDebutSensor(coordinator, entry, nom_lieu),
         HydroPannesFinEstimeeSensor(coordinator, entry, nom_lieu),
         HydroPannesStatutInterventionSensor(coordinator, entry, nom_lieu),
-        HydroPannesCausSensor(coordinator, entry, nom_lieu),
+        HydroPannesCauseSensor(coordinator, entry, nom_lieu),
         HydroPannesDureeSensor(coordinator, entry, nom_lieu),
         HydroPannesDureeAvantRetablissementSensor(coordinator, entry, nom_lieu),
         HydroPannesDerniereMAJSensor(coordinator, entry, nom_lieu),
