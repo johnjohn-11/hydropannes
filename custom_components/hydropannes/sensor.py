@@ -380,59 +380,83 @@ class HydroPannesInfoPannesSensor(HydroPannesSensorBase):
     @property
     def extra_state_attributes(self):
         """Return extra attributes."""
-        if not self.coordinator.data:
+        try:
+            _LOGGER.debug("InfoPannes - Starting extra_state_attributes")
+            
+            if not self.coordinator.data:
+                _LOGGER.warning("InfoPannes - No coordinator data")
+                return {}
+            
+            _LOGGER.debug(f"InfoPannes - Coordinator data type: {type(self.coordinator.data)}")
+            
+            # Gestion des deux formats possibles
+            if isinstance(self.coordinator.data, list):
+                _LOGGER.debug("InfoPannes - Data is a list")
+                data = self.coordinator.data[0]
+            else:
+                _LOGGER.debug("InfoPannes - Data is a dict")
+                data = self.coordinator.data
+            
+            _LOGGER.debug(f"InfoPannes - Data keys: {data.keys()}")
+            
+            interruptions = data.get("interruptions", [])
+            _LOGGER.debug(f"InfoPannes - Interruptions count: {len(interruptions)}")
+            
+            if not interruptions or len(interruptions) == 0:
+                _LOGGER.warning("InfoPannes - No interruptions found")
+                return {}
+            
+            # PRIORITY 1: Panne en cours (non planifiée)
+            panne_en_cours = None
+            for interruption in interruptions:
+                if not interruption.get("interruptionPlanifiee", False):
+                    panne_en_cours = interruption
+                    _LOGGER.debug("InfoPannes - Found panne en cours")
+                    break
+            
+            # PRIORITY 2: Intervention planifiée
+            intervention_planifiee = None
+            for interruption in interruptions:
+                if interruption.get("interruptionPlanifiee", False):
+                    intervention_planifiee = interruption
+                    _LOGGER.debug("InfoPannes - Found intervention planifiée")
+                    break
+            
+            # Use panne en cours if available, otherwise planned intervention
+            active_interruption = panne_en_cours if panne_en_cours else intervention_planifiee
+            
+            # Fallback to first interruption if neither found
+            if active_interruption is None:
+                active_interruption = interruptions[0]
+                _LOGGER.debug("InfoPannes - Using first interruption as fallback")
+            
+            _LOGGER.debug(f"InfoPannes - Active interruption keys: {active_interruption.keys()}")
+            
+            attributes = {
+                "dateDebut": active_interruption.get("dateDebut"),
+                "dateFin": active_interruption.get("dateFin"),
+                "etat": active_interruption.get("etat"),
+                "dateFinEstimeeMin": active_interruption.get("dateFinEstimeeMin"),
+                "dateFinEstimeeMax": active_interruption.get("dateFinEstimeeMax"),
+                "codeIntervention": active_interruption.get("codeIntervention"),
+                "niveauUrgence": active_interruption.get("niveauUrgence"),
+                "nbClient": active_interruption.get("nbClient"),
+                "codeCause": active_interruption.get("codeCause"),
+                "codeMunicipal": active_interruption.get("codeMunicipal"),
+                "datePublication": active_interruption.get("datePublication"),
+                "codeRemarque": active_interruption.get("codeRemarque"),
+                "dureePrevu": active_interruption.get("dureePrevu"),
+                "probabilite": active_interruption.get("probabilite"),
+                "interruptionPlanifiee": active_interruption.get("interruptionPlanifiee"),
+                "attribution": "Données fournies par Hydro-Québec",
+            }
+            
+            _LOGGER.debug(f"InfoPannes - Returning attributes: {attributes}")
+            return attributes
+            
+        except Exception as e:
+            _LOGGER.error(f"InfoPannes - Error in extra_state_attributes: {e}", exc_info=True)
             return {}
-        
-        # Gestion des deux formats possibles
-        if isinstance(self.coordinator.data, list):
-            data = self.coordinator.data[0]
-        else:
-            data = self.coordinator.data
-        
-        interruptions = data.get("interruptions", [])
-        if not interruptions or len(interruptions) == 0:
-            return {}
-        
-        # PRIORITY 1: Panne en cours (non planifiée)
-        panne_en_cours = None
-        for interruption in interruptions:
-            if not interruption.get("interruptionPlanifiee", False):
-                panne_en_cours = interruption
-                break
-        
-        # PRIORITY 2: Intervention planifiée
-        intervention_planifiee = None
-        for interruption in interruptions:
-            if interruption.get("interruptionPlanifiee", False):
-                intervention_planifiee = interruption
-                break
-        
-        # Use panne en cours if available, otherwise planned intervention
-        active_interruption = panne_en_cours if panne_en_cours else intervention_planifiee
-        
-        # Fallback to first interruption if neither found
-        if active_interruption is None:
-            active_interruption = interruptions[0]
-        
-        return {
-            "dateDebut": active_interruption.get("dateDebut"),
-            "dateFin": active_interruption.get("dateFin"),
-            "etat": active_interruption.get("etat"),
-            "dateFinEstimeeMin": active_interruption.get("dateFinEstimeeMin"),
-            "dateFinEstimeeMax": active_interruption.get("dateFinEstimeeMax"),
-            "codeIntervention": active_interruption.get("codeIntervention"),
-            "niveauUrgence": active_interruption.get("niveauUrgence"),
-            "nbClient": active_interruption.get("nbClient"),
-            "codeCause": active_interruption.get("codeCause"),
-            "codeMunicipal": active_interruption.get("codeMunicipal"),
-            "datePublication": active_interruption.get("datePublication"),
-            "codeRemarque": active_interruption.get("codeRemarque"),
-            "dureePrevu": active_interruption.get("dureePrevu"),
-            "probabilite": active_interruption.get("probabilite"),
-            "interruptionPlanifiee": active_interruption.get("interruptionPlanifiee"),
-            "attribution": "Données fournies par Hydro-Québec",
-        }
-
 class HydroPannesNiveauUrgenceSensor(HydroPannesSensorBase):
     """Sensor for intervention status."""
 
