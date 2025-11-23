@@ -54,7 +54,7 @@ class HydroPannesEtatServiceBinarySensor(CoordinatorEntity, BinarySensorEntity):
             "identifiers": {(DOMAIN, self._entry.entry_id)},
             "name": f"HydroPannes {self._nom_lieu}",
             "manufacturer": "HQ",
-            "model": "Surveillance de pannes",
+            "model": "Info-pannes",
         }
 
     @property
@@ -148,7 +148,7 @@ class HydroPannesInterventionPlanifieeBinarySensor(CoordinatorEntity, BinarySens
             "identifiers": {(DOMAIN, self._entry.entry_id)},
             "name": f"HydroPannes {self._nom_lieu}",
             "manufacturer": "HQ",
-            "model": "Surveillance des pannes",
+            "model": "Info-pannes",
         }
 
     @property
