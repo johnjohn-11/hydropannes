@@ -23,13 +23,8 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up the Hydro-Pannes binary sensors."""
-    _LOGGER.debug("Setting up Hydro-Pannes binary sensors")
-    
     coordinator = hass.data[DOMAIN][entry.entry_id]
     nom_lieu = entry.data[CONF_NOM_LIEU]
-    
-    _LOGGER.debug(f"Coordinator data type: {type(coordinator.data)}")
-    _LOGGER.debug(f"Coordinator data: {coordinator.data}")
     
     binary_sensors = [
         HydroPannesEtatServiceBinarySensor(coordinator, entry, nom_lieu),
@@ -65,38 +60,25 @@ class HydroPannesEtatServiceBinarySensor(CoordinatorEntity, BinarySensorEntity):
     @property
     def is_on(self) -> bool:
         """Return true if there's an outage."""
-        try:
-            _LOGGER.debug(f"EtatService - Coordinator data available: {self.coordinator.data is not None}")
-            
-            if not self.coordinator.data:
-                _LOGGER.warning("EtatService - No coordinator data")
-                return False
+        if not self.coordinator.data:
+            return False
 
-            # Hydro API retourne une liste
-            _LOGGER.debug(f"EtatService - Data type: {type(self.coordinator.data)}")
+        # Le coordinator retourne directement le dictionnaire (pas une liste)
+        # Si l'API retourne une liste, c'est géré dans le coordinator
+        if isinstance(self.coordinator.data, list):
             data = self.coordinator.data[0]
-            _LOGGER.debug(f"EtatService - First element: {data}")
+        else:
+            data = self.coordinator.data
 
-            etat = data.get("etat")
-            _LOGGER.debug(f"EtatService - État: {etat}")
+        etat = data.get("etat")
 
-            if etat == "A":
-                return False
-
-            if etat == "N":
-                return True
-
-            return False
-        except Exception as e:
-            _LOGGER.error(f"EtatService - Error in is_on: {e}", exc_info=True)
+        if etat == "A":
             return False
 
-    @property
-    def available(self) -> bool:
-        """Return if entity is available."""
-        available = self.coordinator.last_update_success and self.coordinator.data is not None
-        _LOGGER.debug(f"EtatService - Available: {available}")
-        return available
+        if etat == "N":
+            return True
+
+        return False
 
     @property
     def icon(self):
@@ -108,44 +90,44 @@ class HydroPannesEtatServiceBinarySensor(CoordinatorEntity, BinarySensorEntity):
     @property
     def extra_state_attributes(self):
         """Return extra attributes."""
-        try:
-            if not self.coordinator.data:
-                return {}
 
-            # Hydro-Pannes retourne une LISTE
-            data = self.coordinator.data[0]
-
-            interruptions = data.get("interruptions", [])
-            if not interruptions:
-                return {}
-
-            # On préfère une interruption non planifiée
-            active = None
-            for intr in interruptions:
-                if not intr.get("interruptionPlanifiee", False):
-                    active = intr
-                    break
-
-            # sinon on prend la première (planifiée)
-            if active is None:
-                active = interruptions[0]
-
-            return {
-                "dateDebut": active.get("dateDebut"),
-                "dateFin": active.get("dateFin"),
-                "etat": active.get("etat"),
-                "planifie": active.get("interruptionPlanifiee"),
-                "niveauUrgence": active.get("niveauUrgence"),
-                "nbClient": active.get("nbClient"),
-                "codeCause": active.get("codeCause"),
-                "codeMunicipal": active.get("codeMunicipal"),
-                "dureePrevu": active.get("dureePrevu"),
-                "typeFinPrevue": active.get("typeFinPrevue"),
-                "attribution": "Données fournies par Hydro-Québec",
-            }
-        except Exception as e:
-            _LOGGER.error(f"EtatService - Error in extra_state_attributes: {e}", exc_info=True)
+        if not self.coordinator.data:
             return {}
+
+        # Gestion des deux formats possibles
+        if isinstance(self.coordinator.data, list):
+            data = self.coordinator.data[0]
+        else:
+            data = self.coordinator.data
+
+        interruptions = data.get("interruptions", [])
+        if not interruptions:
+            return {}
+
+        # On préfère une interruption non planifiée
+        active = None
+        for intr in interruptions:
+            if not intr.get("interruptionPlanifiee", False):
+                active = intr
+                break
+
+        # sinon on prend la première (planifiée)
+        if active is None:
+            active = interruptions[0]
+
+        return {
+            "dateDebut": active.get("dateDebut"),
+            "dateFin": active.get("dateFin"),
+            "etat": active.get("etat"),
+            "planifie": active.get("interruptionPlanifiee"),
+            "niveauUrgence": active.get("niveauUrgence"),
+            "nbClient": active.get("nbClient"),
+            "codeCause": active.get("codeCause"),
+            "codeMunicipal": active.get("codeMunicipal"),
+            "dureePrevu": active.get("dureePrevu"),
+            "typeFinPrevue": active.get("typeFinPrevue"),
+            "attribution": "Données fournies par Hydro-Québec",
+        }
 
 
 class HydroPannesInterventionPlanifieeBinarySensor(CoordinatorEntity, BinarySensorEntity):
@@ -173,38 +155,23 @@ class HydroPannesInterventionPlanifieeBinarySensor(CoordinatorEntity, BinarySens
     @property
     def is_on(self) -> bool:
         """Return true if there's a planned intervention."""
-        try:
-            _LOGGER.debug(f"InterventionPlanifiee - Coordinator data available: {self.coordinator.data is not None}")
-            
-            if not self.coordinator.data:
-                _LOGGER.warning("InterventionPlanifiee - No coordinator data")
-                return False
-            
-            # Accès cohérent : data est une liste
-            data = self.coordinator.data[0]
-            interruptions = data.get("interruptions", [])
-            
-            _LOGGER.debug(f"InterventionPlanifiee - Found {len(interruptions)} interruptions")
-            
-            if not interruptions or len(interruptions) == 0:
-                return False
-            
-            interruption = interruptions[0]
-            planifiee = interruption.get("interruptionPlanifiee", False)
-            
-            _LOGGER.debug(f"InterventionPlanifiee - Is planned: {planifiee}")
-            
-            return planifiee
-        except Exception as e:
-            _LOGGER.error(f"InterventionPlanifiee - Error in is_on: {e}", exc_info=True)
+        if not self.coordinator.data:
             return False
-
-    @property
-    def available(self) -> bool:
-        """Return if entity is available."""
-        available = self.coordinator.last_update_success and self.coordinator.data is not None
-        _LOGGER.debug(f"InterventionPlanifiee - Available: {available}")
-        return available
+        
+        # Gestion des deux formats possibles
+        if isinstance(self.coordinator.data, list):
+            data = self.coordinator.data[0]
+        else:
+            data = self.coordinator.data
+            
+        interruptions = data.get("interruptions", [])
+        
+        if not interruptions or len(interruptions) == 0:
+            return False
+        
+        interruption = interruptions[0]
+        
+        return interruption.get("interruptionPlanifiee", False)
 
     @property
     def icon(self):
