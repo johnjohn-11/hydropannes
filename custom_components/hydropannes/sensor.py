@@ -73,58 +73,204 @@ class HydroPannesSensorBase(CoordinatorEntity, SensorEntity):
 
     def _get_interruption(self):
         """Get first interruption if exists."""
-        if self.coordinator.data and "interruptions" in self.coordinator.data:
-            interruptions = self.coordinator.data["interruptions"]
+        # Gestion des deux formats possibles
+        if isinstance(self.coordinator.data, list):
+            data = self.coordinator.data[0]
+        else:
+            data = self.coordinator.data
+            
+        if data and "interruptions" in data:
+            interruptions = data["interruptions"]
             if interruptions and len(interruptions) > 0:
                 return interruptions[0]
         return None
 
     def _get_active_outage(self):
         """Get the first active outage (not planned intervention)."""
-        if not self.coordinator.data or "interruptions" not in self.coordinator.data:
+        # Gestion des deux formats possibles
+        if isinstance(self.coordinator.data, list):
+            data = self.coordinator.data[0]
+        else:
+            data = self.coordinator.data
+            
+        if not data or "interruptions" not in data:
             return None
         
-        interruptions = self.coordinator.data["interruptions"]
+        interruptions = data["interruptions"]
         for interruption in interruptions:
-            # Skip planned interventions ONLY if they are not finished
-            if interruption.get("interruptionPlanifiee") is True:
-                # If intervention is finished (has dateFin or etat T), include it
-                if not interruption.get("dateFin") and interruption.get("etat") != "T":
-                    continue
-            # Return first non-planned interruption or finished planned intervention
-            return interruption
+            if not interruption.get("interruptionPlanifiee", False):
+                return interruption
         
         return None
 
     def _get_planned_intervention(self):
         """Get the first planned intervention."""
-        if not self.coordinator.data or "interruptions" not in self.coordinator.data:
+        # Gestion des deux formats possibles
+        if isinstance(self.coordinator.data, list):
+            data = self.coordinator.data[0]
+        else:
+            data = self.coordinator.data
+            
+        if not data or "interruptions" not in data:
             return None
         
-        interruptions = self.coordinator.data["interruptions"]
+        interruptions = data["interruptions"]
         for interruption in interruptions:
-            if interruption.get("interruptionPlanifiee") is True:
+            if interruption.get("interruptionPlanifiee", False):
                 return interruption
         
         return None
 
-    def _is_panne_active(self):
-        """Check if there's an active outage."""
-        if not self.coordinator.data:
-            return False
-        
-        etat = self.coordinator.data.get("etat")
-        if etat != "N":
-            return False
-        
-        # Check if there's an active outage (non-planned)
-        outage = self._get_active_outage()
-        if not outage:
-            return False
-        
-        # Check if outage is not completed
-        return outage.get("etat") != "C" and not outage.get("dateFin")
 
+class HydroPannesInfoPannesSensor(HydroPannesSensorBase):
+    """Sensor for service status info."""
+
+    def __init__(self, coordinator, entry: ConfigEntry, nom_lieu: str) -> None:
+        """Initialize the sensor."""
+        super().__init__(coordinator, entry, nom_lieu)
+        self._attr_name = "Info Pannes"
+        self._attr_unique_id = f"{entry.entry_id}_info_pannes"
+        self._attr_icon = "mdi:information-outline"
+
+    @property
+    def native_value(self):
+        """Return the state."""
+        if not self.coordinator.data:
+            return "Indisponible"
+        
+        # Gestion des deux formats possibles
+        if isinstance(self.coordinator.data, list):
+            data = self.coordinator.data[0]
+        else:
+            data = self.coordinator.data
+        
+        etat = data.get("etat")
+        interruptions = data.get("interruptions", [])
+        
+        # No interruptions
+        if not interruptions or len(interruptions) == 0:
+            if etat == "A":
+                return "Aucune panne détectée"
+            else:
+                return "Indisponible"
+        
+        # Séparer les pannes et interventions planifiées
+        active_outage = None
+        planned = None
+        
+        for interruption in interruptions:
+            if interruption.get("interruptionPlanifiee") is True:
+                planned = interruption
+            else:
+                active_outage = interruption
+        
+        # PRIORITY 1: Panne en cours (non planifiée)
+        if active_outage:
+            outage_etat = active_outage.get("etat")
+            
+            if outage_etat in ["C", "P"]:
+                return "Panne en cours"
+            
+            if outage_etat == "T" or active_outage.get("dateFin"):
+                return "Courant rétabli"
+        
+        # PRIORITY 2: Intervention planifiée
+        if planned:
+            planned_etat = planned.get("etat")
+            
+            # Terminée
+            if planned_etat == "T" or (planned.get("dateFin") and etat == "A"):
+                return "Intervention planifiée terminée"
+            
+            # En cours
+            if planned_etat == "C" or etat == "N":
+                return "Intervention planifiée en cours"
+            
+            # À venir
+            if planned_etat == "P" and etat == "A":
+                return "Interruption planifiée à venir"
+            
+            # Check date for future intervention
+            if etat == "A" and planned.get("dateDebut") and not planned.get("dateFin"):
+                try:
+                    date_debut = datetime.fromisoformat(planned["dateDebut"].replace("Z", "+00:00"))
+                    maintenant = dt_util.now()
+                    
+                    if date_debut > maintenant:
+                        return "Interruption planifiée à venir"
+                except Exception:
+                    pass
+        
+        # Default
+        if etat == "A":
+            return "Aucune panne détectée"
+        
+        return "Indisponible"
+
+    @property
+    def icon(self):
+        """Return the icon."""
+        state = self.native_value
+        if state == "Aucune panne détectée":
+            return "mdi:check-circle"
+        elif state in ["Courant rétabli", "Intervention planifiée terminée"]:
+            return "mdi:check-circle-outline"
+        elif state in ["Interruption planifiée à venir", "Intervention planifiée en cours"]:
+            return "mdi:calendar-clock"
+        elif state == "Panne en cours":
+            return "mdi:alert-circle"
+        return "mdi:help-circle"
+
+    @property
+    def extra_state_attributes(self):
+        """Return extra attributes."""
+        if not self.coordinator.data:
+            return {}
+        
+        # Gestion des deux formats possibles
+        if isinstance(self.coordinator.data, list):
+            data = self.coordinator.data[0]
+        else:
+            data = self.coordinator.data
+        
+        interruptions = data.get("interruptions", [])
+        if not interruptions:
+            return {}
+        
+        # Séparer les pannes et interventions planifiées
+        panne_en_cours = None
+        intervention_planifiee = None
+        
+        for interruption in interruptions:
+            if interruption.get("interruptionPlanifiee") is True:
+                intervention_planifiee = interruption
+            else:
+                panne_en_cours = interruption
+        
+        # Priorité à la panne en cours
+        active_interruption = panne_en_cours if panne_en_cours else intervention_planifiee
+        
+        if not active_interruption:
+            active_interruption = interruptions[0]
+        
+        return {
+            "dateDebut": active_interruption.get("dateDebut"),
+            "dateFin": active_interruption.get("dateFin"),
+            "etat": active_interruption.get("etat"),
+            "dateFinEstimeeMin": active_interruption.get("dateFinEstimeeMin"),
+            "dateFinEstimeeMax": active_interruption.get("dateFinEstimeeMax"),
+            "codeIntervention": active_interruption.get("codeIntervention"),
+            "niveauUrgence": active_interruption.get("niveauUrgence"),
+            "nbClient": active_interruption.get("nbClient"),
+            "codeCause": active_interruption.get("codeCause"),
+            "codeMunicipal": active_interruption.get("codeMunicipal"),
+            "datePublication": active_interruption.get("datePublication"),
+            "codeRemarque": active_interruption.get("codeRemarque"),
+            "dureePrevu": active_interruption.get("dureePrevu"),
+            "probabilite": active_interruption.get("probabilite"),
+            "interruptionPlanifiee": active_interruption.get("interruptionPlanifiee"),
+            "attribution": "Données fournies par Hydro-Québec",
+        }
 
 
 class HydroPannesDerniereMAJSensor(HydroPannesSensorBase):
@@ -150,8 +296,14 @@ class HydroPannesDerniereMAJSensor(HydroPannesSensorBase):
             except Exception:
                 pass
         
-        if self.coordinator.data and "date" in self.coordinator.data:
-            date_str = self.coordinator.data["date"]
+        # Gestion des deux formats possibles
+        if isinstance(self.coordinator.data, list):
+            data = self.coordinator.data[0]
+        else:
+            data = self.coordinator.data
+            
+        if data and "date" in data:
+            date_str = data["date"]
             try:
                 date_obj = datetime.fromisoformat(date_str.replace("Z", "+00:00"))
                 return date_obj
@@ -179,7 +331,7 @@ class HydroPannesClientsAffectesSensor(HydroPannesSensorBase):
         # Get active outage (not planned intervention)
         outage = self._get_active_outage()
         
-        if not outage or outage.get("etat") == "C":
+        if not outage or outage.get("etat") == "T":
             return 0
         
         return outage.get("nbClient", 0)
@@ -270,7 +422,7 @@ class HydroPannesStatutInterventionSensor(HydroPannesSensorBase):
         if not outage:
             return "Aucune intervention"
         
-        if outage.get("dateFin") or outage.get("etat") == "C":
+        if outage.get("dateFin") or outage.get("etat") == "T":
             return "Aucune intervention"
         
         code = outage.get("codeIntervention")
@@ -278,299 +430,6 @@ class HydroPannesStatutInterventionSensor(HydroPannesSensorBase):
             return INTERVENTION_CODES.get(code, "Inconnu")
         
         return "Aucune intervention"
-
-
-
-
-class HydroPannesInfoPannesSensor(HydroPannesSensorBase):
-    """Sensor for service status info."""
-
-    def __init__(self, coordinator, entry: ConfigEntry, nom_lieu: str) -> None:
-        """Initialize the sensor."""
-        super().__init__(coordinator, entry, nom_lieu)
-        self._attr_name = "Info Pannes"
-        self._attr_unique_id = f"{entry.entry_id}_info_pannes"
-        self._attr_icon = "mdi:information-outline"
-
-@property
-def native_value(self):
-    """Return the state."""
-    try:
-        _LOGGER.debug("InfoPannes - Starting native_value")
-        
-        if not self.coordinator.data:
-            _LOGGER.warning("InfoPannes - No coordinator data")
-            return "Indisponible"
-        
-        # Gestion des deux formats possibles
-        if isinstance(self.coordinator.data, list):
-            data = self.coordinator.data[0]
-        else:
-            data = self.coordinator.data
-        
-        etat = data.get("etat")
-        interruptions = data.get("interruptions", [])
-        
-        _LOGGER.debug(f"InfoPannes - etat principal: {etat}, nb interruptions: {len(interruptions)}")
-        
-        # No interruptions
-        if not interruptions or len(interruptions) == 0:
-            if etat == "A":
-                return "Aucune panne détectée"
-            else:
-                return "Indisponible"
-        
-        # Log all interruptions
-        for idx, inter in enumerate(interruptions):
-            _LOGGER.debug(f"InfoPannes - Interruption {idx}: planifiee={inter.get('interruptionPlanifiee')}, etat={inter.get('etat')}")
-        
-        # Check for active outage (non-planned) - PRIORITY 1
-        active_outage = None
-        for interruption in interruptions:
-            is_planned = interruption.get("interruptionPlanifiee", False)
-            _LOGGER.debug(f"InfoPannes - Checking interruption: interruptionPlanifiee={is_planned}")
-            if not is_planned:
-                active_outage = interruption
-                _LOGGER.debug(f"InfoPannes - Found active outage with etat: {interruption.get('etat')}")
-                break
-        
-        _LOGGER.debug(f"InfoPannes - active_outage is None: {active_outage is None}")
-        
-        # Check for planned intervention - PRIORITY 2
-        planned = None
-        for interruption in interruptions:
-            if interruption.get("interruptionPlanifiee", False):
-                planned = interruption
-                _LOGGER.debug(f"InfoPannes - Found planned intervention with etat: {interruption.get('etat')}")
-                break
-        
-        _LOGGER.debug(f"InfoPannes - planned is None: {planned is None}")
-        
-        # Process active outage first (if exists)
-        if active_outage:
-            _LOGGER.debug("InfoPannes - Processing active_outage")
-            outage_etat = active_outage.get("etat")
-            
-            # Check if outage is ongoing (C = en cours, P = prévu)
-            if outage_etat in ["C", "P"]:
-                _LOGGER.debug("InfoPannes - Returning: Panne en cours")
-                return "Panne en cours"
-            
-            # Check if outage was restored (T = terminé)
-            if outage_etat == "T" or active_outage.get("dateFin"):
-                _LOGGER.debug("InfoPannes - Returning: Courant rétabli")
-                return "Courant rétabli"
-        
-        # Process planned intervention (if no active outage or after outage processed)
-        if planned:
-            _LOGGER.debug("InfoPannes - Processing planned intervention")
-            planned_etat = planned.get("etat")
-            
-            _LOGGER.debug(f"InfoPannes - Planned etat: {planned_etat}, has dateFin: {planned.get('dateFin') is not None}, etat principal: {etat}")
-            
-            # Intervention planifiée terminée (T = terminé)
-            if planned_etat == "T":
-                _LOGGER.debug("InfoPannes - Returning: Intervention planifiée terminée (etat=T)")
-                return "Intervention planifiée terminée"
-            
-            # Also check if has dateFin and etat is A
-            if planned.get("dateFin") and etat == "A":
-                _LOGGER.debug("InfoPannes - Returning: Intervention planifiée terminée (dateFin + etat=A)")
-                return "Intervention planifiée terminée"
-            
-            # Intervention planifiée en cours (C = en cours)
-            if planned_etat == "C":
-                _LOGGER.debug("InfoPannes - Returning: Intervention planifiée en cours (etat=C)")
-                return "Intervention planifiée en cours"
-            
-            # Also check if etat is N (panne détectée)
-            if etat == "N" and planned_etat in ["C", "P"]:
-                _LOGGER.debug("InfoPannes - Returning: Intervention planifiée en cours (etat=N)")
-                return "Intervention planifiée en cours"
-            
-            # Intervention planifiée à venir (P = prévu)
-            if planned_etat == "P" and etat == "A":
-                _LOGGER.debug("InfoPannes - Returning: Interruption planifiée à venir (etat=P)")
-                return "Interruption planifiée à venir"
-            
-            # Check date for future intervention
-            if etat == "A" and planned.get("dateDebut") and not planned.get("dateFin"):
-                try:
-                    date_debut = datetime.fromisoformat(planned["dateDebut"].replace("Z", "+00:00"))
-                    maintenant = dt_util.now()
-                    
-                    if date_debut > maintenant:
-                        _LOGGER.debug("InfoPannes - Returning: Interruption planifiée à venir (future date)")
-                        return "Interruption planifiée à venir"
-                except Exception as e:
-                    _LOGGER.error(f"InfoPannes - Error parsing date: {e}")
-        
-        # Default based on etat
-        if etat == "A":
-            _LOGGER.debug("InfoPannes - Returning: Aucune panne détectée (default)")
-            return "Aucune panne détectée"
-        
-        _LOGGER.debug("InfoPannes - Returning: Indisponible (fallback)")
-        return "Indisponible"
-        
-    except Exception as e:
-        _LOGGER.error(f"InfoPannes - Error in native_value: {e}", exc_info=True)
-        return "Indisponible"
-        
-    except Exception as e:
-        _LOGGER.error(f"InfoPannes - Error in native_value: {e}", exc_info=True)
-        return "Indisponible"
-    @property
-    def icon(self):
-        """Return the icon."""
-        state = self.native_value
-        if state == "Aucune panne détectée":
-            return "mdi:check-circle"
-        elif state in ["Courant rétabli", "Intervention planifiée terminée"]:
-            return "mdi:check-circle-outline"
-        elif state in ["Interruption planifiée à venir", "Intervention planifiée en cours"]:
-            return "mdi:calendar-clock"
-        elif state == "Panne en cours":
-            return "mdi:alert-circle"
-        return "mdi:help-circle"
-
-    @property
-    def extra_state_attributes(self):
-        """Return extra attributes."""
-        try:
-            _LOGGER.debug("InfoPannes - Starting extra_state_attributes")
-            
-            if not self.coordinator.data:
-                _LOGGER.warning("InfoPannes - No coordinator data")
-                return {}
-            
-            _LOGGER.debug(f"InfoPannes - Coordinator data type: {type(self.coordinator.data)}")
-            
-            # Gestion des deux formats possibles
-            if isinstance(self.coordinator.data, list):
-                _LOGGER.debug("InfoPannes - Data is a list")
-                data = self.coordinator.data[0]
-            else:
-                _LOGGER.debug("InfoPannes - Data is a dict")
-                data = self.coordinator.data
-            
-            _LOGGER.debug(f"InfoPannes - Data keys: {data.keys()}")
-            
-            interruptions = data.get("interruptions", [])
-            _LOGGER.debug(f"InfoPannes - Interruptions count: {len(interruptions)}")
-            
-            if not interruptions or len(interruptions) == 0:
-                _LOGGER.warning("InfoPannes - No interruptions found")
-                return {}
-            
-            # PRIORITY 1: Panne en cours (non planifiée)
-            panne_en_cours = None
-            for interruption in interruptions:
-                if not interruption.get("interruptionPlanifiee", False):
-                    panne_en_cours = interruption
-                    _LOGGER.debug("InfoPannes - Found panne en cours")
-                    break
-            
-            # PRIORITY 2: Intervention planifiée
-            intervention_planifiee = None
-            for interruption in interruptions:
-                if interruption.get("interruptionPlanifiee", False):
-                    intervention_planifiee = interruption
-                    _LOGGER.debug("InfoPannes - Found intervention planifiée")
-                    break
-            
-            # Use panne en cours if available, otherwise planned intervention
-            active_interruption = panne_en_cours if panne_en_cours else intervention_planifiee
-            
-            # Fallback to first interruption if neither found
-            if active_interruption is None:
-                active_interruption = interruptions[0]
-                _LOGGER.debug("InfoPannes - Using first interruption as fallback")
-            
-            _LOGGER.debug(f"InfoPannes - Active interruption keys: {active_interruption.keys()}")
-            
-            attributes = {
-                "dateDebut": active_interruption.get("dateDebut"),
-                "dateFin": active_interruption.get("dateFin"),
-                "etat": active_interruption.get("etat"),
-                "dateFinEstimeeMin": active_interruption.get("dateFinEstimeeMin"),
-                "dateFinEstimeeMax": active_interruption.get("dateFinEstimeeMax"),
-                "codeIntervention": active_interruption.get("codeIntervention"),
-                "niveauUrgence": active_interruption.get("niveauUrgence"),
-                "nbClient": active_interruption.get("nbClient"),
-                "codeCause": active_interruption.get("codeCause"),
-                "codeMunicipal": active_interruption.get("codeMunicipal"),
-                "datePublication": active_interruption.get("datePublication"),
-                "codeRemarque": active_interruption.get("codeRemarque"),
-                "dureePrevu": active_interruption.get("dureePrevu"),
-                "probabilite": active_interruption.get("probabilite"),
-                "interruptionPlanifiee": active_interruption.get("interruptionPlanifiee"),
-                "attribution": "Données fournies par Hydro-Québec",
-            }
-            
-            _LOGGER.debug(f"InfoPannes - Returning attributes: {attributes}")
-            return attributes
-            
-        except Exception as e:
-            _LOGGER.error(f"InfoPannes - Error in extra_state_attributes: {e}", exc_info=True)
-            return {}
-class HydroPannesNiveauUrgenceSensor(HydroPannesSensorBase):
-    """Sensor for intervention status."""
-
-    def __init__(self, coordinator, entry: ConfigEntry, nom_lieu: str) -> None:
-        """Initialize the sensor."""
-        super().__init__(coordinator, entry, nom_lieu)
-        self._attr_name = "Statut Intervention"
-        self._attr_unique_id = f"{entry.entry_id}_statut_intervention"
-        self._attr_icon = "mdi:account-hard-hat"
-
-    @property
-    def native_value(self):
-        """Return the state."""
-        # Get active outage (not planned intervention)
-        outage = self._get_active_outage()
-        
-        if not outage:
-            return "Aucune intervention"
-        
-        if outage.get("dateFin") or outage.get("etat") == "C":
-            return "Aucune intervention"
-        
-        code = outage.get("codeIntervention")
-        if code:
-            return INTERVENTION_CODES.get(code, "Inconnu")
-        
-        return "Aucune intervention"
-
-
-class HydroPannesCausePanneSensor(HydroPannesSensorBase):
-    """Sensor for outage cause."""
-
-    def __init__(self, coordinator, entry: ConfigEntry, nom_lieu: str) -> None:
-        """Initialize the sensor."""
-        super().__init__(coordinator, entry, nom_lieu)
-        self._attr_name = "Cause Panne"
-        self._attr_unique_id = f"{entry.entry_id}_cause_panne"
-        self._attr_icon = "mdi:help-circle-outline"
-
-    @property
-    def native_value(self):
-        """Return the state."""
-        # Get active outage (not planned intervention)
-        outage = self._get_active_outage()
-        
-        if not outage:
-            return "Aucune panne"
-        
-        if outage.get("etat") == "C":
-            return "Aucune panne"
-        
-        code = str(outage.get("codeCause", ""))
-        if code:
-            cause_text = CAUSE_CODES.get(code, "Bris d'équipement")
-            return f"{cause_text} ({code})"
-        
-        return "Aucune panne"
 
 
 class HydroPannesNiveauUrgenceSensor(HydroPannesSensorBase):
@@ -599,6 +458,36 @@ class HydroPannesNiveauUrgenceSensor(HydroPannesSensorBase):
             return "Panne majeure"
         else:
             return "Inconnu"
+
+
+class HydroPannesCausePanneSensor(HydroPannesSensorBase):
+    """Sensor for outage cause."""
+
+    def __init__(self, coordinator, entry: ConfigEntry, nom_lieu: str) -> None:
+        """Initialize the sensor."""
+        super().__init__(coordinator, entry, nom_lieu)
+        self._attr_name = "Cause Panne"
+        self._attr_unique_id = f"{entry.entry_id}_cause_panne"
+        self._attr_icon = "mdi:help-circle-outline"
+
+    @property
+    def native_value(self):
+        """Return the state."""
+        # Get active outage (not planned intervention)
+        outage = self._get_active_outage()
+        
+        if not outage:
+            return "Aucune panne"
+        
+        if outage.get("etat") == "T":
+            return "Aucune panne"
+        
+        code = str(outage.get("codeCause", ""))
+        if code:
+            cause_text = CAUSE_CODES.get(code, "Bris d'équipement")
+            return f"{cause_text} ({code})"
+        
+        return "Aucune panne"
 
 
 class HydroPannesDureePanneSensor(HydroPannesSensorBase):
@@ -658,7 +547,7 @@ class HydroPannesDureeAvantRetablissementSensor(HydroPannesSensorBase):
         if not outage:
             return 0
         
-        if outage.get("dateFin") or outage.get("etat") == "C":
+        if outage.get("dateFin") or outage.get("etat") == "T":
             return 0
         
         if "dateFinEstimeeMax" not in outage:
@@ -678,87 +567,6 @@ class HydroPannesDureeAvantRetablissementSensor(HydroPannesSensorBase):
             return 0
 
 
-class HydroPannesInfoPannesSensor(HydroPannesSensorBase):
-    """Sensor for service status info."""
-
-    def __init__(self, coordinator, entry: ConfigEntry, nom_lieu: str) -> None:
-        """Initialize the sensor."""
-        super().__init__(coordinator, entry, nom_lieu)
-        self._attr_name = "Info Pannes"
-        self._attr_unique_id = f"{entry.entry_id}_info_pannes"
-        self._attr_icon = "mdi:information-outline"
-
-    @property
-    def native_value(self):
-        """Return the state."""
-        if not self.coordinator.data:
-            return "Indisponible"
-        
-        etat = self.coordinator.data.get("etat")
-        interruptions = self.coordinator.data.get("interruptions", [])
-        
-        # No interruptions = no outage detected
-        if not interruptions or len(interruptions) == 0:
-            return "Aucune panne détectée"
-        
-        # Check for active outage (non-planned)
-        active_outage = self._get_active_outage()
-        
-        # Priority 1: Active outage
-        if active_outage:
-            # Check if outage has dateFin in the past (restored)
-            if active_outage.get("dateFin"):
-                try:
-                    date_fin = datetime.fromisoformat(active_outage["dateFin"].replace("Z", "+00:00"))
-                    maintenant = dt_util.now()
-                    if date_fin < maintenant:
-                        return "Courant rétabli"
-                except Exception:
-                    pass
-            
-            # Check if etat is "C" (completed)
-            if active_outage.get("etat") == "C":
-                return "Courant rétabli"
-            
-            # Otherwise it's ongoing
-            return "Panne en cours"
-        
-        # Priority 2: Planned intervention (only if no active outage)
-        planned = self._get_planned_intervention()
-        if planned:
-            # Check if it's in the future
-            if planned.get("dateDebut"):
-                try:
-                    date_debut = datetime.fromisoformat(planned["dateDebut"].replace("Z", "+00:00"))
-                    maintenant = dt_util.now()
-                    
-                    if date_debut > maintenant:
-                        return "Interruption planifiée à venir"
-                except Exception:
-                    pass
-        
-        # If etat is "A" and no active outage, everything is fine
-        if etat == "A":
-            return "Aucune panne détectée"
-        
-        # Default
-        return "Aucune panne détectée"
-
-    @property
-    def icon(self):
-        """Return the icon."""
-        state = self.native_value
-        if state == "Aucune panne détectée":
-            return "mdi:check-circle"
-        elif state == "Courant rétabli":
-            return "mdi:check-circle-outline"
-        elif state == "Interruption planifiée à venir":
-            return "mdi:calendar-clock"
-        elif state == "Panne en cours":
-            return "mdi:alert-circle"
-        return "mdi:help-circle"
-
-
 class HydroPannesLieuConsoSensor(HydroPannesSensorBase):
     """Sensor for consumption location ID (diagnostic)."""
 
@@ -776,4 +584,10 @@ class HydroPannesLieuConsoSensor(HydroPannesSensorBase):
         if not self.coordinator.data:
             return None
         
-        return self.coordinator.data.get("idLieuConso")
+        # Gestion des deux formats possibles
+        if isinstance(self.coordinator.data, list):
+            data = self.coordinator.data[0]
+        else:
+            data = self.coordinator.data
+            
+        return data.get("idLieuConso")
