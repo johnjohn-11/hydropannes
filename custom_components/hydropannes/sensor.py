@@ -68,7 +68,7 @@ class HydroPannesSensorBase(CoordinatorEntity, SensorEntity):
             "identifiers": {(DOMAIN, self._entry.entry_id)},
             "name": f"HydroPannes {self._nom_lieu}",
             "manufacturer": "HQ",
-            "model": "Surveillance de pannes",
+            "model": "Info-pannes",
         }
 
     def _get_interruption(self):
@@ -128,7 +128,7 @@ class HydroPannesInfoPannesSensor(HydroPannesSensorBase):
     def __init__(self, coordinator, entry: ConfigEntry, nom_lieu: str) -> None:
         """Initialize the sensor."""
         super().__init__(coordinator, entry, nom_lieu)
-        self._attr_name = "Info Pannes"
+        self._attr_name = "Info-pannes"
         self._attr_unique_id = f"{entry.entry_id}_info_pannes"
         self._attr_icon = "mdi:information-outline"
 
@@ -319,7 +319,7 @@ class HydroPannesAdressesToucheesSensor(HydroPannesSensorBase):
     def __init__(self, coordinator, entry: ConfigEntry, nom_lieu: str) -> None:
         """Initialize the sensor."""
         super().__init__(coordinator, entry, nom_lieu)
-        self._attr_name = "Clients Affectés"
+        self._attr_name = "Adresses touchées"
         self._attr_unique_id = f"{entry.entry_id}_adresses_touchees"
         self._attr_native_unit_of_measurement = "clients"
         self._attr_icon = "mdi:account-multiple"
@@ -378,8 +378,8 @@ class HydroPannesFinEstimeeSensor(HydroPannesSensorBase):
     def __init__(self, coordinator, entry: ConfigEntry, nom_lieu: str) -> None:
         """Initialize the sensor."""
         super().__init__(coordinator, entry, nom_lieu)
-        self._attr_name = "Fin Estimée"
-        self._attr_unique_id = f"{entry.entry_id}_fin_estimee"
+        self._attr_name = "Fin réelle ou estimée"
+        self._attr_unique_id = f"{entry.entry_id}_fin"
         self._attr_icon = "mdi:clock-end"
         self._attr_device_class = "timestamp"
 
@@ -421,7 +421,7 @@ class HydroPannesStatutInterventionSensor(HydroPannesSensorBase):
     def __init__(self, coordinator, entry: ConfigEntry, nom_lieu: str) -> None:
         """Initialize the sensor."""
         super().__init__(coordinator, entry, nom_lieu)
-        self._attr_name = "Statut Intervention"
+        self._attr_name = "Statut intervention"
         self._attr_unique_id = f"{entry.entry_id}_statut_intervention"
         self._attr_icon = "mdi:account-hard-hat"
 
@@ -455,7 +455,7 @@ class HydroPannesNiveauUrgenceSensor(HydroPannesSensorBase):
     def __init__(self, coordinator, entry: ConfigEntry, nom_lieu: str) -> None:
         """Initialize the sensor."""
         super().__init__(coordinator, entry, nom_lieu)
-        self._attr_name = "Niveau Urgence"
+        self._attr_name = "Niveau d'urgence"
         self._attr_unique_id = f"{entry.entry_id}_niveau_urgence"
         self._attr_icon = "mdi:alert-octagon"
 
@@ -465,7 +465,7 @@ class HydroPannesNiveauUrgenceSensor(HydroPannesSensorBase):
         interruption = self._get_interruption()
         
         if not interruption or "niveauUrgence" not in interruption:
-            return "N/A"
+            return none
         
         niveau = interruption.get("niveauUrgence")
         
@@ -554,7 +554,7 @@ class HydroPannesDureeAvantRetablissementSensor(HydroPannesSensorBase):
     def __init__(self, coordinator, entry: ConfigEntry, nom_lieu: str) -> None:
         """Initialize the sensor."""
         super().__init__(coordinator, entry, nom_lieu)
-        self._attr_name = "Durée Avant Rétablissement"
+        self._attr_name = "Durée avant rétablissement"
         self._attr_unique_id = f"{entry.entry_id}_duree_avant_retablissement"
         self._attr_native_unit_of_measurement = "heures"
         self._attr_icon = "mdi:timer-sand"
@@ -571,14 +571,14 @@ class HydroPannesDureeAvantRetablissementSensor(HydroPannesSensorBase):
             outage = self._get_planned_intervention()
         
         if not outage:
-            return 0
+            return none
         
         # Si terminé, retourner 0
         if outage.get("dateFin") or outage.get("etat") == "T":
-            return 0
+            return none
         
         if "dateFinEstimeeMax" not in outage:
-            return 0
+            return none
         
         try:
             date_fin_estimee = datetime.fromisoformat(outage["dateFinEstimeeMax"].replace("Z", "+00:00"))
@@ -587,11 +587,11 @@ class HydroPannesDureeAvantRetablissementSensor(HydroPannesSensorBase):
             duree = (date_fin_estimee - maintenant).total_seconds() / 3600
             
             if duree < 0:
-                return 0
+                return none
             
             return round(duree, 1)
         except Exception:
-            return 0
+            return none
 
 
 class HydroPannesLieuConsoSensor(HydroPannesSensorBase):
@@ -600,7 +600,7 @@ class HydroPannesLieuConsoSensor(HydroPannesSensorBase):
     def __init__(self, coordinator, entry: ConfigEntry, nom_lieu: str) -> None:
         """Initialize the sensor."""
         super().__init__(coordinator, entry, nom_lieu)
-        self._attr_name = "Lieu de Consommation"
+        self._attr_name = "Lieu de consommation"
         self._attr_unique_id = f"{entry.entry_id}_lieu_conso"
         self._attr_icon = "mdi:identifier"
         self._attr_entity_category = EntityCategory.DIAGNOSTIC
