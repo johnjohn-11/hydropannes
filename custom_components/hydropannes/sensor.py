@@ -328,10 +328,14 @@ class HydroPannesClientsAffectesSensor(HydroPannesSensorBase):
     @property
     def native_value(self):
         """Return the state."""
-        # Get active outage (not planned intervention)
+        # Priorité à la panne en cours
         outage = self._get_active_outage()
         
-        if not outage or outage.get("etat") == "T":
+        # Si pas de panne en cours, prendre l'intervention planifiée
+        if not outage:
+            outage = self._get_planned_intervention()
+        
+        if not outage:
             return 0
         
         return outage.get("nbClient", 0)
@@ -351,8 +355,12 @@ class HydroPannesDebutPanneSensor(HydroPannesSensorBase):
     @property
     def native_value(self):
         """Return the state as ISO timestamp."""
-        # Get active outage (not planned intervention)
+        # Priorité à la panne en cours
         outage = self._get_active_outage()
+        
+        # Si pas de panne en cours, prendre l'intervention planifiée
+        if not outage:
+            outage = self._get_planned_intervention()
         
         if not outage or "dateDebut" not in outage:
             return None
@@ -378,8 +386,12 @@ class HydroPannesFinEstimeeSensor(HydroPannesSensorBase):
     @property
     def native_value(self):
         """Return the state as ISO timestamp."""
-        # Get active outage (not planned intervention)
+        # Priorité à la panne en cours
         outage = self._get_active_outage()
+        
+        # Si pas de panne en cours, prendre l'intervention planifiée
+        if not outage:
+            outage = self._get_planned_intervention()
         
         if not outage:
             return None
@@ -416,14 +428,19 @@ class HydroPannesStatutInterventionSensor(HydroPannesSensorBase):
     @property
     def native_value(self):
         """Return the state."""
-        # Get active outage (not planned intervention)
+        # Priorité à la panne en cours
         outage = self._get_active_outage()
+        
+        # Si pas de panne en cours, prendre l'intervention planifiée
+        if not outage:
+            outage = self._get_planned_intervention()
         
         if not outage:
             return "Aucune intervention"
         
+        # Si l'intervention est terminée
         if outage.get("dateFin") or outage.get("etat") == "T":
-            return "Aucune intervention"
+            return "Intervention terminée"
         
         code = outage.get("codeIntervention")
         if code:
@@ -473,13 +490,14 @@ class HydroPannesCausePanneSensor(HydroPannesSensorBase):
     @property
     def native_value(self):
         """Return the state."""
-        # Get active outage (not planned intervention)
+        # Priorité à la panne en cours
         outage = self._get_active_outage()
         
+        # Si pas de panne en cours, prendre l'intervention planifiée
         if not outage:
-            return "Aucune panne"
+            outage = self._get_planned_intervention()
         
-        if outage.get("etat") == "T":
+        if not outage:
             return "Aucune panne"
         
         code = str(outage.get("codeCause", ""))
@@ -505,8 +523,12 @@ class HydroPannesDureePanneSensor(HydroPannesSensorBase):
     @property
     def native_value(self):
         """Return the state."""
-        # Get active outage (not planned intervention)
+        # Priorité à la panne en cours
         outage = self._get_active_outage()
+        
+        # Si pas de panne en cours, prendre l'intervention planifiée
+        if not outage:
+            outage = self._get_planned_intervention()
         
         if not outage or "dateDebut" not in outage:
             return 0
@@ -541,12 +563,17 @@ class HydroPannesDureeAvantRetablissementSensor(HydroPannesSensorBase):
     @property
     def native_value(self):
         """Return the state."""
-        # Get active outage (not planned intervention)
+        # Priorité à la panne en cours
         outage = self._get_active_outage()
+        
+        # Si pas de panne en cours, prendre l'intervention planifiée
+        if not outage:
+            outage = self._get_planned_intervention()
         
         if not outage:
             return 0
         
+        # Si terminé, retourner 0
         if outage.get("dateFin") or outage.get("etat") == "T":
             return 0
         
