@@ -1,11 +1,14 @@
 """Support for Hydro-Pannes sensors."""
 from __future__ import annotations
-
 from datetime import datetime
 import logging
 from typing import Any, Dict, Optional
 
-from homeassistant.components.sensor import SensorEntity, SensorStateClass
+from homeassistant.components.sensor import (
+    SensorEntity,
+    SensorStateClass,
+    SensorDeviceClass,
+)
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import EntityCategory, UnitOfTime
 from homeassistant.core import HomeAssistant
@@ -35,7 +38,7 @@ async def async_setup_entry(
     sensors = [
         HydroPannesInfoPannesSensor(coordinator, entry, nom_lieu),
         HydroPannesNiveauUrgenceSensor(coordinator, entry, nom_lieu),
-        HydroPannesAdressesToucheesSensor(coordinator, entry, nom_lieu),
+        HydroPannesNombreClientSensor(coordinator, entry, nom_lieu),
         HydroPannesDebutSensor(coordinator, entry, nom_lieu),
         HydroPannesFinEstimeeSensor(coordinator, entry, nom_lieu),
         HydroPannesStatutInterventionSensor(coordinator, entry, nom_lieu),
@@ -165,7 +168,7 @@ class HydroPannesInfoPannesSensor(HydroPannesSensorBase):
     def native_value(self):
         """Return the state."""
         if not self.coordinator.data:
-            return "Indisponible"
+            return None
 
         etat = self.coordinator.data.get("etat")
         interruptions = self.coordinator.data.get("interruptions", [])
@@ -174,7 +177,7 @@ class HydroPannesInfoPannesSensor(HydroPannesSensorBase):
         if not interruptions:
             if etat == "A":
                 return "Aucune panne détectée"
-            return "Indisponible"
+            return None
 
         # PRIORITÉ 1: Panne en cours (non planifiée active)
         active_outage = self._get_active_outage()
@@ -186,7 +189,7 @@ class HydroPannesInfoPannesSensor(HydroPannesSensorBase):
             if etat == "A" and self._is_terminated(active_outage):
                 return "Courant rétabli"
             # If etat ambiguous, prefer Panne en cours if not terminated
-            return "Panne en cours"
+            return None
 
         # PRIORITÉ 2: Intervention planifiée
         planned = self._get_planned_intervention()
@@ -209,7 +212,7 @@ class HydroPannesInfoPannesSensor(HydroPannesSensorBase):
         if etat == "A":
             return "Aucune panne détectée"
 
-        return "Indisponible"
+        return None
 
     @property
     def icon(self):
@@ -291,14 +294,14 @@ class HydroPannesNiveauUrgenceSensor(HydroPannesSensorBase):
             return f"Inconnu ({niveau})" if niveau else None
 
 
-class HydroPannesAdressesToucheesSensor(HydroPannesSensorBase):
+class HydroPannesNombreClientSensor(HydroPannesSensorBase):
     """Sensor for affected clients."""
 
     def __init__(self, coordinator, entry: ConfigEntry, nom_lieu: str) -> None:
         """Initialize the sensor."""
         super().__init__(coordinator, entry, nom_lieu)
         self._attr_name = "Adresses touchées"
-        self._attr_unique_id = f"{entry.entry_id}_adresses_touchees"
+        self._attr_unique_id = f"{entry.entry_id}_nbclients"
         self._attr_native_unit_of_measurement = "clients"
         self._attr_icon = "mdi:account-multiple"
         self._attr_state_class = SensorStateClass.MEASUREMENT
@@ -402,7 +405,7 @@ class HydroPannesStatutInterventionSensor(HydroPannesSensorBase):
 
         code = outage.get("codeIntervention")
         if code:
-            return INTERVENTION_CODES.get(code, "Inconnu")
+            return INTERVENTION_CODES.get(code, None)
 
         return "Aucune intervention"
 
@@ -431,87 +434,84 @@ class HydroPannesCauseSensor(HydroPannesSensorBase):
         if code is None:
             return None
         code_str = str(code)
-        cause_text = CAUSE_CODES.get(code_str, "Inconnu")
+        cause_text = CAUSE_CODES.get(code_str, None)
         return f"{cause_text} ({code_str})"
 
 
 class HydroPannesDureeSensor(HydroPannesSensorBase):
     """Sensor for outage duration."""
-
     def __init__(self, coordinator, entry: ConfigEntry, nom_lieu: str) -> None:
         """Initialize the sensor."""
         super().__init__(coordinator, entry, nom_lieu)
         self._attr_name = "Durée"
         self._attr_unique_id = f"{entry.entry_id}_duree"
-        self._attr_native_unit_of_measurement = UnitOfTime.HOURS
-        self._attr_device_class = "duration"
+        self._attr_native_unit_of_measurement = UnitOfTime.SECONDS
+        self._attr_device_class = SensorDeviceClass.DURATION
         self._attr_icon = "mdi:timer-outline"
         self._attr_state_class = SensorStateClass.MEASUREMENT
-
+    
     @property
     def native_value(self):
-        """Return the state (hours)."""
+        """Return the state (seconds)."""
         outage = self._get_active_outage()
         if not outage:
             outage = self._get_planned_intervention()
-
+        
         if not outage or "dateDebut" not in outage:
             return None
-
+        
         try:
             date_debut = self._parse_dt(outage["dateDebut"])
             if not date_debut:
                 return None
-
+            
             if outage.get("dateFin"):
                 date_fin = self._parse_dt(outage["dateFin"])
                 if not date_fin:
                     return None
-                duree = (date_fin - date_debut).total_seconds() / 3600
+                duree_seconds = (date_fin - date_debut).total_seconds()
             else:
                 maintenant = dt_util.now()
-                duree = (maintenant - date_debut).total_seconds() / 3600
-
-            return round(duree, 1)
+                duree_seconds = (maintenant - date_debut).total_seconds()
+            
+            return round(duree_seconds)
         except Exception:
             return None
 
-
 class HydroPannesDureeAvantRetablissementSensor(HydroPannesSensorBase):
     """Sensor for time until power restoration."""
-
     def __init__(self, coordinator, entry: ConfigEntry, nom_lieu: str) -> None:
         """Initialize the sensor."""
         super().__init__(coordinator, entry, nom_lieu)
         self._attr_name = "Durée avant rétablissement"
         self._attr_unique_id = f"{entry.entry_id}_duree_avant_retablissement"
-        self._attr_native_unit_of_measurement = UnitOfTime.HOURS
-        self._attr_device_class = "duration"
+        self._attr_native_unit_of_measurement = UnitOfTime.SECONDS
+        self._attr_device_class = SensorDeviceClass.DURATION
         self._attr_icon = "mdi:timer-sand"
         self._attr_state_class = SensorStateClass.MEASUREMENT
-
+    
     @property
     def native_value(self):
-        """Return the state (hours) until estimated end."""
+        """Return the state (seconds) until estimated end."""
         outage = self._get_active_outage()
         if not outage:
             outage = self._get_planned_intervention()
-
+        
         if not outage:
             return None
-
+        
         if outage.get("dateFin") or outage.get("etat") == "T":
             return None
-
+        
         dfm = self._parse_dt(outage.get("dateFinEstimeeMax"))
         if not dfm:
             return None
-
-        duree = (dfm - dt_util.now()).total_seconds() / 3600
-        if duree < 0:
+        
+        duree_seconds = (dfm - dt_util.now()).total_seconds()
+        if duree_seconds < 0:
             return None
-        return round(duree, 1)
-
+        
+        return round(duree_seconds)
 
 class HydroPannesDerniereMAJSensor(HydroPannesSensorBase):
     """Sensor for last update time."""
