@@ -211,4 +211,351 @@ class HydroPannesInfoPannesSensor(HydroPannesSensorBase):
 
         return "Indisponible"
 
-    @proper
+    @property
+    def icon(self):
+        """Return the icon."""
+        state = self.native_value
+        if state == "Aucune panne détectée":
+            return "mdi:check-circle"
+        elif state in ["Courant rétabli", "Intervention planifiée terminée"]:
+            return "mdi:check-circle-outline"
+        elif state in ["Interruption planifiée à venir", "Intervention planifiée en cours", "Interruption planifiée"]:
+            return "mdi:calendar-clock"
+        elif state == "Panne en cours":
+            return "mdi:alert-circle"
+        return "mdi:help-circle"
+
+    @property
+    def extra_state_attributes(self):
+        """Return extra attributes."""
+        if not self.coordinator.data:
+            return {}
+
+        interruptions = self.coordinator.data.get("interruptions", [])
+        if not interruptions:
+            return {}
+
+        # Priority for attributes: 1) active non-planned outage 2) planned intervention 3) most recent interruption
+        inter = self._get_active_outage()
+        if not inter:
+            inter = self._get_planned_intervention()
+        if not inter:
+            inter = interruptions[0]
+
+        attrs = {}
+        for key in [
+            "dateDebut", "dateFin", "etat", "dateFinEstimeeMin", "dateFinEstimeeMax",
+            "codeIntervention", "niveauUrgence", "nbClient", "codeCause", "codeMunicipal",
+            "datePublication", "codeRemarque", "dureePrevu", "probabilite", "interruptionPlanifiee",
+        ]:
+            val = inter.get(key)
+            if key.startswith("date") and val:
+                parsed = self._parse_dt(val)
+                attrs[key] = parsed.isoformat() if parsed else val
+            elif val is not None:
+                attrs[key] = val
+        attrs["attribution"] = "Données fournies par Hydro-Québec"
+        return attrs
+
+
+class HydroPannesNiveauUrgenceSensor(HydroPannesSensorBase):
+    """Sensor for urgency level."""
+
+    def __init__(self, coordinator, entry: ConfigEntry, nom_lieu: str) -> None:
+        """Initialize the sensor."""
+        super().__init__(coordinator, entry, nom_lieu)
+        self._attr_name = "Niveau d'urgence"
+        self._attr_unique_id = f"{entry.entry_id}_niveau_urgence"
+        self._attr_icon = "mdi:alert-octagon"
+
+    @property
+    def native_value(self):
+        """Return the state."""
+        # Priorité à la panne en cours
+        interruption = self._get_active_outage()
+
+        # Si pas de panne en cours, prendre l'intervention planifiée
+        if not interruption:
+            interruption = self._get_planned_intervention()
+
+        if not interruption or "niveauUrgence" not in interruption:
+            return None
+
+        niveau = interruption.get("niveauUrgence")
+
+        if niveau == "P":
+            return "Panne"
+        elif niveau == "N":
+            return "Panne majeure"
+        else:
+            return f"Inconnu ({niveau})" if niveau else None
+
+
+class HydroPannesAdressesToucheesSensor(HydroPannesSensorBase):
+    """Sensor for affected clients."""
+
+    def __init__(self, coordinator, entry: ConfigEntry, nom_lieu: str) -> None:
+        """Initialize the sensor."""
+        super().__init__(coordinator, entry, nom_lieu)
+        self._attr_name = "Adresses touchées"
+        self._attr_unique_id = f"{entry.entry_id}_adresses_touchees"
+        self._attr_native_unit_of_measurement = "clients"
+        self._attr_icon = "mdi:account-multiple"
+        self._attr_state_class = SensorStateClass.MEASUREMENT
+
+    @property
+    def native_value(self):
+        """Return the state."""
+        # Priorité à la panne en cours
+        outage = self._get_active_outage()
+
+        # Si pas de panne en cours, prendre l'intervention planifiée
+        if not outage:
+            outage = self._get_planned_intervention()
+
+        if not outage:
+            return None
+
+        return outage.get("nbClient", None)
+
+
+class HydroPannesDebutSensor(HydroPannesSensorBase):
+    """Sensor for outage start time."""
+
+    def __init__(self, coordinator, entry: ConfigEntry, nom_lieu: str) -> None:
+        """Initialize the sensor."""
+        super().__init__(coordinator, entry, nom_lieu)
+        self._attr_name = "Début"
+        self._attr_unique_id = f"{entry.entry_id}_debut"
+        self._attr_icon = "mdi:clock-start"
+        self._attr_device_class = "timestamp"
+
+    @property
+    def native_value(self):
+        """Return the state as localized datetime."""
+        outage = self._get_active_outage()
+        if not outage:
+            outage = self._get_planned_intervention()
+
+        if not outage or "dateDebut" not in outage:
+            return None
+
+        return self._parse_dt(outage["dateDebut"])
+
+
+class HydroPannesFinEstimeeSensor(HydroPannesSensorBase):
+    """Sensor for estimated end time."""
+
+    def __init__(self, coordinator, entry: ConfigEntry, nom_lieu: str) -> None:
+        """Initialize the sensor."""
+        super().__init__(coordinator, entry, nom_lieu)
+        self._attr_name = "Fin réelle ou estimée"
+        self._attr_unique_id = f"{entry.entry_id}_fin"
+        self._attr_icon = "mdi:clock-end"
+        self._attr_device_class = "timestamp"
+
+    @property
+    def native_value(self):
+        """Return the state as localized datetime."""
+        outage = self._get_active_outage()
+        if not outage:
+            outage = self._get_planned_intervention()
+
+        if not outage:
+            return None
+
+        # Priority 1: dateFin (real)
+        df = self._parse_dt(outage.get("dateFin"))
+        if df:
+            return df
+
+        # Priority 2: dateFinEstimeeMax
+        df2 = self._parse_dt(outage.get("dateFinEstimeeMax"))
+        if df2:
+            return df2
+
+        return None
+
+
+class HydroPannesStatutInterventionSensor(HydroPannesSensorBase):
+    """Sensor for intervention status."""
+
+    def __init__(self, coordinator, entry: ConfigEntry, nom_lieu: str) -> None:
+        """Initialize the sensor."""
+        super().__init__(coordinator, entry, nom_lieu)
+        self._attr_name = "Statut intervention"
+        self._attr_unique_id = f"{entry.entry_id}_statut_intervention"
+        self._attr_icon = "mdi:account-hard-hat"
+
+    @property
+    def native_value(self):
+        """Return the state."""
+        outage = self._get_active_outage()
+        if not outage:
+            outage = self._get_planned_intervention()
+
+        if not outage:
+            return None
+
+        if outage.get("dateFin") or outage.get("etat") == "T":
+            return "Intervention terminée"
+
+        code = outage.get("codeIntervention")
+        if code:
+            return INTERVENTION_CODES.get(code, "Inconnu")
+
+        return "Aucune intervention"
+
+
+class HydroPannesCauseSensor(HydroPannesSensorBase):
+    """Sensor for outage cause."""
+
+    def __init__(self, coordinator, entry: ConfigEntry, nom_lieu: str) -> None:
+        """Initialize the sensor."""
+        super().__init__(coordinator, entry, nom_lieu)
+        self._attr_name = "Cause"
+        self._attr_unique_id = f"{entry.entry_id}_cause"
+        self._attr_icon = "mdi:help-circle-outline"
+
+    @property
+    def native_value(self):
+        """Return the state."""
+        outage = self._get_active_outage()
+        if not outage:
+            outage = self._get_planned_intervention()
+
+        if not outage:
+            return None
+
+        code = outage.get("codeCause")
+        if code is None:
+            return None
+        code_str = str(code)
+        cause_text = CAUSE_CODES.get(code_str, "Inconnu")
+        return f"{cause_text} ({code_str})"
+
+
+class HydroPannesDureeSensor(HydroPannesSensorBase):
+    """Sensor for outage duration."""
+
+    def __init__(self, coordinator, entry: ConfigEntry, nom_lieu: str) -> None:
+        """Initialize the sensor."""
+        super().__init__(coordinator, entry, nom_lieu)
+        self._attr_name = "Durée"
+        self._attr_unique_id = f"{entry.entry_id}_duree"
+        self._attr_native_unit_of_measurement = UnitOfTime.HOURS
+        self._attr_device_class = "duration"
+        self._attr_icon = "mdi:timer-outline"
+        self._attr_state_class = SensorStateClass.MEASUREMENT
+
+    @property
+    def native_value(self):
+        """Return the state (hours)."""
+        outage = self._get_active_outage()
+        if not outage:
+            outage = self._get_planned_intervention()
+
+        if not outage or "dateDebut" not in outage:
+            return None
+
+        try:
+            date_debut = self._parse_dt(outage["dateDebut"])
+            if not date_debut:
+                return None
+
+            if outage.get("dateFin"):
+                date_fin = self._parse_dt(outage["dateFin"])
+                if not date_fin:
+                    return None
+                duree = (date_fin - date_debut).total_seconds() / 3600
+            else:
+                maintenant = dt_util.now()
+                duree = (maintenant - date_debut).total_seconds() / 3600
+
+            return round(duree, 1)
+        except Exception:
+            return None
+
+
+class HydroPannesDureeAvantRetablissementSensor(HydroPannesSensorBase):
+    """Sensor for time until power restoration."""
+
+    def __init__(self, coordinator, entry: ConfigEntry, nom_lieu: str) -> None:
+        """Initialize the sensor."""
+        super().__init__(coordinator, entry, nom_lieu)
+        self._attr_name = "Durée avant rétablissement"
+        self._attr_unique_id = f"{entry.entry_id}_duree_avant_retablissement"
+        self._attr_native_unit_of_measurement = UnitOfTime.HOURS
+        self._attr_device_class = "duration"
+        self._attr_icon = "mdi:timer-sand"
+        self._attr_state_class = SensorStateClass.MEASUREMENT
+
+    @property
+    def native_value(self):
+        """Return the state (hours) until estimated end."""
+        outage = self._get_active_outage()
+        if not outage:
+            outage = self._get_planned_intervention()
+
+        if not outage:
+            return None
+
+        if outage.get("dateFin") or outage.get("etat") == "T":
+            return None
+
+        dfm = self._parse_dt(outage.get("dateFinEstimeeMax"))
+        if not dfm:
+            return None
+
+        duree = (dfm - dt_util.now()).total_seconds() / 3600
+        if duree < 0:
+            return None
+        return round(duree, 1)
+
+
+class HydroPannesDerniereMAJSensor(HydroPannesSensorBase):
+    """Sensor for last update time."""
+
+    def __init__(self, coordinator, entry: ConfigEntry, nom_lieu: str) -> None:
+        """Initialize the sensor."""
+        super().__init__(coordinator, entry, nom_lieu)
+        self._attr_name = "Dernière MAJ"
+        self._attr_unique_id = f"{entry.entry_id}_derniere_maj"
+        self._attr_icon = "mdi:clock-outline"
+        self._attr_device_class = "timestamp"
+
+    @property
+    def native_value(self):
+        """Return the state as localized datetime."""
+        interruption = self._get_active_outage() or self._get_planned_intervention()
+        if interruption and interruption.get("datePublication"):
+            parsed = self._parse_dt(interruption.get("datePublication"))
+            if parsed:
+                return parsed
+
+        if self.coordinator.data and "date" in self.coordinator.data:
+            parsed = self._parse_dt(self.coordinator.data.get("date"))
+            if parsed:
+                return parsed
+
+        return None
+
+
+class HydroPannesLieuConsoSensor(HydroPannesSensorBase):
+    """Sensor for consumption location ID (diagnostic)."""
+
+    def __init__(self, coordinator, entry: ConfigEntry, nom_lieu: str) -> None:
+        """Initialize the sensor."""
+        super().__init__(coordinator, entry, nom_lieu)
+        self._attr_name = "Lieu de consommation"
+        self._attr_unique_id = f"{entry.entry_id}_lieu_conso"
+        self._attr_icon = "mdi:identifier"
+        self._attr_entity_category = EntityCategory.DIAGNOSTIC
+
+    @property
+    def native_value(self):
+        """Return the state."""
+        if not self.coordinator.data:
+            return None
+
+        return self.coordinator.data.get("idLieuConso")
