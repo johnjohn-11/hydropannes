@@ -63,13 +63,7 @@ class HydroPannesEtatServiceBinarySensor(CoordinatorEntity, BinarySensorEntity):
         if not self.coordinator.data:
             return False
 
-        # Gestion des deux formats possibles
-        if isinstance(self.coordinator.data, list):
-            data = self.coordinator.data[0]
-        else:
-            data = self.coordinator.data
-
-        etat = data.get("etat")
+        etat = self.coordinator.data.get("etat")
 
         # N = panne en cours, A = service normal
         if etat == "N":
@@ -91,40 +85,41 @@ class HydroPannesEtatServiceBinarySensor(CoordinatorEntity, BinarySensorEntity):
         if not self.coordinator.data:
             return {}
 
-        # Gestion des deux formats possibles
-        if isinstance(self.coordinator.data, list):
-            data = self.coordinator.data[0]
-        else:
-            data = self.coordinator.data
-
-        interruptions = data.get("interruptions", [])
+        interruptions = self.coordinator.data.get("interruptions", [])
         if not interruptions:
             return {}
 
-        # Chercher la panne EN COURS (non planifiée)
+        # Séparer les pannes et interventions planifiées
         panne_en_cours = None
+        intervention_planifiee = None
+        
         for intr in interruptions:
-            if not intr.get("interruptionPlanifiee", False):
+            if intr.get("interruptionPlanifiee") is True:
+                intervention_planifiee = intr
+            else:
                 panne_en_cours = intr
-                break
 
-        # Si aucune panne en cours, prendre la première disponible
-        if panne_en_cours is None:
-            panne_en_cours = interruptions[0]
+        # PRIORITÉ 1: Panne en cours (non planifiée)
+        # PRIORITÉ 2: Intervention planifiée (si aucune panne en cours)
+        active_interruption = panne_en_cours if panne_en_cours else intervention_planifiee
+        
+        # Fallback sur la première interruption
+        if active_interruption is None:
+            active_interruption = interruptions[0]
 
         return {
-            "dateDebut": panne_en_cours.get("dateDebut"),
-            "dateFin": panne_en_cours.get("dateFin"),
-            "dateFinEstimeeMax": panne_en_cours.get("dateFinEstimeeMax"),
-            "etat": panne_en_cours.get("etat"),
-            "planifie": panne_en_cours.get("interruptionPlanifiee"),
-            "codeIntervention": panne_en_cours.get("codeIntervention"),
-            "niveauUrgence": panne_en_cours.get("niveauUrgence"),
-            "nbClient": panne_en_cours.get("nbClient"),
-            "codeCause": panne_en_cours.get("codeCause"),
-            "codeMunicipal": panne_en_cours.get("codeMunicipal"),
-            "dureePrevu": panne_en_cours.get("dureePrevu"),
-            "typeFinPrevue": panne_en_cours.get("typeFinPrevue"),
+            "dateDebut": active_interruption.get("dateDebut"),
+            "dateFin": active_interruption.get("dateFin"),
+            "dateFinEstimeeMax": active_interruption.get("dateFinEstimeeMax"),
+            "etat": active_interruption.get("etat"),
+            "planifie": active_interruption.get("interruptionPlanifiee"),
+            "codeIntervention": active_interruption.get("codeIntervention"),
+            "niveauUrgence": active_interruption.get("niveauUrgence"),
+            "nbClient": active_interruption.get("nbClient"),
+            "codeCause": active_interruption.get("codeCause"),
+            "codeMunicipal": active_interruption.get("codeMunicipal"),
+            "dureePrevu": active_interruption.get("dureePrevu"),
+            "typeFinPrevue": active_interruption.get("typeFinPrevue"),
             "attribution": "Données fournies par Hydro-Québec",
         }
 
@@ -157,13 +152,7 @@ class HydroPannesInterventionPlanifieeBinarySensor(CoordinatorEntity, BinarySens
         if not self.coordinator.data:
             return False
         
-        # Gestion des deux formats possibles
-        if isinstance(self.coordinator.data, list):
-            data = self.coordinator.data[0]
-        else:
-            data = self.coordinator.data
-            
-        interruptions = data.get("interruptions", [])
+        interruptions = self.coordinator.data.get("interruptions", [])
         
         if not interruptions:
             return False
@@ -189,39 +178,40 @@ class HydroPannesInterventionPlanifieeBinarySensor(CoordinatorEntity, BinarySens
         if not self.coordinator.data:
             return {}
 
-        # Gestion des deux formats possibles
-        if isinstance(self.coordinator.data, list):
-            data = self.coordinator.data[0]
-        else:
-            data = self.coordinator.data
-
-        interruptions = data.get("interruptions", [])
+        interruptions = self.coordinator.data.get("interruptions", [])
         if not interruptions:
             return {}
 
-        # Chercher l'intervention PLANIFIÉE
+        # Séparer les pannes et interventions planifiées
+        panne_en_cours = None
         intervention_planifiee = None
+        
         for intr in interruptions:
-            if intr.get("interruptionPlanifiee", False):
+            if intr.get("interruptionPlanifiee") is True:
                 intervention_planifiee = intr
-                break
+            else:
+                panne_en_cours = intr
 
-        # Si aucune intervention planifiée, prendre la première disponible
-        if intervention_planifiee is None:
-            intervention_planifiee = interruptions[0]
+        # PRIORITÉ 1: Panne en cours (non planifiée)
+        # PRIORITÉ 2: Intervention planifiée (si aucune panne en cours)
+        active_interruption = panne_en_cours if panne_en_cours else intervention_planifiee
+        
+        # Fallback sur la première interruption
+        if active_interruption is None:
+            active_interruption = interruptions[0]
 
         return {
-            "dateDebut": intervention_planifiee.get("dateDebut"),
-            "dateFin": intervention_planifiee.get("dateFin"),
-            "dateFinEstimeeMax": intervention_planifiee.get("dateFinEstimeeMax"),
-            "etat": intervention_planifiee.get("etat"),
-            "planifie": intervention_planifiee.get("interruptionPlanifiee"),
-            "codeIntervention": intervention_planifiee.get("codeIntervention"),
-            "niveauUrgence": intervention_planifiee.get("niveauUrgence"),
-            "nbClient": intervention_planifiee.get("nbClient"),
-            "codeCause": intervention_planifiee.get("codeCause"),
-            "codeMunicipal": intervention_planifiee.get("codeMunicipal"),
-            "dureePrevu": intervention_planifiee.get("dureePrevu"),
-            "typeFinPrevue": intervention_planifiee.get("typeFinPrevue"),
+            "dateDebut": active_interruption.get("dateDebut"),
+            "dateFin": active_interruption.get("dateFin"),
+            "dateFinEstimeeMax": active_interruption.get("dateFinEstimeeMax"),
+            "etat": active_interruption.get("etat"),
+            "planifie": active_interruption.get("interruptionPlanifiee"),
+            "codeIntervention": active_interruption.get("codeIntervention"),
+            "niveauUrgence": active_interruption.get("niveauUrgence"),
+            "nbClient": active_interruption.get("nbClient"),
+            "codeCause": active_interruption.get("codeCause"),
+            "codeMunicipal": active_interruption.get("codeMunicipal"),
+            "dureePrevu": active_interruption.get("dureePrevu"),
+            "typeFinPrevue": active_interruption.get("typeFinPrevue"),
             "attribution": "Données fournies par Hydro-Québec",
         }
