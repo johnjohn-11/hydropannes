@@ -1,0 +1,23 @@
+{
+    "name": "Hydropannes Dev",
+    "image": "ghcr.io/ludeeus/container:integration",
+    "appPort": [
+        "9123:8123"
+    ],
+    "postCreateCommand": "container install",
+    "forwardPorts": [9123],
+    "mounts": [
+        "source=${localWorkspaceFolder},target=/workspaces/integration,type=bind"
+    ],
+    "extensions": [
+        "ms-python.python",
+        "ms-python.vscode-pylance",
+        "github.vscode-pull-request-github"
+    ],
+    "settings": {
+        "python.pythonPath": "/usr/local/bin/python",
+        "python.linting.pylintEnabled": true,
+        "python.linting.enabled": true,
+        "python.formatting.provider": "black"
+    }
+}
