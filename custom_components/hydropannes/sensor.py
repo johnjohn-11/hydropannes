@@ -73,30 +73,21 @@ class HydroPannesSensorBase(CoordinatorEntity, SensorEntity):
 
     def _get_interruption(self):
         """Get first interruption if exists."""
-        # Gestion des deux formats possibles
-        if isinstance(self.coordinator.data, list):
-            data = self.coordinator.data[0]
-        else:
-            data = self.coordinator.data
+        if not self.coordinator.data:
+            return None
             
-        if data and "interruptions" in data:
-            interruptions = data["interruptions"]
+        if "interruptions" in self.coordinator.data:
+            interruptions = self.coordinator.data["interruptions"]
             if interruptions and len(interruptions) > 0:
                 return interruptions[0]
         return None
 
     def _get_active_outage(self):
         """Get the first active outage (not planned intervention)."""
-        # Gestion des deux formats possibles
-        if isinstance(self.coordinator.data, list):
-            data = self.coordinator.data[0]
-        else:
-            data = self.coordinator.data
-            
-        if not data or "interruptions" not in data:
+        if not self.coordinator.data or "interruptions" not in self.coordinator.data:
             return None
         
-        interruptions = data["interruptions"]
+        interruptions = self.coordinator.data["interruptions"]
         for interruption in interruptions:
             if not interruption.get("interruptionPlanifiee", False):
                 return interruption
@@ -105,16 +96,10 @@ class HydroPannesSensorBase(CoordinatorEntity, SensorEntity):
 
     def _get_planned_intervention(self):
         """Get the first planned intervention."""
-        # Gestion des deux formats possibles
-        if isinstance(self.coordinator.data, list):
-            data = self.coordinator.data[0]
-        else:
-            data = self.coordinator.data
-            
-        if not data or "interruptions" not in data:
+        if not self.coordinator.data or "interruptions" not in self.coordinator.data:
             return None
         
-        interruptions = data["interruptions"]
+        interruptions = self.coordinator.data["interruptions"]
         for interruption in interruptions:
             if interruption.get("interruptionPlanifiee", False):
                 return interruption
@@ -138,14 +123,8 @@ class HydroPannesInfoPannesSensor(HydroPannesSensorBase):
         if not self.coordinator.data:
             return "Indisponible"
         
-        # Gestion des deux formats possibles
-        if isinstance(self.coordinator.data, list):
-            data = self.coordinator.data[0]
-        else:
-            data = self.coordinator.data
-        
-        etat = data.get("etat")
-        interruptions = data.get("interruptions", [])
+        etat = self.coordinator.data.get("etat")
+        interruptions = self.coordinator.data.get("interruptions", [])
         
         # No interruptions
         if not interruptions or len(interruptions) == 0:
@@ -164,34 +143,28 @@ class HydroPannesInfoPannesSensor(HydroPannesSensorBase):
             else:
                 active_outage = interruption
         
-        # PRIORITY 1: Panne en cours (non planifiée)
+        # PRIORITÉ 1: Panne en cours (non planifiée)
         if active_outage:
-            outage_etat = active_outage.get("etat")
-            
-            if outage_etat in ["C", "P"]:
+            # Si etat principal = "N" → Panne en cours
+            if etat == "N":
                 return "Panne en cours"
             
-            if outage_etat == "T" or active_outage.get("dateFin"):
+            # Si etat principal = "A" et dateFin existe → Courant rétabli
+            if etat == "A" and active_outage.get("dateFin"):
                 return "Courant rétabli"
         
-        # PRIORITY 2: Intervention planifiée
+        # PRIORITÉ 2: Intervention planifiée
         if planned:
-            planned_etat = planned.get("etat")
-            
-            # Terminée
-            if planned_etat == "T" or (planned.get("dateFin") and etat == "A"):
+            # Si etat principal = "A" et dateFin existe → Intervention planifiée terminée
+            if etat == "A" and planned.get("dateFin"):
                 return "Intervention planifiée terminée"
             
-            # En cours
-            if planned_etat == "C" or etat == "N":
+            # Si etat principal = "N" et dateFin n'existe pas → Intervention planifiée en cours
+            if etat == "N" and not planned.get("dateFin"):
                 return "Intervention planifiée en cours"
             
-            # À venir
-            if planned_etat == "P" and etat == "A":
-                return "Interruption planifiée à venir"
-            
-            # Check date for future intervention
-            if etat == "A" and planned.get("dateDebut") and not planned.get("dateFin"):
+            # Si etat principal = "A" et dateDebut dans le futur → Interruption planifiée à venir
+            if etat == "A" and planned.get("dateDebut"):
                 try:
                     date_debut = datetime.fromisoformat(planned["dateDebut"].replace("Z", "+00:00"))
                     maintenant = dt_util.now()
@@ -201,7 +174,7 @@ class HydroPannesInfoPannesSensor(HydroPannesSensorBase):
                 except Exception:
                     pass
         
-        # Default
+        # Si etat principal = "A" → Aucune panne détectée
         if etat == "A":
             return "Aucune panne détectée"
         
@@ -227,13 +200,7 @@ class HydroPannesInfoPannesSensor(HydroPannesSensorBase):
         if not self.coordinator.data:
             return {}
         
-        # Gestion des deux formats possibles
-        if isinstance(self.coordinator.data, list):
-            data = self.coordinator.data[0]
-        else:
-            data = self.coordinator.data
-        
-        interruptions = data.get("interruptions", [])
+        interruptions = self.coordinator.data.get("interruptions", [])
         if not interruptions:
             return {}
         
@@ -273,44 +240,37 @@ class HydroPannesInfoPannesSensor(HydroPannesSensorBase):
         }
 
 
-class HydroPannesDerniereMAJSensor(HydroPannesSensorBase):
-    """Sensor for last update time."""
+class HydroPannesNiveauUrgenceSensor(HydroPannesSensorBase):
+    """Sensor for urgency level."""
 
     def __init__(self, coordinator, entry: ConfigEntry, nom_lieu: str) -> None:
         """Initialize the sensor."""
         super().__init__(coordinator, entry, nom_lieu)
-        self._attr_name = "Dernière MAJ"
-        self._attr_unique_id = f"{entry.entry_id}_derniere_maj"
-        self._attr_icon = "mdi:clock-outline"
-        self._attr_device_class = "timestamp"
+        self._attr_name = "Niveau d'urgence"
+        self._attr_unique_id = f"{entry.entry_id}_niveau_urgence"
+        self._attr_icon = "mdi:alert-octagon"
 
     @property
     def native_value(self):
-        """Return the state as ISO timestamp."""
-        interruption = self._get_interruption()
+        """Return the state."""
+        # Priorité à la panne en cours
+        interruption = self._get_active_outage()
         
-        if interruption and "datePublication" in interruption:
-            try:
-                date_obj = datetime.fromisoformat(interruption["datePublication"].replace("Z", "+00:00"))
-                return date_obj
-            except Exception:
-                pass
+        # Si pas de panne en cours, prendre l'intervention planifiée
+        if not interruption:
+            interruption = self._get_planned_intervention()
         
-        # Gestion des deux formats possibles
-        if isinstance(self.coordinator.data, list):
-            data = self.coordinator.data[0]
+        if not interruption or "niveauUrgence" not in interruption:
+            return None
+        
+        niveau = interruption.get("niveauUrgence")
+        
+        if niveau == "P":
+            return "Panne"
+        elif niveau == "N":
+            return "Panne majeure"
         else:
-            data = self.coordinator.data
-            
-        if data and "date" in data:
-            date_str = data["date"]
-            try:
-                date_obj = datetime.fromisoformat(date_str.replace("Z", "+00:00"))
-                return date_obj
-            except Exception:
-                pass
-        
-        return None
+            return f"Inconnu ({niveau})"
 
 
 class HydroPannesAdressesToucheesSensor(HydroPannesSensorBase):
@@ -396,7 +356,7 @@ class HydroPannesFinEstimeeSensor(HydroPannesSensorBase):
         if not outage:
             return None
         
-        # Priority 1: dateFin (actual end time)
+        # Priority 1: dateFin (fin réelle)
         if "dateFin" in outage and outage.get("dateFin"):
             try:
                 date_obj = datetime.fromisoformat(outage["dateFin"].replace("Z", "+00:00"))
@@ -404,7 +364,7 @@ class HydroPannesFinEstimeeSensor(HydroPannesSensorBase):
             except Exception:
                 pass
         
-        # Priority 2: dateFinEstimeeMax (estimated end time)
+        # Priority 2: dateFinEstimeeMax (fin estimée)
         if "dateFinEstimeeMax" in outage and outage.get("dateFinEstimeeMax"):
             try:
                 date_obj = datetime.fromisoformat(outage["dateFinEstimeeMax"].replace("Z", "+00:00"))
@@ -447,34 +407,6 @@ class HydroPannesStatutInterventionSensor(HydroPannesSensorBase):
             return INTERVENTION_CODES.get(code, "Inconnu")
         
         return "Aucune intervention"
-
-
-class HydroPannesNiveauUrgenceSensor(HydroPannesSensorBase):
-    """Sensor for urgency level."""
-
-    def __init__(self, coordinator, entry: ConfigEntry, nom_lieu: str) -> None:
-        """Initialize the sensor."""
-        super().__init__(coordinator, entry, nom_lieu)
-        self._attr_name = "Niveau d'urgence"
-        self._attr_unique_id = f"{entry.entry_id}_niveau_urgence"
-        self._attr_icon = "mdi:alert-octagon"
-
-    @property
-    def native_value(self):
-        """Return the state."""
-        interruption = self._get_interruption()
-        
-        if not interruption or "niveauUrgence" not in interruption:
-            return None
-        
-        niveau = interruption.get("niveauUrgence")
-        
-        if niveau == "P":
-            return "Panne"
-        elif niveau == "N":
-            return "Panne majeure"
-        else:
-            return "Inconnu"
 
 
 class HydroPannesCauseSensor(HydroPannesSensorBase):
@@ -596,6 +528,40 @@ class HydroPannesDureeAvantRetablissementSensor(HydroPannesSensorBase):
             return None
 
 
+class HydroPannesDerniereMAJSensor(HydroPannesSensorBase):
+    """Sensor for last update time."""
+
+    def __init__(self, coordinator, entry: ConfigEntry, nom_lieu: str) -> None:
+        """Initialize the sensor."""
+        super().__init__(coordinator, entry, nom_lieu)
+        self._attr_name = "Dernière MAJ"
+        self._attr_unique_id = f"{entry.entry_id}_derniere_maj"
+        self._attr_icon = "mdi:clock-outline"
+        self._attr_device_class = "timestamp"
+
+    @property
+    def native_value(self):
+        """Return the state as ISO timestamp."""
+        interruption = self._get_interruption()
+        
+        if interruption and "datePublication" in interruption:
+            try:
+                date_obj = datetime.fromisoformat(interruption["datePublication"].replace("Z", "+00:00"))
+                return date_obj
+            except Exception:
+                pass
+        
+        if self.coordinator.data and "date" in self.coordinator.data:
+            date_str = self.coordinator.data["date"]
+            try:
+                date_obj = datetime.fromisoformat(date_str.replace("Z", "+00:00"))
+                return date_obj
+            except Exception:
+                pass
+        
+        return None
+
+
 class HydroPannesLieuConsoSensor(HydroPannesSensorBase):
     """Sensor for consumption location ID (diagnostic)."""
 
@@ -612,11 +578,5 @@ class HydroPannesLieuConsoSensor(HydroPannesSensorBase):
         """Return the state."""
         if not self.coordinator.data:
             return None
-        
-        # Gestion des deux formats possibles
-        if isinstance(self.coordinator.data, list):
-            data = self.coordinator.data[0]
-        else:
-            data = self.coordinator.data
             
-        return data.get("idLieuConso")
+        return self.coordinator.data.get("idLieuConso")
