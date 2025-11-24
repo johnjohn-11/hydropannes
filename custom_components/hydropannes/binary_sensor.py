@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+from typing import Any, Dict
 
 from homeassistant.components.binary_sensor import (
     BinarySensorEntity,
@@ -11,6 +12,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
+from homeassistant.util import dt as dt_util
 
 from .const import DOMAIN, CONF_NOM_LIEU
 
@@ -25,12 +27,12 @@ async def async_setup_entry(
     """Set up the Hydro-Pannes binary sensors."""
     coordinator = hass.data[DOMAIN][entry.entry_id]
     nom_lieu = entry.data[CONF_NOM_LIEU]
-    
+
     binary_sensors = [
         HydroPannesEtatServiceBinarySensor(coordinator, entry, nom_lieu),
         HydroPannesInterventionPlanifieeBinarySensor(coordinator, entry, nom_lieu),
     ]
-    
+
     async_add_entities(binary_sensors)
 
 
@@ -57,18 +59,39 @@ class HydroPannesEtatServiceBinarySensor(CoordinatorEntity, BinarySensorEntity):
             "model": "Info-pannes",
         }
 
+    def _is_interruption_terminated(self, intr: dict[str, Any]) -> bool:
+        if not intr:
+            return False
+        if intr.get("dateFin"):
+            return True
+        if intr.get("etat") in ("C", "T"):
+            return True
+        return False
+
     @property
     def is_on(self) -> bool:
-        """Return true if there's an outage."""
+        """Return true if there's an outage (service problem)."""
         if not self.coordinator.data:
             return False
 
         etat = self.coordinator.data.get("etat")
+        # Quick test: if main state not 'N', there is no outage
+        if etat != "N":
+            return False
 
-        # N = panne en cours, A = service normal
-        if etat == "N":
+        interruptions = self.coordinator.data.get("interruptions", [])
+        if not interruptions:
+            return False
+
+        # find a non-planned interruption that is not terminated
+        for intr in interruptions:
+            if intr.get("interruptionPlanifiee", False):
+                continue
+            if self._is_interruption_terminated(intr):
+                continue
+            # active non-planned outage found
             return True
-        
+
         return False
 
     @property
@@ -81,7 +104,6 @@ class HydroPannesEtatServiceBinarySensor(CoordinatorEntity, BinarySensorEntity):
     @property
     def extra_state_attributes(self):
         """Return extra attributes."""
-
         if not self.coordinator.data:
             return {}
 
@@ -89,22 +111,24 @@ class HydroPannesEtatServiceBinarySensor(CoordinatorEntity, BinarySensorEntity):
         if not interruptions:
             return {}
 
-        # Séparer les pannes et interventions planifiées
-        panne_en_cours = None
-        intervention_planifiee = None
-        
+        # Priority: active non-planned outage first, otherwise planned, otherwise first record
+        active = None
+        planned = None
         for intr in interruptions:
-            if intr.get("interruptionPlanifiee") is True:
-                intervention_planifiee = intr
+            if intr.get("interruptionPlanifiee", False):
+                if planned is None:
+                    planned = intr
             else:
-                panne_en_cours = intr
+                # pick first non-planned that is not terminated
+                if not self._is_interruption_terminated(intr) and active is None:
+                    active = intr
+                # if none active, keep the first non-planned as fallback
+                if active is None and planned is None and intr is not None:
+                    # nothing to do here; keep scanning
+                    pass
 
-        # PRIORITÉ 1: Panne en cours (non planifiée)
-        # PRIORITÉ 2: Intervention planifiée (si aucune panne en cours)
-        active_interruption = panne_en_cours if panne_en_cours else intervention_planifiee
-        
-        # Fallback sur la première interruption
-        if active_interruption is None:
+        active_interruption = active if active else planned
+        if not active_interruption:
             active_interruption = interruptions[0]
 
         return {
@@ -151,17 +175,11 @@ class HydroPannesInterventionPlanifieeBinarySensor(CoordinatorEntity, BinarySens
         """Return true if there's a planned intervention."""
         if not self.coordinator.data:
             return False
-        
+
         interruptions = self.coordinator.data.get("interruptions", [])
-        
-        if not interruptions:
-            return False
-        
-        # Chercher une interruption planifiée
-        for interruption in interruptions:
-            if interruption.get("interruptionPlanifiee", False):
+        for intr in interruptions:
+            if intr.get("interruptionPlanifiee", False):
                 return True
-        
         return False
 
     @property
@@ -173,8 +191,7 @@ class HydroPannesInterventionPlanifieeBinarySensor(CoordinatorEntity, BinarySens
 
     @property
     def extra_state_attributes(self):
-        """Return extra attributes."""
-
+        """Return extra attributes (from the planned interruption even if a non-planned outage exists)."""
         if not self.coordinator.data:
             return {}
 
@@ -182,36 +199,33 @@ class HydroPannesInterventionPlanifieeBinarySensor(CoordinatorEntity, BinarySens
         if not interruptions:
             return {}
 
-        # Séparer les pannes et interventions planifiées
-        panne_en_cours = None
-        intervention_planifiee = None
-        
+        # find the planned interruption (first active planned otherwise most relevant planned)
+        planned = None
         for intr in interruptions:
-            if intr.get("interruptionPlanifiee") is True:
-                intervention_planifiee = intr
-            else:
-                panne_en_cours = intr
+            if intr.get("interruptionPlanifiee", False):
+                planned = intr
+                # prefer active planned (no dateFin and not etat C/T)
+                if not intr.get("dateFin") and intr.get("etat") != "C" and intr.get("etat") != "T":
+                    break
 
-        # PRIORITÉ 1: Panne en cours (non planifiée)
-        # PRIORITÉ 2: Intervention planifiée (si aucune panne en cours)
-        active_interruption = panne_en_cours if panne_en_cours else intervention_planifiee
-        
-        # Fallback sur la première interruption
-        if active_interruption is None:
-            active_interruption = interruptions[0]
+        if not planned:
+            return {}
 
         return {
-            "dateDebut": active_interruption.get("dateDebut"),
-            "dateFin": active_interruption.get("dateFin"),
-            "dateFinEstimeeMax": active_interruption.get("dateFinEstimeeMax"),
-            "etat": active_interruption.get("etat"),
-            "planifie": active_interruption.get("interruptionPlanifiee"),
-            "codeIntervention": active_interruption.get("codeIntervention"),
-            "niveauUrgence": active_interruption.get("niveauUrgence"),
-            "nbClient": active_interruption.get("nbClient"),
-            "codeCause": active_interruption.get("codeCause"),
-            "codeMunicipal": active_interruption.get("codeMunicipal"),
-            "dureePrevu": active_interruption.get("dureePrevu"),
-            "typeFinPrevue": active_interruption.get("typeFinPrevue"),
+            "dateDebut": planned.get("dateDebut"),
+            "dateFin": planned.get("dateFin"),
+            "dateFinEstimeeMax": planned.get("dateFinEstimeeMax"),
+            "etat": planned.get("etat"),
+            "planifie": planned.get("interruptionPlanifiee"),
+            "codeIntervention": planned.get("codeIntervention"),
+            "niveauUrgence": planned.get("niveauUrgence"),
+            "nbClient": planned.get("nbClient"),
+            "codeCause": planned.get("codeCause"),
+            "codeMunicipal": planned.get("codeMunicipal"),
+            "dureePrevu": planned.get("dureePrevu"),
+            "typeFinPrevue": planned.get("typeFinPrevue"),
+            "datePublication": planned.get("datePublication"),
+            "codeRemarque": planned.get("codeRemarque"),
+            "probabilite": planned.get("probabilite"),
             "attribution": "Données fournies par Hydro-Québec",
         }
