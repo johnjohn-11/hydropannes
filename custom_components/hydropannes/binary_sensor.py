@@ -44,7 +44,7 @@ class HydroPannesEtatServiceBinarySensor(CoordinatorEntity, BinarySensorEntity):
         super().__init__(coordinator)
         self._entry = entry
         self._nom_lieu = nom_lieu
-        self._attr_name = "État du Service"
+        self._attr_name = "État du service"
         self._attr_unique_id = f"{entry.entry_id}_etat_service"
         self._attr_device_class = BinarySensorDeviceClass.PROBLEM
         self._attr_has_entity_name = True
@@ -156,7 +156,7 @@ class HydroPannesInterventionPlanifieeBinarySensor(CoordinatorEntity, BinarySens
         super().__init__(coordinator)
         self._entry = entry
         self._nom_lieu = nom_lieu
-        self._attr_name = "Intervention Planifiée"
+        self._attr_name = "Intervention planifiée"
         self._attr_unique_id = f"{entry.entry_id}_intervention_planifiee"
         self._attr_has_entity_name = True
 
