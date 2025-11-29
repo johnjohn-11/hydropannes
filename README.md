@@ -1,7 +1,7 @@
 # Hydro-Pannes
 
 [![hacs_badge](https://img.shields.io/badge/HACS-Custom-41BDF5.svg)](https://github.com/hacs/integration)
-[![GitHub Release](https://img.shields.io/github/release/jfparis84/hydro-pannes.svg)](https://github.com/jfparis84/hydro-pannes/releases)
+[![GitHub Release](https://img.shields.io/github/release/johnjohn-11/hydro-pannes.svg)](https://github.com/johnjohn-11/hydro-pannes/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 Intégration Home Assistant pour surveiller les pannes d'électricité d'Hydro-Québec.
