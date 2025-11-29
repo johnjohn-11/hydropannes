@@ -24,7 +24,7 @@ Cette intégration permet de suivre en temps réel l'état du service électriqu
 
 1. Ouvrir HACS dans Home Assistant
 2. Cliquer sur les 3 points en haut à droite → **Dépôts personnalisés**
-3. Ajouter l'URL du dépôt : `https://github.com/johjohn-11/hydro-pannes`
+3. Ajouter l'URL du dépôt : `https://github.com/johjohn-11/hydropannes`
 4. Catégorie : **Intégration**
 5. Cliquer sur **Ajouter**
 6. Rechercher "Hydro-Pannes" et installer
@@ -33,7 +33,7 @@ Cette intégration permet de suivre en temps réel l'état du service électriqu
 ### Installation manuelle
 
 1. Télécharger le contenu de ce dépôt
-2. Copier le dossier `custom_components/hydro_pannes` dans votre dossier `config/custom_components/`
+2. Copier le dossier `custom_components/hydropannes` dans votre dossier `config/custom_components/`
 3. Redémarrer Home Assistant
 
 ## Configuration
