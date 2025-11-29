@@ -379,7 +379,7 @@ class HydroPannesNiveauUrgenceSensor(HydroPannesSensorBase):
     def __init__(self, coordinator, entry: ConfigEntry, nom_lieu: str) -> None:
         """Initialize the sensor."""
         super().__init__(coordinator, entry, nom_lieu)
-        self._attr_name = "Niveau d'urgence"
+        self._attr_name = "Niveau urgence"
         self._attr_unique_id = f"{entry.entry_id}_niveau_urgence"
         self._attr_icon = "mdi:alert-octagon"
 
@@ -458,8 +458,8 @@ class HydroPannesDebutSensor(HydroPannesSensorBase):
     def __init__(self, coordinator, entry: ConfigEntry, nom_lieu: str) -> None:
         """Initialize the sensor."""
         super().__init__(coordinator, entry, nom_lieu)
-        self._attr_name = "Début"
-        self._attr_unique_id = f"{entry.entry_id}_debut"
+        self._attr_name = "Date début"
+        self._attr_unique_id = f"{entry.entry_id}_date_debut"
         self._attr_icon = "mdi:clock-start"
         self._attr_device_class = SensorDeviceClass.TIMESTAMP
 
@@ -489,6 +489,10 @@ class HydroPannesFinEstimeeSensor(HydroPannesSensorBase):
       1. dateFin (actual end)
       2. dateFinEstimeeMax (estimated end)
 
+    Icons:
+      - mdi:clock-check (actual end time - dateFin)
+      - mdi:clock-alert (estimated end time - dateFinEstimeeMax)
+
     Returns: datetime or None
     """
 
@@ -497,31 +501,48 @@ class HydroPannesFinEstimeeSensor(HydroPannesSensorBase):
         super().__init__(coordinator, entry, nom_lieu)
         self._attr_name = "Date fin estimée ou réelle"
         self._attr_unique_id = f"{entry.entry_id}_datefin"
-        self._attr_icon = "mdi:clock-end"
         self._attr_device_class = SensorDeviceClass.TIMESTAMP
 
-    @property
-    def native_value(self):
-        """Return the actual or estimated end time."""
+    def _get_end_time_info(self) -> tuple:
+        """
+        Get end time and whether it's actual or estimated.
+
+        Returns: (datetime or None, is_actual: bool)
+        """
         outage = self._get_active_outage()
         if not outage:
             outage = self._get_planned_intervention()
 
         if not outage:
-            return None
+            return None, False
 
         # Sub-priority 1: actual end time (dateFin)
         date_fin = self._parse_dt(outage.get("dateFin"))
         if date_fin:
-            return date_fin
+            return date_fin, True
 
         # Sub-priority 2: estimated end time (dateFinEstimeeMax)
         date_fin_estimee = self._parse_dt(outage.get("dateFinEstimeeMax"))
         if date_fin_estimee:
-            return date_fin_estimee
+            return date_fin_estimee, False
 
-        return None
+        return None, False
 
+    @property
+    def native_value(self):
+        """Return the actual or estimated end time."""
+        end_time, _ = self._get_end_time_info()
+        return end_time
+
+    @property
+    def icon(self):
+        """Return icon based on whether end time is actual or estimated."""
+        end_time, is_actual = self._get_end_time_info()
+        if end_time is None:
+            return "mdi:clock-end"
+        if is_actual:
+            return "mdi:clock-check"  # Actual end time (dateFin)
+        return "mdi:clock-alert"  # Estimated end time (dateFinEstimeeMax)
 
 class HydroPannesStatutInterventionSensor(HydroPannesSensorBase):
     """
