@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime
-from typing import Any, Dict, Optional
+from typing import Any
 
 from homeassistant.components.sensor import (
     SensorDeviceClass,
@@ -13,6 +13,7 @@ from homeassistant.components.sensor import (
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import EntityCategory, UnitOfTime
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.util import dt as dt_util
@@ -23,6 +24,7 @@ from .const import (
     DOMAIN,
     INTERVENTION_CODES,
 )
+from .coordinator import HydroPannesDataUpdateCoordinator
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -33,7 +35,7 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up the Hydro-Pannes sensors."""
-    coordinator = hass.data[DOMAIN][entry.entry_id]
+    coordinator: HydroPannesDataUpdateCoordinator = hass.data[DOMAIN][entry.entry_id]
     nom_lieu = entry.data[CONF_NOM_LIEU]
 
     sensors = [
@@ -53,31 +55,37 @@ async def async_setup_entry(
     async_add_entities(sensors)
 
 
-class HydroPannesSensorBase(CoordinatorEntity, SensorEntity):
+class HydroPannesSensorBase(CoordinatorEntity[HydroPannesDataUpdateCoordinator], SensorEntity):
     """Base class for Hydro-Pannes sensors."""
 
-    def __init__(self, coordinator, entry: ConfigEntry, nom_lieu: str) -> None:
+    _attr_has_entity_name = True
+
+    def __init__(
+        self,
+        coordinator: HydroPannesDataUpdateCoordinator,
+        entry: ConfigEntry,
+        nom_lieu: str,
+    ) -> None:
         """Initialize the sensor."""
         super().__init__(coordinator)
         self._entry = entry
         self._nom_lieu = nom_lieu
-        self._attr_has_entity_name = True
 
     @property
-    def device_info(self):
+    def device_info(self) -> DeviceInfo:
         """Return device information."""
-        return {
-            "identifiers": {(DOMAIN, self._entry.entry_id)},
-            "name": f"HydroPannes {self._nom_lieu}",
-            "manufacturer": None,
-            "model": "Info-pannes",
-        }
+        return DeviceInfo(
+            identifiers={(DOMAIN, self._entry.entry_id)},
+            name=f"HydroPannes {self._nom_lieu}",
+            manufacturer=None,
+            model="Info-pannes",
+        )
 
     # ==========================================================================
     # Helper methods
     # ==========================================================================
 
-    def _parse_dt(self, value: Optional[str]) -> Optional[datetime]:
+    def _parse_dt(self, value: str | None) -> datetime | None:
         """Parse an ISO datetime string to localized datetime or return None."""
         if not value:
             return None
@@ -89,7 +97,7 @@ class HydroPannesSensorBase(CoordinatorEntity, SensorEntity):
         except Exception:
             return None
 
-    def _is_terminated(self, intr: Dict[str, Any]) -> bool:
+    def _is_terminated(self, intr: dict[str, Any]) -> bool:
         """
         Check if an interruption is terminated.
 
@@ -105,7 +113,7 @@ class HydroPannesSensorBase(CoordinatorEntity, SensorEntity):
             return True
         return False
 
-    def _is_future(self, intr: Dict[str, Any]) -> bool:
+    def _is_future(self, intr: dict[str, Any]) -> bool:
         """
         Check if an interruption is scheduled for the future.
 
@@ -120,7 +128,7 @@ class HydroPannesSensorBase(CoordinatorEntity, SensorEntity):
             return True
         return False
 
-    def _get_active_outage(self) -> Optional[Dict[str, Any]]:
+    def _get_active_outage(self) -> dict[str, Any] | None:
         """
         Get the first active non-planned outage.
 
@@ -148,7 +156,7 @@ class HydroPannesSensorBase(CoordinatorEntity, SensorEntity):
             return intr
         return None
 
-    def _get_planned_intervention(self) -> Optional[Dict[str, Any]]:
+    def _get_planned_intervention(self) -> dict[str, Any] | None:
         """
         Get the most relevant planned intervention.
 
@@ -173,7 +181,7 @@ class HydroPannesSensorBase(CoordinatorEntity, SensorEntity):
                 return p
 
         # Fallback: return the most recent by dateDebut or datePublication
-        def _sort_key(i: Dict[str, Any]):
+        def _sort_key(i: dict[str, Any]) -> datetime:
             db = self._parse_dt(i.get("dateDebut"))
             if db:
                 return db
@@ -182,7 +190,7 @@ class HydroPannesSensorBase(CoordinatorEntity, SensorEntity):
 
         return sorted(planned, key=_sort_key)[-1]
 
-    def _get_terminated_outage(self) -> Optional[Dict[str, Any]]:
+    def _get_terminated_outage(self) -> dict[str, Any] | None:
         """
         Get a terminated non-planned outage (for "Courant rétabli" state).
 
@@ -225,7 +233,12 @@ class HydroPannesInfoPannesSensor(HydroPannesSensorBase):
       - If etat = "A" and no dateDebut -> "Aucune panne détectée"
     """
 
-    def __init__(self, coordinator, entry: ConfigEntry, nom_lieu: str) -> None:
+    def __init__(
+        self,
+        coordinator: HydroPannesDataUpdateCoordinator,
+        entry: ConfigEntry,
+        nom_lieu: str,
+    ) -> None:
         """Initialize the sensor."""
         super().__init__(coordinator, entry, nom_lieu)
         self._attr_name = "Info-pannes"
@@ -233,7 +246,7 @@ class HydroPannesInfoPannesSensor(HydroPannesSensorBase):
         self._attr_icon = "mdi:information-outline"
 
     @property
-    def native_value(self):
+    def native_value(self) -> str | None:
         """Return the state based on priority logic."""
         if not self.coordinator.data:
             return None
@@ -293,25 +306,25 @@ class HydroPannesInfoPannesSensor(HydroPannesSensorBase):
         return None
 
     @property
-    def icon(self):
+    def icon(self) -> str:
         """Return the icon based on current state."""
         state = self.native_value
         if state == "Aucune panne détectée":
             return "mdi:check-circle"
-        elif state in ["Courant rétabli", "Intervention planifiée terminée"]:
+        if state in ["Courant rétabli", "Intervention planifiée terminée"]:
             return "mdi:check-circle-outline"
-        elif state in [
+        if state in [
             "Interruption planifiée à venir",
             "Intervention planifiée en cours",
             "Interruption planifiée",
         ]:
             return "mdi:calendar-clock"
-        elif state == "Panne en cours":
+        if state == "Panne en cours":
             return "mdi:alert-circle"
         return "mdi:help-circle"
 
     @property
-    def extra_state_attributes(self):
+    def extra_state_attributes(self) -> dict[str, Any]:
         """
         Return extra attributes from the active interruption.
 
@@ -333,7 +346,7 @@ class HydroPannesInfoPannesSensor(HydroPannesSensorBase):
         if not inter:
             inter = interruptions[0]
 
-        attrs = {}
+        attrs: dict[str, Any] = {}
         for key in [
             "dateDebut",
             "dateFin",
@@ -376,15 +389,20 @@ class HydroPannesNiveauUrgenceSensor(HydroPannesSensorBase):
       - No interruption -> None
     """
 
-    def __init__(self, coordinator, entry: ConfigEntry, nom_lieu: str) -> None:
+    def __init__(
+        self,
+        coordinator: HydroPannesDataUpdateCoordinator,
+        entry: ConfigEntry,
+        nom_lieu: str,
+    ) -> None:
         """Initialize the sensor."""
         super().__init__(coordinator, entry, nom_lieu)
-        self._attr_name = "Niveau urgence"
+        self._attr_name = "Niveau d'urgence"
         self._attr_unique_id = f"{entry.entry_id}_niveau_urgence"
         self._attr_icon = "mdi:alert-octagon"
 
     @property
-    def native_value(self):
+    def native_value(self) -> str | None:
         """Return the urgency level."""
         # Priority 1: active non-planned outage
         interruption = self._get_active_outage()
@@ -400,10 +418,9 @@ class HydroPannesNiveauUrgenceSensor(HydroPannesSensorBase):
 
         if niveau == "P":
             return "Panne"
-        elif niveau == "N":
+        if niveau == "N":
             return "Panne majeure"
-        else:
-            return f"Inconnu ({niveau})" if niveau else None
+        return f"Inconnu ({niveau})" if niveau else None
 
 
 class HydroPannesNombreClientSensor(HydroPannesSensorBase):
@@ -418,7 +435,12 @@ class HydroPannesNombreClientSensor(HydroPannesSensorBase):
     Returns: nbClient value or None
     """
 
-    def __init__(self, coordinator, entry: ConfigEntry, nom_lieu: str) -> None:
+    def __init__(
+        self,
+        coordinator: HydroPannesDataUpdateCoordinator,
+        entry: ConfigEntry,
+        nom_lieu: str,
+    ) -> None:
         """Initialize the sensor."""
         super().__init__(coordinator, entry, nom_lieu)
         self._attr_name = "Adresses touchées"
@@ -428,7 +450,7 @@ class HydroPannesNombreClientSensor(HydroPannesSensorBase):
         self._attr_state_class = SensorStateClass.MEASUREMENT
 
     @property
-    def native_value(self):
+    def native_value(self) -> int | None:
         """Return the number of affected clients."""
         # Priority 1: active non-planned outage
         outage = self._get_active_outage()
@@ -455,16 +477,21 @@ class HydroPannesDebutSensor(HydroPannesSensorBase):
     Returns: dateDebut as ISO 8601 timestamp or None
     """
 
-    def __init__(self, coordinator, entry: ConfigEntry, nom_lieu: str) -> None:
+    def __init__(
+        self,
+        coordinator: HydroPannesDataUpdateCoordinator,
+        entry: ConfigEntry,
+        nom_lieu: str,
+    ) -> None:
         """Initialize the sensor."""
         super().__init__(coordinator, entry, nom_lieu)
-        self._attr_name = "Date début"
-        self._attr_unique_id = f"{entry.entry_id}_date_debut"
+        self._attr_name = "Début"
+        self._attr_unique_id = f"{entry.entry_id}_debut"
         self._attr_icon = "mdi:clock-start"
         self._attr_device_class = SensorDeviceClass.TIMESTAMP
 
     @property
-    def native_value(self):
+    def native_value(self) -> datetime | None:
         """Return the outage start time."""
         outage = self._get_active_outage()
         if not outage:
@@ -496,14 +523,19 @@ class HydroPannesFinEstimeeSensor(HydroPannesSensorBase):
     Returns: datetime or None
     """
 
-    def __init__(self, coordinator, entry: ConfigEntry, nom_lieu: str) -> None:
+    def __init__(
+        self,
+        coordinator: HydroPannesDataUpdateCoordinator,
+        entry: ConfigEntry,
+        nom_lieu: str,
+    ) -> None:
         """Initialize the sensor."""
         super().__init__(coordinator, entry, nom_lieu)
         self._attr_name = "Date fin estimée ou réelle"
         self._attr_unique_id = f"{entry.entry_id}_datefin"
         self._attr_device_class = SensorDeviceClass.TIMESTAMP
 
-    def _get_end_time_info(self) -> tuple:
+    def _get_end_time_info(self) -> tuple[datetime | None, bool]:
         """
         Get end time and whether it's actual or estimated.
 
@@ -529,13 +561,13 @@ class HydroPannesFinEstimeeSensor(HydroPannesSensorBase):
         return None, False
 
     @property
-    def native_value(self):
+    def native_value(self) -> datetime | None:
         """Return the actual or estimated end time."""
         end_time, _ = self._get_end_time_info()
         return end_time
 
     @property
-    def icon(self):
+    def icon(self) -> str:
         """Return icon based on whether end time is actual or estimated."""
         end_time, is_actual = self._get_end_time_info()
         if end_time is None:
@@ -543,6 +575,7 @@ class HydroPannesFinEstimeeSensor(HydroPannesSensorBase):
         if is_actual:
             return "mdi:clock-check"  # Actual end time (dateFin)
         return "mdi:clock-alert"  # Estimated end time (dateFinEstimeeMax)
+
 
 class HydroPannesStatutInterventionSensor(HydroPannesSensorBase):
     """
@@ -559,7 +592,12 @@ class HydroPannesStatutInterventionSensor(HydroPannesSensorBase):
       - No intervention -> None
     """
 
-    def __init__(self, coordinator, entry: ConfigEntry, nom_lieu: str) -> None:
+    def __init__(
+        self,
+        coordinator: HydroPannesDataUpdateCoordinator,
+        entry: ConfigEntry,
+        nom_lieu: str,
+    ) -> None:
         """Initialize the sensor."""
         super().__init__(coordinator, entry, nom_lieu)
         self._attr_name = "Statut intervention"
@@ -567,7 +605,7 @@ class HydroPannesStatutInterventionSensor(HydroPannesSensorBase):
         self._attr_icon = "mdi:account-hard-hat"
 
     @property
-    def native_value(self):
+    def native_value(self) -> str | None:
         """Return the intervention status."""
         outage = self._get_active_outage()
         if not outage:
@@ -601,7 +639,12 @@ class HydroPannesCauseSensor(HydroPannesSensorBase):
     Returns: "Cause text (code)" or None
     """
 
-    def __init__(self, coordinator, entry: ConfigEntry, nom_lieu: str) -> None:
+    def __init__(
+        self,
+        coordinator: HydroPannesDataUpdateCoordinator,
+        entry: ConfigEntry,
+        nom_lieu: str,
+    ) -> None:
         """Initialize the sensor."""
         super().__init__(coordinator, entry, nom_lieu)
         self._attr_name = "Cause"
@@ -609,7 +652,7 @@ class HydroPannesCauseSensor(HydroPannesSensorBase):
         self._attr_icon = "mdi:help-circle-outline"
 
     @property
-    def native_value(self):
+    def native_value(self) -> str | None:
         """Return the outage cause."""
         outage = self._get_active_outage()
         if not outage:
@@ -645,7 +688,12 @@ class HydroPannesDureeSensor(HydroPannesSensorBase):
     Returns: duration in seconds (for Home Assistant unit conversion)
     """
 
-    def __init__(self, coordinator, entry: ConfigEntry, nom_lieu: str) -> None:
+    def __init__(
+        self,
+        coordinator: HydroPannesDataUpdateCoordinator,
+        entry: ConfigEntry,
+        nom_lieu: str,
+    ) -> None:
         """Initialize the sensor."""
         super().__init__(coordinator, entry, nom_lieu)
         self._attr_name = "Durée"
@@ -656,7 +704,7 @@ class HydroPannesDureeSensor(HydroPannesSensorBase):
         self._attr_state_class = SensorStateClass.MEASUREMENT
 
     @property
-    def native_value(self):
+    def native_value(self) -> int | None:
         """Return the duration in seconds."""
         outage = self._get_active_outage()
         if not outage:
@@ -703,7 +751,12 @@ class HydroPannesDureeAvantRetablissementSensor(HydroPannesSensorBase):
     Returns: duration in seconds (for Home Assistant unit conversion)
     """
 
-    def __init__(self, coordinator, entry: ConfigEntry, nom_lieu: str) -> None:
+    def __init__(
+        self,
+        coordinator: HydroPannesDataUpdateCoordinator,
+        entry: ConfigEntry,
+        nom_lieu: str,
+    ) -> None:
         """Initialize the sensor."""
         super().__init__(coordinator, entry, nom_lieu)
         self._attr_name = "Durée avant rétablissement"
@@ -714,7 +767,7 @@ class HydroPannesDureeAvantRetablissementSensor(HydroPannesSensorBase):
         self._attr_state_class = SensorStateClass.MEASUREMENT
 
     @property
-    def native_value(self):
+    def native_value(self) -> int | None:
         """Return the time until restoration in seconds."""
         outage = self._get_active_outage()
         if not outage:
@@ -750,7 +803,12 @@ class HydroPannesDerniereMAJSensor(HydroPannesSensorBase):
     Returns: datetime or None
     """
 
-    def __init__(self, coordinator, entry: ConfigEntry, nom_lieu: str) -> None:
+    def __init__(
+        self,
+        coordinator: HydroPannesDataUpdateCoordinator,
+        entry: ConfigEntry,
+        nom_lieu: str,
+    ) -> None:
         """Initialize the sensor."""
         super().__init__(coordinator, entry, nom_lieu)
         self._attr_name = "Dernière MAJ"
@@ -759,7 +817,7 @@ class HydroPannesDerniereMAJSensor(HydroPannesSensorBase):
         self._attr_device_class = SensorDeviceClass.TIMESTAMP
 
     @property
-    def native_value(self):
+    def native_value(self) -> datetime | None:
         """Return the last update time."""
         # Priority 1: datePublication from active interruption
         interruption = self._get_active_outage() or self._get_planned_intervention()
@@ -786,7 +844,12 @@ class HydroPannesLieuConsoSensor(HydroPannesSensorBase):
     Returns: idLieuConso from main level or None
     """
 
-    def __init__(self, coordinator, entry: ConfigEntry, nom_lieu: str) -> None:
+    def __init__(
+        self,
+        coordinator: HydroPannesDataUpdateCoordinator,
+        entry: ConfigEntry,
+        nom_lieu: str,
+    ) -> None:
         """Initialize the sensor."""
         super().__init__(coordinator, entry, nom_lieu)
         self._attr_name = "Lieu de consommation"
@@ -795,7 +858,7 @@ class HydroPannesLieuConsoSensor(HydroPannesSensorBase):
         self._attr_entity_category = EntityCategory.DIAGNOSTIC
 
     @property
-    def native_value(self):
+    def native_value(self) -> str | None:
         """Return the consumption location ID."""
         if not self.coordinator.data:
             return None
