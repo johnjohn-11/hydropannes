@@ -1,4 +1,5 @@
 {
-    "name": "Hydro-Pannes",
-    "country": "CA"
+  "name": "Hydro-Pannes",
+  "country": "CA",
+  "render_readme": true
 }
