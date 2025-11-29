@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict
+from typing import Any
 
 from homeassistant.components.binary_sensor import (
     BinarySensorDeviceClass,
@@ -10,10 +10,12 @@ from homeassistant.components.binary_sensor import (
 )
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import CONF_NOM_LIEU, DOMAIN
+from .coordinator import HydroPannesDataUpdateCoordinator
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -24,7 +26,7 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up the Hydro-Pannes binary sensors."""
-    coordinator = hass.data[DOMAIN][entry.entry_id]
+    coordinator: HydroPannesDataUpdateCoordinator = hass.data[DOMAIN][entry.entry_id]
     nom_lieu = entry.data[CONF_NOM_LIEU]
 
     binary_sensors = [
@@ -35,7 +37,9 @@ async def async_setup_entry(
     async_add_entities(binary_sensors)
 
 
-class HydroPannesEtatServiceBinarySensor(CoordinatorEntity, BinarySensorEntity):
+class HydroPannesEtatServiceBinarySensor(
+    CoordinatorEntity[HydroPannesDataUpdateCoordinator], BinarySensorEntity
+):
     """
     Binary sensor for Hydro-Pannes service status.
 
@@ -54,7 +58,14 @@ class HydroPannesEtatServiceBinarySensor(CoordinatorEntity, BinarySensorEntity):
       - Priority 2: planned intervention (if no active outage)
     """
 
-    def __init__(self, coordinator, entry: ConfigEntry, nom_lieu: str) -> None:
+    _attr_has_entity_name = True
+
+    def __init__(
+        self,
+        coordinator: HydroPannesDataUpdateCoordinator,
+        entry: ConfigEntry,
+        nom_lieu: str,
+    ) -> None:
         """Initialize the binary sensor."""
         super().__init__(coordinator)
         self._entry = entry
@@ -62,19 +73,18 @@ class HydroPannesEtatServiceBinarySensor(CoordinatorEntity, BinarySensorEntity):
         self._attr_name = "État du service"
         self._attr_unique_id = f"{entry.entry_id}_etat_service"
         self._attr_device_class = BinarySensorDeviceClass.PROBLEM
-        self._attr_has_entity_name = True
 
     @property
-    def device_info(self):
+    def device_info(self) -> DeviceInfo:
         """Return device information."""
-        return {
-            "identifiers": {(DOMAIN, self._entry.entry_id)},
-            "name": f"HydroPannes {self._nom_lieu}",
-            "manufacturer": None,
-            "model": "Info-pannes",
-        }
+        return DeviceInfo(
+            identifiers={(DOMAIN, self._entry.entry_id)},
+            name=f"HydroPannes {self._nom_lieu}",
+            manufacturer=None,
+            model="Info-pannes",
+        )
 
-    def _is_interruption_terminated(self, intr: Dict[str, Any]) -> bool:
+    def _is_interruption_terminated(self, intr: dict[str, Any]) -> bool:
         """
         Check if an interruption is terminated.
 
@@ -90,7 +100,7 @@ class HydroPannesEtatServiceBinarySensor(CoordinatorEntity, BinarySensorEntity):
             return True
         return False
 
-    def _get_active_outage(self) -> Dict[str, Any] | None:
+    def _get_active_outage(self) -> dict[str, Any] | None:
         """
         Get the first active non-planned outage.
 
@@ -112,7 +122,7 @@ class HydroPannesEtatServiceBinarySensor(CoordinatorEntity, BinarySensorEntity):
             return intr
         return None
 
-    def _get_planned_intervention(self) -> Dict[str, Any] | None:
+    def _get_planned_intervention(self) -> dict[str, Any] | None:
         """
         Get the most relevant planned intervention.
 
@@ -156,14 +166,14 @@ class HydroPannesEtatServiceBinarySensor(CoordinatorEntity, BinarySensorEntity):
         return active_outage is not None
 
     @property
-    def icon(self):
+    def icon(self) -> str:
         """Return the icon based on state."""
         if self.is_on:
             return "mdi:power-plug-off"
         return "mdi:power-plug"
 
     @property
-    def extra_state_attributes(self):
+    def extra_state_attributes(self) -> dict[str, Any]:
         """
         Return extra attributes from the active interruption.
 
@@ -203,7 +213,9 @@ class HydroPannesEtatServiceBinarySensor(CoordinatorEntity, BinarySensorEntity):
         }
 
 
-class HydroPannesInterventionPlanifieeBinarySensor(CoordinatorEntity, BinarySensorEntity):
+class HydroPannesInterventionPlanifieeBinarySensor(
+    CoordinatorEntity[HydroPannesDataUpdateCoordinator], BinarySensorEntity
+):
     """
     Binary sensor for planned intervention status.
 
@@ -219,26 +231,32 @@ class HydroPannesInterventionPlanifieeBinarySensor(CoordinatorEntity, BinarySens
     as it indicates that a planned intervention record exists in the data.
     """
 
-    def __init__(self, coordinator, entry: ConfigEntry, nom_lieu: str) -> None:
+    _attr_has_entity_name = True
+
+    def __init__(
+        self,
+        coordinator: HydroPannesDataUpdateCoordinator,
+        entry: ConfigEntry,
+        nom_lieu: str,
+    ) -> None:
         """Initialize the binary sensor."""
         super().__init__(coordinator)
         self._entry = entry
         self._nom_lieu = nom_lieu
         self._attr_name = "Intervention planifiée"
         self._attr_unique_id = f"{entry.entry_id}_intervention_planifiee"
-        self._attr_has_entity_name = True
 
     @property
-    def device_info(self):
+    def device_info(self) -> DeviceInfo:
         """Return device information."""
-        return {
-            "identifiers": {(DOMAIN, self._entry.entry_id)},
-            "name": f"HydroPannes {self._nom_lieu}",
-            "manufacturer": None,
-            "model": "Info-pannes",
-        }
+        return DeviceInfo(
+            identifiers={(DOMAIN, self._entry.entry_id)},
+            name=f"HydroPannes {self._nom_lieu}",
+            manufacturer=None,
+            model="Info-pannes",
+        )
 
-    def _is_interruption_terminated(self, intr: Dict[str, Any]) -> bool:
+    def _is_interruption_terminated(self, intr: dict[str, Any]) -> bool:
         """
         Check if an interruption is terminated.
 
@@ -271,14 +289,14 @@ class HydroPannesInterventionPlanifieeBinarySensor(CoordinatorEntity, BinarySens
         return False
 
     @property
-    def icon(self):
+    def icon(self) -> str:
         """Return the icon based on state."""
         if self.is_on:
             return "mdi:calendar-clock"
         return "mdi:calendar-check"
 
     @property
-    def extra_state_attributes(self):
+    def extra_state_attributes(self) -> dict[str, Any]:
         """
         Return extra attributes from the planned intervention.
 
