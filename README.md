@@ -3,6 +3,7 @@
 [![hacs_badge](https://img.shields.io/badge/HACS-Custom-41BDF5.svg)](https://github.com/hacs/integration)
 [![GitHub Release](https://img.shields.io/github/release/johnjohn-11/hydropannes.svg)](https://github.com/johnjohn-11/hydropannes/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![HA Version](https://img.shields.io/badge/Home%20Assistant-2024.1%2B-blue.svg)](https://www.home-assistant.io/)
 
 Intégration Home Assistant pour surveiller les pannes d'électricité d'Hydro-Québec.
 
@@ -17,6 +18,7 @@ Cette intégration permet de suivre en temps réel l'état du service électriqu
 - 👥 **Adresses touchées** - Nombre de clients affectés
 - 🔧 **Statut d'intervention** - Équipe en route, au travail, etc.
 - 📍 **Multi-lieux** - Surveillance de plusieurs adresses
+- 📊 **Données post-panne** - Affichage des informations même après le rétablissement
 
 ## Installation
 
@@ -24,7 +26,7 @@ Cette intégration permet de suivre en temps réel l'état du service électriqu
 
 1. Ouvrir HACS dans Home Assistant
 2. Cliquer sur les 3 points en haut à droite → **Dépôts personnalisés**
-3. Ajouter l'URL du dépôt : `https://github.com/johjohn-11/hydropannes`
+3. Ajouter l'URL du dépôt : `https://github.com/johnjohn-11/hydropannes`
 4. Catégorie : **Intégration**
 5. Cliquer sur **Ajouter**
 6. Rechercher "Hydro-Pannes" et installer
@@ -38,11 +40,20 @@ Cette intégration permet de suivre en temps réel l'état du service électriqu
 
 ## Configuration
 
+### Ajouter un lieu
+
 1. Aller dans **Paramètres** → **Appareils et services**
 2. Cliquer sur **+ Ajouter une intégration**
 3. Rechercher "Hydro-Pannes"
 4. Entrer votre **numéro de lieu de consommation** (visible sur votre facture Hydro-Québec)
 5. Donner un **nom** à ce lieu (ex: "Maison", "Chalet")
+
+### Modifier le nom du lieu
+
+1. Aller dans **Paramètres** → **Appareils et services**
+2. Cliquer sur **Hydro-Pannes**
+3. Cliquer sur **Configurer**
+4. Modifier le nom et sauvegarder
 
 ### Trouver votre numéro de lieu de consommation
 
@@ -57,8 +68,8 @@ Le numéro de lieu de consommation se trouve sur votre facture Hydro-Québec. C'
 | `sensor.hydropannes_*_info_pannes` | État général (Panne en cours, Courant rétabli, etc.) |
 | `sensor.hydropannes_*_niveau_urgence` | Niveau d'urgence (Panne, Panne majeure) |
 | `sensor.hydropannes_*_adresses_touchees` | Nombre de clients affectés |
-| `sensor.hydropannes_*_debut` | Date/heure de début de la panne |
-| `sensor.hydropannes_*_date_fin_estimee_ou_reelle` | Date/heure de fin (réelle ou estimée) |
+| `sensor.hydropannes_*_date_debut` | Date/heure de début de la panne |
+| `sensor.hydropannes_*_date_fin` | Date/heure de fin (réelle ou estimée) |
 | `sensor.hydropannes_*_statut_intervention` | Statut de l'équipe d'intervention |
 | `sensor.hydropannes_*_cause` | Cause de la panne |
 | `sensor.hydropannes_*_duree` | Durée de la panne |
@@ -100,7 +111,7 @@ automation:
           message: >
             Panne détectée à {{ now().strftime('%H:%M') }}.
             Cause: {{ states('sensor.hydropannes_maison_cause') }}
-            Rétablissement estimé: {{ states('sensor.hydropannes_maison_date_fin_estimee_ou_reelle') }}
+            Rétablissement estimé: {{ states('sensor.hydropannes_maison_date_fin') }}
 
   - alias: "Notification courant rétabli"
     trigger:
@@ -121,15 +132,26 @@ automation:
 L'intégration gère les situations où une panne et une intervention planifiée existent simultanément :
 
 1. **Priorité 1** : Panne en cours (non planifiée)
-2. **Priorité 2** : Intervention planifiée
+2. **Priorité 2** : Panne terminée (courant rétabli)
+3. **Priorité 3** : Intervention planifiée
 
 Les sensors affichent toujours les informations de la panne réelle en priorité sur une intervention planifiée.
 
 ## Fréquence de mise à jour
 
-Les données sont récupérées de l'API Hydro-Québec toutes les **60 secondes** par défaut.
+Les données sont récupérées de l'API Hydro-Québec toutes les **5 minutes** par défaut.
 
 Si l'API est inaccessible ou ne retourne pas de données, les sensors conservent leur dernière valeur connue.
+
+## Diagnostics
+
+Pour obtenir les données de diagnostic (utile pour signaler un problème) :
+
+1. Aller dans **Paramètres** → **Appareils et services**
+2. Cliquer sur **Hydro-Pannes**
+3. Cliquer sur les 3 points → **Télécharger les diagnostics**
+
+Les informations sensibles (numéro de lieu de consommation) sont automatiquement masquées.
 
 ## Dépannage
 
@@ -147,6 +169,7 @@ Si l'API est inaccessible ou ne retourne pas de données, les sensors conservent
 
 - Vérifiez votre connexion internet
 - Consultez les logs Home Assistant pour les erreurs
+- Téléchargez les diagnostics et ouvrez une issue sur GitHub
 
 ## Attribution
 
