@@ -433,7 +433,7 @@ class HydroPannesNiveauUrgenceSensor(HydroPannesSensorBase):
     ) -> None:
         """Initialize the sensor."""
         super().__init__(coordinator, entry, nom_lieu)
-        self._attr_name = "Niveau d'urgence"
+        self._attr_name = "Niveau urgence"
         self._attr_unique_id = f"{entry.entry_id}_niveau_urgence"
         self._attr_icon = "mdi:alert-octagon"
 
