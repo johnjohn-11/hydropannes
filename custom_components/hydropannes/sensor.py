@@ -209,6 +209,42 @@ class HydroPannesSensorBase(CoordinatorEntity[HydroPannesDataUpdateCoordinator],
                 return intr
         return None
 
+    def _get_current_interruption(self) -> dict[str, Any] | None:
+        """
+        Get the most relevant interruption for displaying data.
+
+        Priority logic:
+        1. Active non-planned outage (ongoing)
+        2. Terminated non-planned outage (recently finished - "Courant rétabli")
+        3. Planned intervention (active or terminated)
+        4. First interruption in list (fallback)
+
+        This method is used by sensors that need to display data even after
+        an outage has ended.
+        """
+        # Priority 1: Active non-planned outage
+        interruption = self._get_active_outage()
+        if interruption:
+            return interruption
+
+        # Priority 2: Terminated non-planned outage
+        interruption = self._get_terminated_outage()
+        if interruption:
+            return interruption
+
+        # Priority 3: Planned intervention
+        interruption = self._get_planned_intervention()
+        if interruption:
+            return interruption
+
+        # Priority 4: Fallback to first interruption if any
+        if self.coordinator.data and "interruptions" in self.coordinator.data:
+            interruptions = self.coordinator.data["interruptions"]
+            if interruptions:
+                return interruptions[0]
+
+        return None
+
 
 class HydroPannesInfoPannesSensor(HydroPannesSensorBase):
     """
@@ -404,12 +440,7 @@ class HydroPannesNiveauUrgenceSensor(HydroPannesSensorBase):
     @property
     def native_value(self) -> str | None:
         """Return the urgency level."""
-        # Priority 1: active non-planned outage
-        interruption = self._get_active_outage()
-
-        # Priority 2: planned intervention
-        if not interruption:
-            interruption = self._get_planned_intervention()
+        interruption = self._get_current_interruption()
 
         if not interruption or "niveauUrgence" not in interruption:
             return None
@@ -452,12 +483,7 @@ class HydroPannesNombreClientSensor(HydroPannesSensorBase):
     @property
     def native_value(self) -> int | None:
         """Return the number of affected clients."""
-        # Priority 1: active non-planned outage
-        outage = self._get_active_outage()
-
-        # Priority 2: planned intervention
-        if not outage:
-            outage = self._get_planned_intervention()
+        outage = self._get_current_interruption()
 
         if not outage:
             return None
@@ -493,9 +519,7 @@ class HydroPannesDebutSensor(HydroPannesSensorBase):
     @property
     def native_value(self) -> datetime | None:
         """Return the outage start time."""
-        outage = self._get_active_outage()
-        if not outage:
-            outage = self._get_planned_intervention()
+        outage = self._get_current_interruption()
 
         if not outage or "dateDebut" not in outage:
             return None
@@ -541,9 +565,7 @@ class HydroPannesFinEstimeeSensor(HydroPannesSensorBase):
 
         Returns: (datetime or None, is_actual: bool)
         """
-        outage = self._get_active_outage()
-        if not outage:
-            outage = self._get_planned_intervention()
+        outage = self._get_current_interruption()
 
         if not outage:
             return None, False
@@ -607,9 +629,7 @@ class HydroPannesStatutInterventionSensor(HydroPannesSensorBase):
     @property
     def native_value(self) -> str | None:
         """Return the intervention status."""
-        outage = self._get_active_outage()
-        if not outage:
-            outage = self._get_planned_intervention()
+        outage = self._get_current_interruption()
 
         if not outage:
             return None
@@ -654,9 +674,7 @@ class HydroPannesCauseSensor(HydroPannesSensorBase):
     @property
     def native_value(self) -> str | None:
         """Return the outage cause."""
-        outage = self._get_active_outage()
-        if not outage:
-            outage = self._get_planned_intervention()
+        outage = self._get_current_interruption()
 
         if not outage:
             return None
@@ -706,9 +724,7 @@ class HydroPannesDureeSensor(HydroPannesSensorBase):
     @property
     def native_value(self) -> int | None:
         """Return the duration in seconds."""
-        outage = self._get_active_outage()
-        if not outage:
-            outage = self._get_planned_intervention()
+        outage = self._get_current_interruption()
 
         if not outage or "dateDebut" not in outage:
             return None
@@ -769,9 +785,7 @@ class HydroPannesDureeAvantRetablissementSensor(HydroPannesSensorBase):
     @property
     def native_value(self) -> int | None:
         """Return the time until restoration in seconds."""
-        outage = self._get_active_outage()
-        if not outage:
-            outage = self._get_planned_intervention()
+        outage = self._get_current_interruption()
 
         if not outage:
             return None
@@ -819,8 +833,8 @@ class HydroPannesDerniereMAJSensor(HydroPannesSensorBase):
     @property
     def native_value(self) -> datetime | None:
         """Return the last update time."""
-        # Priority 1: datePublication from active interruption
-        interruption = self._get_active_outage() or self._get_planned_intervention()
+        # Priority 1: datePublication from current interruption
+        interruption = self._get_current_interruption()
         if interruption and interruption.get("datePublication"):
             parsed = self._parse_dt(interruption.get("datePublication"))
             if parsed:
