@@ -1,14 +1,15 @@
 """Data update coordinator for Hydro-Pannes."""
 from __future__ import annotations
 
+import asyncio
 import logging
 from datetime import timedelta
 from typing import Any
 
 import aiohttp
-import async_timeout
 
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from .const import API_URL, DOMAIN, UPDATE_INTERVAL
@@ -41,36 +42,43 @@ class HydroPannesDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         to keep the last known valid data in Home Assistant.
         """
         url = API_URL.format(self.lieu_conso)
+        session = async_get_clientsession(self.hass)
 
         try:
-            async with async_timeout.timeout(10):
-                async with aiohttp.ClientSession() as session:
-                    async with session.get(url) as response:
-                        if response.status != 200:
-                            _LOGGER.warning(
-                                "API returned status %s for lieu %s",
-                                response.status,
-                                self.lieu_conso,
-                            )
-                            raise UpdateFailed(
-                                f"Error communicating with API: HTTP {response.status}"
-                            )
-
-                        data = await response.json()
-
-                        # Validate that we received data
-                        if not data or len(data) == 0:
-                            _LOGGER.warning(
-                                "API returned empty data for lieu %s",
-                                self.lieu_conso,
-                            )
-                            raise UpdateFailed("API returned empty data")
-
-                        _LOGGER.debug(
-                            "Successfully fetched data for lieu %s",
+            async with asyncio.timeout(10):
+                async with session.get(url) as response:
+                    if response.status != 200:
+                        _LOGGER.warning(
+                            "API returned status %s for lieu %s",
+                            response.status,
                             self.lieu_conso,
                         )
-                        return data[0]
+                        raise UpdateFailed(
+                            f"Error communicating with API: HTTP {response.status}"
+                        )
+
+                    data = await response.json()
+
+                    # Validate that we received data
+                    if not data or len(data) == 0:
+                        _LOGGER.warning(
+                            "API returned empty data for lieu %s",
+                            self.lieu_conso,
+                        )
+                        raise UpdateFailed("API returned empty data")
+
+                    _LOGGER.debug(
+                        "Successfully fetched data for lieu %s",
+                        self.lieu_conso,
+                    )
+                    return data[0]
+
+        except TimeoutError as err:
+            _LOGGER.warning(
+                "Timeout fetching data for lieu %s",
+                self.lieu_conso,
+            )
+            raise UpdateFailed("Timeout communicating with API") from err
 
         except aiohttp.ClientError as err:
             _LOGGER.warning(
@@ -80,12 +88,8 @@ class HydroPannesDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             )
             raise UpdateFailed(f"Error communicating with API: {err}") from err
 
-        except TimeoutError as err:
-            _LOGGER.warning(
-                "Timeout fetching data for lieu %s",
-                self.lieu_conso,
-            )
-            raise UpdateFailed("Timeout communicating with API") from err
+        except UpdateFailed:
+            raise
 
         except Exception as err:
             _LOGGER.exception(

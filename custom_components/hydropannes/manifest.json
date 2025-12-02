@@ -1,10 +1,10 @@
 {
   "domain": "hydropannes",
   "name": "Hydro-Pannes",
-  "version": "1.1.7",
+  "version": "1.2.0",
   "documentation": "https://github.com/johnjohn-11/hydropannes",
   "issue_tracker": "https://github.com/johnjohn-11/hydropannes/issues",
-  "requirements": ["aiohttp>=3.8.0"],
+  "requirements": [],
   "dependencies": [],
   "codeowners": ["@johnjohn-11"],
   "iot_class": "cloud_polling",
