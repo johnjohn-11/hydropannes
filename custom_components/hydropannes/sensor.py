@@ -531,7 +531,7 @@ class HydroPannesFinEstimeeSensor(HydroPannesSensorBase):
     ) -> None:
         """Initialize the sensor."""
         super().__init__(coordinator, entry, nom_lieu)
-        self._attr_name = "Date fin estimée ou réelle"
+        self._attr_name = "Date fin"
         self._attr_unique_id = f"{entry.entry_id}_datefin"
         self._attr_device_class = SensorDeviceClass.TIMESTAMP
 
@@ -852,7 +852,7 @@ class HydroPannesLieuConsoSensor(HydroPannesSensorBase):
     ) -> None:
         """Initialize the sensor."""
         super().__init__(coordinator, entry, nom_lieu)
-        self._attr_name = "Lieu de consommation"
+        self._attr_name = "Lieu consommation"
         self._attr_unique_id = f"{entry.entry_id}_idlieuconso"
         self._attr_icon = "mdi:identifier"
         self._attr_entity_category = EntityCategory.DIAGNOSTIC
