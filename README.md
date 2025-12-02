@@ -57,7 +57,7 @@ Cette intégration permet de suivre en temps réel l'état du service électriqu
 
 ### Trouver votre numéro de lieu de consommation
 
-Consultez le guide détaillé : [Comment trouver votre lieu de consommation](hydro-quebec/configuration_info-panne.md)
+Consultez le guide détaillé : [Comment trouver votre lieu de consommation]([hydro-quebec/configuration_info-panne.md](https://github.com/domo-quebec/domo-quebec/blob/main/hydro-quebec/configuration_info-panne.md))
 
 ## Entités créées
 
