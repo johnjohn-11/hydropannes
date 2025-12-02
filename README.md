@@ -57,7 +57,7 @@ Cette intégration permet de suivre en temps réel l'état du service électriqu
 
 ### Trouver votre numéro de lieu de consommation
 
-Le numéro de lieu de consommation se trouve sur votre facture Hydro-Québec. C'est un numéro à 10 chiffres qui identifie votre adresse de service.
+Consultez le guide détaillé : [Comment trouver votre lieu de consommation](hydro-quebec/configuration_info-panne.md)
 
 ## Entités créées
 
@@ -96,7 +96,6 @@ Le numéro de lieu de consommation se trouve sur votre facture Hydro-Québec. C'
 | `Interruption planifiée à venir` | Travaux planifiés annoncés |
 
 ## Exemple d'automatisation
-
 ```yaml
 automation:
   - alias: "Notification panne électrique"
@@ -174,6 +173,10 @@ Les informations sensibles (numéro de lieu de consommation) sont automatiquemen
 ## Attribution
 
 Les données sont fournies par [Hydro-Québec](https://www.hydroquebec.com/) via leur API publique Info-pannes.
+
+## Remerciements
+
+Merci à [@nxor](https://github.com/nxor) et [@MivraMe](https://github.com/MivraMe) pour leur travail sur une solution basée sur des templates sensor. Cette intégration a été créée pour simplifier la gestion de plusieurs lieux de consommation.
 
 ## Licence
 
