@@ -1,4 +1,5 @@
 """Support for Hydro-Pannes sensors."""
+
 from __future__ import annotations
 
 import logging
@@ -50,12 +51,16 @@ async def async_setup_entry(
         HydroPannesDureeAvantRetablissementSensor(coordinator, entry, nom_lieu),
         HydroPannesDerniereMAJSensor(coordinator, entry, nom_lieu),
         HydroPannesLieuConsoSensor(coordinator, entry, nom_lieu),
+        HydroPannesEtatAPIBrutSensor(coordinator, entry, nom_lieu),
+        HydroPannesEtatInterruptionSensor(coordinator, entry, nom_lieu),
     ]
 
     async_add_entities(sensors)
 
 
-class HydroPannesSensorBase(CoordinatorEntity[HydroPannesDataUpdateCoordinator], SensorEntity):
+class HydroPannesSensorBase(
+    CoordinatorEntity[HydroPannesDataUpdateCoordinator], SensorEntity
+):
     """Base class for Hydro-Pannes sensors."""
 
     _attr_has_entity_name = True
@@ -97,117 +102,135 @@ class HydroPannesSensorBase(CoordinatorEntity[HydroPannesDataUpdateCoordinator],
         except Exception:
             return None
 
-    def _is_terminated(self, intr: dict[str, Any]) -> bool:
-        """
-        Check if an interruption is terminated.
-
-        An interruption is considered terminated if:
-        - dateFin is present, OR
-        - etat is 'C' (Completed) or 'T' (Terminated)
-        """
-        if not intr:
+    def _is_date_in_past(self, date_value: datetime | None) -> bool:
+        """Check if a datetime is in the past."""
+        if not date_value:
             return False
-        if intr.get("dateFin"):
+        return date_value <= dt_util.now()
+
+    def _is_date_in_future(self, date_value: datetime | None) -> bool:
+        """Check if a datetime is in the future."""
+        if not date_value:
+            return False
+        return date_value > dt_util.now()
+
+    def _get_main_etat(self) -> str | None:
+        """Get the main 'etat' field from API response."""
+        if not self.coordinator.data:
+            return None
+        return self.coordinator.data.get("etat")
+
+    def _get_interruptions(self) -> list[dict[str, Any]]:
+        """Get the list of interruptions from API response."""
+        if not self.coordinator.data:
+            return []
+        return self.coordinator.data.get("interruptions", [])
+
+    def _is_outage_active(self, intr: dict[str, Any]) -> bool:
+        """
+        Check if an interruption represents an active outage.
+
+        An outage is considered ACTIVE if:
+        - Main etat = "N" (outage state)
+        - AND (no dateFin OR dateFin is in the future)
+
+        Note: We ignore the interruption's own 'etat' field (T, C, etc.)
+        as it doesn't reliably indicate active state.
+        """
+        main_etat = self._get_main_etat()
+        if main_etat != "N":
+            return False
+
+        date_fin = self._parse_dt(intr.get("dateFin"))
+        # Active if no dateFin or dateFin is in the future
+        if not date_fin or self._is_date_in_future(date_fin):
             return True
-        if intr.get("etat") in ("C", "T"):
-            return True
+
         return False
 
-    def _is_future(self, intr: dict[str, Any]) -> bool:
+    def _is_outage_terminated(self, intr: dict[str, Any]) -> bool:
         """
-        Check if an interruption is scheduled for the future.
+        Check if an interruption is terminated (power restored).
 
-        Returns True if etat == 'P' (Planned/Future) or dateDebut is in the future.
+        An outage is TERMINATED if:
+        - dateFin exists AND is in the past
         """
-        if not intr:
+        date_fin = self._parse_dt(intr.get("dateFin"))
+        return self._is_date_in_past(date_fin)
+
+    def _is_planned_intervention(self, intr: dict[str, Any]) -> bool:
+        """Check if an interruption is a planned intervention."""
+        return intr.get("interruptionPlanifiee", False)
+
+    def _is_future_planned(self, intr: dict[str, Any]) -> bool:
+        """
+        Check if an interruption is a future planned intervention.
+
+        Returns True if:
+        - interruptionPlanifiee = True
+        - AND dateDebut is in the future
+        """
+        if not self._is_planned_intervention(intr):
             return False
-        if intr.get("etat") == "P":
-            return True
+
         date_debut = self._parse_dt(intr.get("dateDebut"))
-        if date_debut and date_debut > dt_util.now():
-            return True
-        return False
+        return self._is_date_in_future(date_debut)
 
     def _get_active_outage(self) -> dict[str, Any] | None:
         """
         Get the first active non-planned outage.
 
-        Priority logic:
-        - Must have interruptionPlanifiee = False
-        - Must NOT be terminated (no dateFin, etat not in C/T)
-        - Must NOT be future (etat != P, dateDebut not in future)
-
-        Returns the first matching interruption or None.
+        Returns the first interruption where:
+        - interruptionPlanifiee = False
+        - Main etat = "N"
+        - No dateFin or dateFin in the future
         """
-        if not self.coordinator.data or "interruptions" not in self.coordinator.data:
-            return None
+        for intr in self._get_interruptions():
+            if self._is_planned_intervention(intr):
+                continue
+            if self._is_outage_active(intr):
+                return intr
+        return None
 
-        interruptions = self.coordinator.data["interruptions"]
-        for intr in interruptions:
-            # Skip planned interventions
-            if intr.get("interruptionPlanifiee", False):
+    def _get_terminated_outage(self) -> dict[str, Any] | None:
+        """
+        Get a terminated non-planned outage (for "Courant rétabli" state).
+
+        Returns the first non-planned interruption that has dateFin in the past.
+        """
+        for intr in self._get_interruptions():
+            if self._is_planned_intervention(intr):
                 continue
-            # Skip terminated interruptions
-            if self._is_terminated(intr):
-                continue
-            # Skip future interruptions
-            if self._is_future(intr):
-                continue
-            return intr
+            if self._is_outage_terminated(intr):
+                return intr
         return None
 
     def _get_planned_intervention(self) -> dict[str, Any] | None:
         """
         Get the most relevant planned intervention.
 
-        Priority logic:
-        - Must have interruptionPlanifiee = True
-        - Prefer active (not terminated) over terminated
-        - If multiple, return the most recent by dateDebut/datePublication
-
-        Returns the most relevant planned intervention or None.
+        Priority:
+        1. Active planned (main etat = "N", no dateFin or dateFin in future)
+        2. Future planned (dateDebut in future)
+        3. Any planned intervention
         """
-        if not self.coordinator.data or "interruptions" not in self.coordinator.data:
-            return None
-
-        interruptions = self.coordinator.data["interruptions"]
-        planned = [i for i in interruptions if i.get("interruptionPlanifiee", False)]
+        interruptions = self._get_interruptions()
+        planned = [i for i in interruptions if self._is_planned_intervention(i)]
         if not planned:
             return None
 
-        # Prefer active planned interventions (not terminated)
+        # Priority 1: Active planned intervention
         for p in planned:
-            if not self._is_terminated(p):
+            if self._is_outage_active(p):
                 return p
 
-        # Fallback: return the most recent by dateDebut or datePublication
-        def _sort_key(i: dict[str, Any]) -> datetime:
-            db = self._parse_dt(i.get("dateDebut"))
-            if db:
-                return db
-            dp = self._parse_dt(i.get("datePublication"))
-            return dp or datetime.min
+        # Priority 2: Future planned intervention
+        for p in planned:
+            if self._is_future_planned(p):
+                return p
 
-        return sorted(planned, key=_sort_key)[-1]
-
-    def _get_terminated_outage(self) -> dict[str, Any] | None:
-        """
-        Get a terminated non-planned outage (for "Courant rétabli" state).
-
-        Returns the first non-planned interruption that has dateFin set.
-        """
-        if not self.coordinator.data or "interruptions" not in self.coordinator.data:
-            return None
-
-        interruptions = self.coordinator.data["interruptions"]
-        for intr in interruptions:
-            # Must be non-planned
-            if intr.get("interruptionPlanifiee", False):
-                continue
-            # Must have dateFin (terminated)
-            if intr.get("dateFin"):
-                return intr
-        return None
+        # Priority 3: Any planned (including terminated)
+        return planned[0]
 
     def _get_current_interruption(self) -> dict[str, Any] | None:
         """
@@ -216,7 +239,7 @@ class HydroPannesSensorBase(CoordinatorEntity[HydroPannesDataUpdateCoordinator],
         Priority logic:
         1. Active non-planned outage (ongoing)
         2. Terminated non-planned outage (recently finished - "Courant rétabli")
-        3. Planned intervention (active or terminated)
+        3. Planned intervention (active, future, or terminated)
         4. First interruption in list (fallback)
 
         This method is used by sensors that need to display data even after
@@ -238,10 +261,9 @@ class HydroPannesSensorBase(CoordinatorEntity[HydroPannesDataUpdateCoordinator],
             return interruption
 
         # Priority 4: Fallback to first interruption if any
-        if self.coordinator.data and "interruptions" in self.coordinator.data:
-            interruptions = self.coordinator.data["interruptions"]
-            if interruptions:
-                return interruptions[0]
+        interruptions = self._get_interruptions()
+        if interruptions:
+            return interruptions[0]
 
         return None
 
@@ -253,20 +275,25 @@ class HydroPannesInfoPannesSensor(HydroPannesSensorBase):
     Logic (in priority order):
     -------------------------
     PRIORITY 1 - Active non-planned outage:
-      - If etat = "N" -> "Panne en cours"
-      - If etat = "A" or "N" and dateFin exists and interruptionPlanifiee = False
-        -> "Courant rétabli"
+      - Main etat = "N" AND (no dateFin OR dateFin in future)
+      - interruptionPlanifiee = False
+      -> "Panne en cours"
 
-    PRIORITY 2 - Planned intervention:
-      - If etat = "A" or "N" and dateFin exists and interruptionPlanifiee = True
-        -> "Intervention planifiée terminée"
-      - If etat = "N" and no dateFin and interruptionPlanifiee = True
-        -> "Intervention planifiée en cours"
-      - If etat = "A" and dateDebut in future
-        -> "Interruption planifiée à venir"
+    PRIORITY 2 - Terminated non-planned outage:
+      - dateFin exists AND is in the past
+      - interruptionPlanifiee = False
+      -> "Courant rétabli"
+
+    PRIORITY 3 - Planned intervention:
+      - interruptionPlanifiee = True
+      - If dateFin in past -> "Intervention planifiée terminée"
+      - If main etat = "N" -> "Intervention planifiée en cours"
+      - If dateDebut in future -> "Interruption planifiée à venir"
+      -> "Interruption planifiée" (generic)
 
     FALLBACK:
-      - If etat = "A" and no dateDebut -> "Aucune panne détectée"
+      - Main etat = "A" and no relevant interruption -> "Aucune panne détectée"
+      - Otherwise -> None
     """
 
     def __init__(
@@ -287,48 +314,48 @@ class HydroPannesInfoPannesSensor(HydroPannesSensorBase):
         if not self.coordinator.data:
             return None
 
-        etat = self.coordinator.data.get("etat")
-        interruptions = self.coordinator.data.get("interruptions", [])
+        main_etat = self._get_main_etat()
+        interruptions = self._get_interruptions()
 
         # No interruptions at all
         if not interruptions:
-            if etat == "A":
+            if main_etat == "A":
                 return "Aucune panne détectée"
+            # Main etat is "N" but no interruptions - unusual state
+            if main_etat == "N":
+                return "Panne en cours"
             return None
 
         # =======================================================================
-        # PRIORITY 1: Non-planned outage (active or recently terminated)
+        # PRIORITY 1: Active non-planned outage
         # =======================================================================
         active_outage = self._get_active_outage()
         if active_outage:
-            # Active non-planned outage with main etat = "N"
-            if etat == "N":
-                return "Panne en cours"
+            return "Panne en cours"
 
-        # Check for terminated non-planned outage (Courant rétabli)
+        # =======================================================================
+        # PRIORITY 2: Terminated non-planned outage (Courant rétabli)
+        # =======================================================================
         terminated_outage = self._get_terminated_outage()
         if terminated_outage:
-            # etat can be "A" or "N" with dateFin present and interruptionPlanifiee = False
             return "Courant rétabli"
 
         # =======================================================================
-        # PRIORITY 2: Planned intervention
+        # PRIORITY 3: Planned intervention
         # =======================================================================
         planned = self._get_planned_intervention()
         if planned:
             # Terminated planned intervention
-            if self._is_terminated(planned) or planned.get("dateFin"):
+            if self._is_outage_terminated(planned):
                 return "Intervention planifiée terminée"
 
-            # Active planned intervention (etat = "N", no dateFin)
-            if etat == "N" and not planned.get("dateFin"):
+            # Active planned intervention (main etat = "N")
+            if main_etat == "N":
                 return "Intervention planifiée en cours"
 
-            # Future planned intervention (etat = "A", dateDebut in future)
-            if etat == "A":
-                date_debut = self._parse_dt(planned.get("dateDebut"))
-                if date_debut and date_debut > dt_util.now():
-                    return "Interruption planifiée à venir"
+            # Future planned intervention
+            if self._is_future_planned(planned):
+                return "Interruption planifiée à venir"
 
             # Generic planned state
             return "Interruption planifiée"
@@ -336,8 +363,12 @@ class HydroPannesInfoPannesSensor(HydroPannesSensorBase):
         # =======================================================================
         # FALLBACK: No active or planned interruptions
         # =======================================================================
-        if etat == "A":
+        if main_etat == "A":
             return "Aucune panne détectée"
+
+        # Main etat is "N" but couldn't match any interruption state
+        if main_etat == "N":
+            return "Panne en cours"
 
         return None
 
@@ -361,17 +392,13 @@ class HydroPannesInfoPannesSensor(HydroPannesSensorBase):
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
-        """
-        Return extra attributes from the active interruption.
-
-        Priority: active outage > planned intervention > first interruption
-        """
+        """Return extra attributes from the active interruption."""
         if not self.coordinator.data:
             return {}
 
-        interruptions = self.coordinator.data.get("interruptions", [])
+        interruptions = self._get_interruptions()
         if not interruptions:
-            return {}
+            return {"attribution": "Données fournies par Hydro-Québec"}
 
         # Select interruption based on priority
         inter = self._get_active_outage()
@@ -414,10 +441,6 @@ class HydroPannesNiveauUrgenceSensor(HydroPannesSensorBase):
     """
     Sensor for urgency level.
 
-    Logic:
-    ------
-    Priority: active outage > planned intervention
-
     Values:
       - "P" -> "Panne"
       - "N" -> "Panne majeure"
@@ -455,16 +478,7 @@ class HydroPannesNiveauUrgenceSensor(HydroPannesSensorBase):
 
 
 class HydroPannesNombreClientSensor(HydroPannesSensorBase):
-    """
-    Sensor for affected clients/addresses.
-
-    Logic:
-    ------
-    Priority 1: active non-planned outage
-    Priority 2: planned intervention
-
-    Returns: nbClient value or None
-    """
+    """Sensor for affected clients/addresses."""
 
     def __init__(
         self,
@@ -492,16 +506,7 @@ class HydroPannesNombreClientSensor(HydroPannesSensorBase):
 
 
 class HydroPannesDebutSensor(HydroPannesSensorBase):
-    """
-    Sensor for outage start time.
-
-    Logic:
-    ------
-    Priority 1: active non-planned outage
-    Priority 2: planned intervention
-
-    Returns: dateDebut as ISO 8601 timestamp or None
-    """
+    """Sensor for outage start time."""
 
     def __init__(
         self,
@@ -531,20 +536,9 @@ class HydroPannesFinEstimeeSensor(HydroPannesSensorBase):
     """
     Sensor for estimated or actual end time.
 
-    Logic:
-    ------
-    Priority 1: active non-planned outage
-    Priority 2: planned intervention
-
     Sub-priority for value:
       1. dateFin (actual end)
       2. dateFinEstimeeMax (estimated end)
-
-    Icons:
-      - mdi:clock-check (actual end time - dateFin)
-      - mdi:clock-alert (estimated end time - dateFinEstimeeMax)
-
-    Returns: datetime or None
     """
 
     def __init__(
@@ -603,13 +597,8 @@ class HydroPannesStatutInterventionSensor(HydroPannesSensorBase):
     """
     Sensor for intervention status.
 
-    Logic:
-    ------
-    Priority 1: active non-planned outage
-    Priority 2: planned intervention
-
     Values:
-      - If dateFin exists and not in future -> "Intervention terminée"
+      - If dateFin exists and in the past -> "Intervention terminée"
       - Otherwise -> INTERVENTION_CODES[codeIntervention]
       - No intervention -> None
     """
@@ -634,9 +623,8 @@ class HydroPannesStatutInterventionSensor(HydroPannesSensorBase):
         if not outage:
             return None
 
-        # Check if intervention is terminated
-        date_fin = self._parse_dt(outage.get("dateFin"))
-        if date_fin and date_fin <= dt_util.now():
+        # Check if intervention is terminated (dateFin in the past)
+        if self._is_outage_terminated(outage):
             return "Intervention terminée"
 
         # Return intervention code text
@@ -648,16 +636,7 @@ class HydroPannesStatutInterventionSensor(HydroPannesSensorBase):
 
 
 class HydroPannesCauseSensor(HydroPannesSensorBase):
-    """
-    Sensor for outage cause.
-
-    Logic:
-    ------
-    Priority 1: active non-planned outage
-    Priority 2: planned intervention
-
-    Returns: "Cause text (code)" or None
-    """
+    """Sensor for outage cause."""
 
     def __init__(
         self,
@@ -694,16 +673,11 @@ class HydroPannesDureeSensor(HydroPannesSensorBase):
     """
     Sensor for outage duration.
 
-    Logic:
-    ------
-    Priority 1: active non-planned outage
-    Priority 2: planned intervention
-
     Calculation:
       - If dateFin exists -> (dateFin - dateDebut)
       - Otherwise -> (now - dateDebut)
 
-    Returns: duration in seconds (for Home Assistant unit conversion)
+    Returns: duration in seconds
     """
 
     def __init__(
@@ -754,17 +728,14 @@ class HydroPannesDureeAvantRetablissementSensor(HydroPannesSensorBase):
     """
     Sensor for time until power restoration.
 
-    Logic:
-    ------
-    Priority 1: active non-planned outage
-    Priority 2: planned intervention
+    Only shows value for ACTIVE outages.
 
     Calculation:
-      - If dateFin exists -> None (already terminated)
+      - If outage is terminated (dateFin in past) -> None
       - If dateFinEstimeeMax exists -> (dateFinEstimeeMax - now)
       - If result is negative -> None
 
-    Returns: duration in seconds (for Home Assistant unit conversion)
+    Returns: duration in seconds
     """
 
     def __init__(
@@ -785,13 +756,19 @@ class HydroPannesDureeAvantRetablissementSensor(HydroPannesSensorBase):
     @property
     def native_value(self) -> int | None:
         """Return the time until restoration in seconds."""
-        outage = self._get_current_interruption()
+        # Only consider active outages for this sensor
+        outage = self._get_active_outage()
+        if not outage:
+            # Also check for active planned intervention
+            planned = self._get_planned_intervention()
+            if planned and self._is_outage_active(planned):
+                outage = planned
 
         if not outage:
             return None
 
         # If already terminated, return None
-        if outage.get("dateFin") or outage.get("etat") == "T":
+        if self._is_outage_terminated(outage):
             return None
 
         date_fin_estimee = self._parse_dt(outage.get("dateFinEstimeeMax"))
@@ -806,16 +783,7 @@ class HydroPannesDureeAvantRetablissementSensor(HydroPannesSensorBase):
 
 
 class HydroPannesDerniereMAJSensor(HydroPannesSensorBase):
-    """
-    Sensor for last update time.
-
-    Logic:
-    ------
-    Priority 1: datePublication from interruption
-    Priority 2: date from main level
-
-    Returns: datetime or None
-    """
+    """Sensor for last update time."""
 
     def __init__(
         self,
@@ -850,13 +818,7 @@ class HydroPannesDerniereMAJSensor(HydroPannesSensorBase):
 
 
 class HydroPannesLieuConsoSensor(HydroPannesSensorBase):
-    """
-    Sensor for consumption location ID (diagnostic).
-
-    Logic:
-    ------
-    Returns: idLieuConso from main level or None
-    """
+    """Sensor for consumption location ID (diagnostic)."""
 
     def __init__(
         self,
@@ -878,3 +840,168 @@ class HydroPannesLieuConsoSensor(HydroPannesSensorBase):
             return None
 
         return self.coordinator.data.get("idLieuConso")
+
+
+class HydroPannesEtatAPIBrutSensor(HydroPannesSensorBase):
+    """
+    Diagnostic sensor exposing raw API state for debugging.
+
+    This sensor helps troubleshoot issues by showing:
+    - Main 'etat' value from API
+    - Number of interruptions
+    - Key fields from the first/active interruption
+
+    The state shows the main 'etat' field, attributes contain details.
+    """
+
+    def __init__(
+        self,
+        coordinator: HydroPannesDataUpdateCoordinator,
+        entry: ConfigEntry,
+        nom_lieu: str,
+    ) -> None:
+        """Initialize the sensor."""
+        super().__init__(coordinator, entry, nom_lieu)
+        self._attr_name = "État API brut"
+        self._attr_unique_id = f"{entry.entry_id}_etat_api_brut"
+        self._attr_icon = "mdi:api"
+        self._attr_entity_category = EntityCategory.DIAGNOSTIC
+
+    @property
+    def native_value(self) -> str | None:
+        """Return the main etat from API or None if no data."""
+        if not self.coordinator.data:
+            return None
+
+        return self._get_main_etat()
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return raw API data for debugging."""
+        if not self.coordinator.data:
+            return {"api_data": None}
+
+        attrs: dict[str, Any] = {
+            "etat_principal": self._get_main_etat(),
+            "nombre_interruptions": len(self._get_interruptions()),
+            "coordinator_last_update_success": self.coordinator.last_update_success,
+        }
+
+        # Add coordinator timing info
+        if self.coordinator.last_update_success_time:
+            attrs["derniere_maj_reussie"] = (
+                self.coordinator.last_update_success_time.isoformat()
+            )
+
+        # Add raw data from first/active interruption
+        interruption = self._get_current_interruption()
+        if interruption:
+            attrs["interruption_selectionnee"] = {
+                "etat": interruption.get("etat"),
+                "dateDebut": interruption.get("dateDebut"),
+                "dateFin": interruption.get("dateFin"),
+                "dateFinEstimeeMax": interruption.get("dateFinEstimeeMax"),
+                "interruptionPlanifiee": interruption.get("interruptionPlanifiee"),
+                "codeIntervention": interruption.get("codeIntervention"),
+                "niveauUrgence": interruption.get("niveauUrgence"),
+                "nbClient": interruption.get("nbClient"),
+                "codeCause": interruption.get("codeCause"),
+            }
+
+        # Add detection flags for debugging
+        attrs["detection"] = {
+            "active_outage_found": self._get_active_outage() is not None,
+            "terminated_outage_found": self._get_terminated_outage() is not None,
+            "planned_intervention_found": self._get_planned_intervention() is not None,
+        }
+
+        # Add all interruptions summary
+        interruptions = self._get_interruptions()
+        if interruptions:
+            attrs["toutes_interruptions"] = [
+                {
+                    "index": i,
+                    "etat": intr.get("etat"),
+                    "dateFin": intr.get("dateFin"),
+                    "interruptionPlanifiee": intr.get("interruptionPlanifiee"),
+                }
+                for i, intr in enumerate(interruptions)
+            ]
+
+        return attrs
+
+
+class HydroPannesEtatInterruptionSensor(HydroPannesSensorBase):
+    """
+    Diagnostic sensor for the raw interruption 'etat' field.
+
+    This sensor exposes the 'etat' field from the current interruption
+    to help debug API behavior. Common values:
+    - "T" : Terminé (Terminated)
+    - "C" : Complété (Completed)
+    - "A" : Actif (Active)
+    - "P" : Planifié (Planned/Future)
+    - "R" : En route
+    - "L" : Au travail
+
+    Returns None if no interruption exists.
+    """
+
+    def __init__(
+        self,
+        coordinator: HydroPannesDataUpdateCoordinator,
+        entry: ConfigEntry,
+        nom_lieu: str,
+    ) -> None:
+        """Initialize the sensor."""
+        super().__init__(coordinator, entry, nom_lieu)
+        self._attr_name = "État interruption"
+        self._attr_unique_id = f"{entry.entry_id}_etat_interruption"
+        self._attr_icon = "mdi:state-machine"
+        self._attr_entity_category = EntityCategory.DIAGNOSTIC
+
+    @property
+    def native_value(self) -> str | None:
+        """Return the interruption etat field or None if no interruption."""
+        interruption = self._get_current_interruption()
+
+        if not interruption:
+            return None
+
+        return interruption.get("etat")
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return additional context about the interruption state."""
+        interruption = self._get_current_interruption()
+
+        if not interruption:
+            return {}
+
+        # Parse dates for display
+        date_debut = self._parse_dt(interruption.get("dateDebut"))
+        date_fin = self._parse_dt(interruption.get("dateFin"))
+        date_fin_estimee = self._parse_dt(interruption.get("dateFinEstimeeMax"))
+
+        attrs: dict[str, Any] = {
+            "etat_brut": interruption.get("etat"),
+            "etat_principal": self._get_main_etat(),
+            "date_debut": date_debut.isoformat() if date_debut else None,
+            "date_fin": date_fin.isoformat() if date_fin else None,
+            "date_fin_estimee_max": (
+                date_fin_estimee.isoformat() if date_fin_estimee else None
+            ),
+            "interruption_planifiee": interruption.get("interruptionPlanifiee"),
+            "code_intervention": interruption.get("codeIntervention"),
+        }
+
+        # Add computed status
+        attrs["analyse"] = {
+            "est_active": self._is_outage_active(interruption),
+            "est_terminee": self._is_outage_terminated(interruption),
+            "est_planifiee": self._is_planned_intervention(interruption),
+            "date_fin_dans_passe": self._is_date_in_past(date_fin),
+            "date_fin_dans_futur": self._is_date_in_future(date_fin),
+        }
+
+        return attrs
