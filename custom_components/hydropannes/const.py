@@ -10,7 +10,7 @@ API_URL = (
     "pan/web/api/v1/lieux-conso/etats/{}"
 )
 
-UPDATE_INTERVAL = 300  # seconds
+UPDATE_INTERVAL = 180  # seconds
 
 ATTRIBUTION = "Données fournies par Hydro-Québec"
 
