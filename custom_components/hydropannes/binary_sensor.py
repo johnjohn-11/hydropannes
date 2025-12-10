@@ -3,22 +3,25 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from homeassistant.components.binary_sensor import (
     BinarySensorDeviceClass,
     BinarySensorEntity,
 )
-from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant
 from homeassistant.helpers.device_registry import DeviceInfo
-from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.util import dt as dt_util
 
 from .const import CONF_NOM_LIEU, DOMAIN
 from .coordinator import HydroPannesDataUpdateCoordinator
+
+if TYPE_CHECKING:
+    from datetime import datetime
+
+    from homeassistant.config_entries import ConfigEntry
+    from homeassistant.core import HomeAssistant
+    from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -81,7 +84,7 @@ class HydroPannesBinarySensorBase(
             if not dt:
                 return None
             return dt_util.as_local(dt)
-        except Exception:
+        except (ValueError, TypeError):
             return None
 
     def _is_date_in_past(self, date_value: datetime | None) -> bool:
@@ -109,8 +112,7 @@ class HydroPannesBinarySensorBase(
         return self.coordinator.data.get("interruptions", [])
 
     def _is_outage_active(self, intr: dict[str, Any]) -> bool:
-        """
-        Check if an interruption represents an active outage.
+        """Check if an interruption represents an active outage.
 
         An outage is considered ACTIVE if:
         - Main etat = "N" (outage state)
@@ -125,14 +127,10 @@ class HydroPannesBinarySensorBase(
 
         date_fin = self._parse_dt(intr.get("dateFin"))
         # Active if no dateFin or dateFin is in the future
-        if not date_fin or self._is_date_in_future(date_fin):
-            return True
-
-        return False
+        return not date_fin or self._is_date_in_future(date_fin)
 
     def _is_outage_terminated(self, intr: dict[str, Any]) -> bool:
-        """
-        Check if an interruption is terminated (power restored).
+        """Check if an interruption is terminated (power restored).
 
         An outage is TERMINATED if:
         - dateFin exists AND is in the past
@@ -145,8 +143,7 @@ class HydroPannesBinarySensorBase(
         return intr.get("interruptionPlanifiee", False)
 
     def _get_active_outage(self) -> dict[str, Any] | None:
-        """
-        Get the first active non-planned outage.
+        """Get the first active non-planned outage.
 
         Returns the first interruption where:
         - interruptionPlanifiee = False
@@ -161,8 +158,7 @@ class HydroPannesBinarySensorBase(
         return None
 
     def _get_planned_intervention(self) -> dict[str, Any] | None:
-        """
-        Get the most relevant planned intervention.
+        """Get the most relevant planned intervention.
 
         Priority:
         1. Active planned (main etat = "N", no dateFin or dateFin in future)
@@ -190,8 +186,7 @@ class HydroPannesBinarySensorBase(
 
 
 class HydroPannesEtatServiceBinarySensor(HydroPannesBinarySensorBase):
-    """
-    Binary sensor for Hydro-Pannes service status.
+    """Binary sensor for Hydro-Pannes service status.
 
     Logic:
     ------
@@ -222,8 +217,7 @@ class HydroPannesEtatServiceBinarySensor(HydroPannesBinarySensorBase):
 
     @property
     def is_on(self) -> bool | None:
-        """
-        Return true if there's an active outage (service problem).
+        """Return true if there's an active outage (service problem).
 
         ON condition:
         - Main etat = "N"
@@ -261,8 +255,7 @@ class HydroPannesEtatServiceBinarySensor(HydroPannesBinarySensorBase):
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
-        """
-        Return extra attributes from the active interruption.
+        """Return extra attributes from the active interruption.
 
         Priority for attributes:
         1. Active non-planned outage
@@ -301,8 +294,7 @@ class HydroPannesEtatServiceBinarySensor(HydroPannesBinarySensorBase):
 
 
 class HydroPannesInterventionPlanifieeBinarySensor(HydroPannesBinarySensorBase):
-    """
-    Binary sensor for planned intervention status.
+    """Binary sensor for planned intervention status.
 
     Logic:
     ------
@@ -328,8 +320,7 @@ class HydroPannesInterventionPlanifieeBinarySensor(HydroPannesBinarySensorBase):
 
     @property
     def is_on(self) -> bool | None:
-        """
-        Return true if there's an active or upcoming planned intervention.
+        """Return true if there's an active or upcoming planned intervention.
 
         ON if at least one planned interruption is not terminated.
         """
@@ -337,10 +328,9 @@ class HydroPannesInterventionPlanifieeBinarySensor(HydroPannesBinarySensorBase):
             return None
 
         for intr in self._get_interruptions():
-            if self._is_planned_intervention(intr):
-                # Check if it's not terminated
-                if not self._is_outage_terminated(intr):
-                    return True
+            # Combine conditions with 'and' (SIM102 fix)
+            if self._is_planned_intervention(intr) and not self._is_outage_terminated(intr):
+                return True
 
         return False
 
@@ -353,8 +343,7 @@ class HydroPannesInterventionPlanifieeBinarySensor(HydroPannesBinarySensorBase):
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
-        """
-        Return extra attributes from the planned intervention.
+        """Return extra attributes from the planned intervention.
 
         Only returns attributes if an active/upcoming planned intervention exists.
         """
@@ -368,10 +357,10 @@ class HydroPannesInterventionPlanifieeBinarySensor(HydroPannesBinarySensorBase):
         # Find the most relevant planned intervention (not terminated)
         planned = None
         for intr in interruptions:
-            if self._is_planned_intervention(intr):
-                if not self._is_outage_terminated(intr):
-                    planned = intr
-                    break
+            # Combine conditions with 'and' (SIM102 fix)
+            if self._is_planned_intervention(intr) and not self._is_outage_terminated(intr):
+                planned = intr
+                break
 
         if not planned:
             return {}

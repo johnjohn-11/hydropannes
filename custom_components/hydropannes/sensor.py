@@ -3,19 +3,15 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from homeassistant.components.sensor import (
     SensorDeviceClass,
     SensorEntity,
     SensorStateClass,
 )
-from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import EntityCategory, UnitOfTime
-from homeassistant.core import HomeAssistant
 from homeassistant.helpers.device_registry import DeviceInfo
-from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.util import dt as dt_util
 
@@ -26,6 +22,13 @@ from .const import (
     INTERVENTION_CODES,
 )
 from .coordinator import HydroPannesDataUpdateCoordinator
+
+if TYPE_CHECKING:
+    from datetime import datetime
+
+    from homeassistant.config_entries import ConfigEntry
+    from homeassistant.core import HomeAssistant
+    from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -100,7 +103,7 @@ class HydroPannesSensorBase(
             if not dt:
                 return None
             return dt_util.as_local(dt)
-        except Exception:
+        except (ValueError, TypeError):
             return None
 
     def _is_date_in_past(self, date_value: datetime | None) -> bool:
@@ -128,8 +131,7 @@ class HydroPannesSensorBase(
         return self.coordinator.data.get("interruptions", [])
 
     def _is_outage_active(self, intr: dict[str, Any]) -> bool:
-        """
-        Check if an interruption represents an active outage.
+        """Check if an interruption represents an active outage.
 
         An outage is considered ACTIVE if:
         - Main etat = "N" (outage state)
@@ -143,15 +145,11 @@ class HydroPannesSensorBase(
             return False
 
         date_fin = self._parse_dt(intr.get("dateFin"))
-        # Active if no dateFin or dateFin is in the future
-        if not date_fin or self._is_date_in_future(date_fin):
-            return True
-
-        return False
+        # SIM103 fix: return condition directly
+        return not date_fin or self._is_date_in_future(date_fin)
 
     def _is_outage_terminated(self, intr: dict[str, Any]) -> bool:
-        """
-        Check if an interruption is terminated (power restored).
+        """Check if an interruption is terminated (power restored).
 
         An outage is TERMINATED if:
         - dateFin exists AND is in the past
@@ -164,8 +162,7 @@ class HydroPannesSensorBase(
         return intr.get("interruptionPlanifiee", False)
 
     def _is_future_planned(self, intr: dict[str, Any]) -> bool:
-        """
-        Check if an interruption is a future planned intervention.
+        """Check if an interruption is a future planned intervention.
 
         Returns True if:
         - interruptionPlanifiee = True
@@ -178,8 +175,7 @@ class HydroPannesSensorBase(
         return self._is_date_in_future(date_debut)
 
     def _get_active_outage(self) -> dict[str, Any] | None:
-        """
-        Get the first active non-planned outage.
+        """Get the first active non-planned outage.
 
         Returns the first interruption where:
         - interruptionPlanifiee = False
@@ -194,8 +190,7 @@ class HydroPannesSensorBase(
         return None
 
     def _get_terminated_outage(self) -> dict[str, Any] | None:
-        """
-        Get a terminated non-planned outage (for "Courant rétabli" state).
+        """Get a terminated non-planned outage (for "Courant rétabli" state).
 
         Returns the first non-planned interruption that has dateFin in the past.
         """
@@ -207,8 +202,7 @@ class HydroPannesSensorBase(
         return None
 
     def _get_planned_intervention(self) -> dict[str, Any] | None:
-        """
-        Get the most relevant planned intervention.
+        """Get the most relevant planned intervention.
 
         Priority:
         1. Active planned (main etat = "N", no dateFin or dateFin in future)
@@ -234,8 +228,7 @@ class HydroPannesSensorBase(
         return planned[0]
 
     def _get_current_interruption(self) -> dict[str, Any] | None:
-        """
-        Get the most relevant interruption for displaying data.
+        """Get the most relevant interruption for displaying data.
 
         Priority logic:
         1. Active non-planned outage (ongoing)
@@ -270,8 +263,7 @@ class HydroPannesSensorBase(
 
 
 class HydroPannesInfoPannesSensor(HydroPannesSensorBase):
-    """
-    Sensor for service status info.
+    """Sensor for service status info.
 
     Logic (in priority order):
     -------------------------
@@ -327,23 +319,17 @@ class HydroPannesInfoPannesSensor(HydroPannesSensorBase):
                 return "Panne en cours"
             return None
 
-        # =======================================================================
         # PRIORITY 1: Active non-planned outage
-        # =======================================================================
         active_outage = self._get_active_outage()
         if active_outage:
             return "Panne en cours"
 
-        # =======================================================================
         # PRIORITY 2: Terminated non-planned outage (Courant rétabli)
-        # =======================================================================
         terminated_outage = self._get_terminated_outage()
         if terminated_outage:
             return "Courant rétabli"
 
-        # =======================================================================
         # PRIORITY 3: Planned intervention
-        # =======================================================================
         planned = self._get_planned_intervention()
         if planned:
             # Terminated planned intervention
@@ -361,9 +347,7 @@ class HydroPannesInfoPannesSensor(HydroPannesSensorBase):
             # Generic planned state
             return "Interruption planifiée"
 
-        # =======================================================================
         # FALLBACK: No active or planned interruptions
-        # =======================================================================
         if main_etat == "A":
             return "Aucune panne détectée"
 
@@ -379,13 +363,13 @@ class HydroPannesInfoPannesSensor(HydroPannesSensorBase):
         state = self.native_value
         if state == "Aucune panne détectée":
             return "mdi:check-circle"
-        if state in ["Courant rétabli", "Intervention planifiée terminée"]:
+        if state in ("Courant rétabli", "Intervention planifiée terminée"):
             return "mdi:check-circle-outline"
-        if state in [
+        if state in (
             "Interruption planifiée à venir",
             "Intervention planifiée en cours",
             "Interruption planifiée",
-        ]:
+        ):
             return "mdi:calendar-clock"
         if state == "Panne en cours":
             return "mdi:alert-circle"
@@ -411,7 +395,7 @@ class HydroPannesInfoPannesSensor(HydroPannesSensorBase):
             inter = interruptions[0]
 
         attrs: dict[str, Any] = {}
-        for key in [
+        for key in (
             "dateDebut",
             "dateFin",
             "etat",
@@ -427,7 +411,7 @@ class HydroPannesInfoPannesSensor(HydroPannesSensorBase):
             "dureePrevu",
             "probabilite",
             "interruptionPlanifiee",
-        ]:
+        ):
             val = inter.get(key)
             if key.startswith("date") and val:
                 parsed = self._parse_dt(val)
@@ -439,8 +423,7 @@ class HydroPannesInfoPannesSensor(HydroPannesSensorBase):
 
 
 class HydroPannesNiveauUrgenceSensor(HydroPannesSensorBase):
-    """
-    Sensor for urgency level.
+    """Sensor for urgency level.
 
     Values:
       - "P" -> "Panne"
@@ -534,12 +517,15 @@ class HydroPannesDebutSensor(HydroPannesSensorBase):
 
 
 class HydroPannesFinEstimeeSensor(HydroPannesSensorBase):
-    """
-    Sensor for estimated or actual end time.
+    """Sensor for estimated or actual end time.
 
     Sub-priority for value:
       1. dateFin (actual end)
       2. dateFinEstimeeMax (estimated end)
+
+    Icons:
+      - mdi:clock-check (actual end time - dateFin)
+      - mdi:clock-alert (estimated end time - dateFinEstimeeMax)
     """
 
     def __init__(
@@ -555,8 +541,7 @@ class HydroPannesFinEstimeeSensor(HydroPannesSensorBase):
         self._attr_device_class = SensorDeviceClass.TIMESTAMP
 
     def _get_end_time_info(self) -> tuple[datetime | None, bool]:
-        """
-        Get end time and whether it's actual or estimated.
+        """Get end time and whether it's actual or estimated.
 
         Returns: (datetime or None, is_actual: bool)
         """
@@ -590,13 +575,12 @@ class HydroPannesFinEstimeeSensor(HydroPannesSensorBase):
         if end_time is None:
             return "mdi:clock-end"
         if is_actual:
-            return "mdi:clock-check"  # Actual end time (dateFin)
-        return "mdi:clock-alert"  # Estimated end time (dateFinEstimeeMax)
+            return "mdi:clock-check"
+        return "mdi:clock-alert"
 
 
 class HydroPannesStatutInterventionSensor(HydroPannesSensorBase):
-    """
-    Sensor for intervention status.
+    """Sensor for intervention status.
 
     Values:
       - If dateFin exists and in the past -> "Intervention terminée"
@@ -671,8 +655,7 @@ class HydroPannesCauseSensor(HydroPannesSensorBase):
 
 
 class HydroPannesDureeSensor(HydroPannesSensorBase):
-    """
-    Sensor for outage duration.
+    """Sensor for outage duration.
 
     Calculation:
       - If dateFin exists -> (dateFin - dateDebut)
@@ -720,14 +703,13 @@ class HydroPannesDureeSensor(HydroPannesSensorBase):
                 duration_seconds = (dt_util.now() - date_debut).total_seconds()
 
             return round(duration_seconds)
-        except Exception:
+        except (ValueError, TypeError):
             _LOGGER.exception("Error calculating duration")
             return None
 
 
 class HydroPannesDureeAvantRetablissementSensor(HydroPannesSensorBase):
-    """
-    Sensor for time until power restoration.
+    """Sensor for time until power restoration.
 
     Only shows value for ACTIVE outages.
 
@@ -844,8 +826,7 @@ class HydroPannesLieuConsoSensor(HydroPannesSensorBase):
 
 
 class HydroPannesEtatAPIBrutSensor(HydroPannesSensorBase):
-    """
-    Diagnostic sensor exposing raw API state for debugging.
+    """Diagnostic sensor exposing raw API state for debugging.
 
     This sensor helps troubleshoot issues by showing:
     - Main 'etat' value from API
@@ -888,12 +869,14 @@ class HydroPannesEtatAPIBrutSensor(HydroPannesSensorBase):
             "coordinator_last_update_success": self.coordinator.last_update_success,
         }
 
-        # Add coordinator timing info if available (HA 2023.9+)
-        if hasattr(self.coordinator, "last_update_success_time"):
-            if self.coordinator.last_update_success_time:
-                attrs["derniere_maj_reussie"] = (
-                    self.coordinator.last_update_success_time.isoformat()
-                )
+        # SIM102 fix: combine conditions with 'and'
+        if (
+            hasattr(self.coordinator, "last_update_success_time")
+            and self.coordinator.last_update_success_time
+        ):
+            attrs["derniere_maj_reussie"] = (
+                self.coordinator.last_update_success_time.isoformat()
+            )
 
         # Add raw data from first/active interruption
         interruption = self._get_current_interruption()
@@ -934,8 +917,7 @@ class HydroPannesEtatAPIBrutSensor(HydroPannesSensorBase):
 
 
 class HydroPannesEtatInterruptionSensor(HydroPannesSensorBase):
-    """
-    Diagnostic sensor for the raw interruption 'etat' field.
+    """Diagnostic sensor for the raw interruption 'etat' field.
 
     This sensor exposes the 'etat' field from the current interruption
     to help debug API behavior. Common values:
@@ -1010,8 +992,7 @@ class HydroPannesEtatInterruptionSensor(HydroPannesSensorBase):
 
 
 class HydroPannesCodeInterventionSensor(HydroPannesSensorBase):
-    """
-    Diagnostic sensor for the raw intervention code.
+    """Diagnostic sensor for the raw intervention code.
 
     This sensor exposes the 'codeIntervention' field from the current
     interruption to help debug API behavior. Common values:

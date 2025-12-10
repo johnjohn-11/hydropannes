@@ -1,19 +1,31 @@
 """Diagnostics support for Hydro-Pannes."""
+
 from __future__ import annotations
 
-from typing import Any
-
-from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant
+from typing import TYPE_CHECKING, Any
 
 from .const import DOMAIN
-from .coordinator import HydroPannesDataUpdateCoordinator
+
+if TYPE_CHECKING:
+    from homeassistant.config_entries import ConfigEntry
+    from homeassistant.core import HomeAssistant
+
+    from .coordinator import HydroPannesDataUpdateCoordinator
 
 
 async def async_get_config_entry_diagnostics(
     hass: HomeAssistant, entry: ConfigEntry
 ) -> dict[str, Any]:
-    """Return diagnostics for a config entry."""
+    """Return diagnostics for a config entry.
+
+    Args:
+        hass: Home Assistant instance.
+        entry: Config entry to get diagnostics for.
+
+    Returns:
+        Dictionary containing diagnostic information.
+
+    """
     coordinator: HydroPannesDataUpdateCoordinator = hass.data[DOMAIN][entry.entry_id]
 
     # Mask the lieu_conso for privacy (show only last 4 digits)
@@ -45,7 +57,15 @@ async def async_get_config_entry_diagnostics(
 
 
 def _redact_data(data: dict[str, Any]) -> dict[str, Any]:
-    """Redact sensitive information from the data."""
+    """Redact sensitive information from the data.
+
+    Args:
+        data: Raw API data to redact.
+
+    Returns:
+        Data with sensitive information masked.
+
+    """
     if not data:
         return {}
 

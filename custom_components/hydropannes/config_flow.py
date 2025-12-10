@@ -1,19 +1,23 @@
 """Config flow for Hydro-Pannes integration."""
+
 from __future__ import annotations
 
 import logging
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import aiohttp
 import voluptuous as vol
 
 from homeassistant import config_entries
-from homeassistant.core import HomeAssistant, callback
-from homeassistant.data_entry_flow import FlowResult
+from homeassistant.core import callback
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .const import API_URL, CONF_LIEU_CONSO, CONF_NOM_LIEU, DOMAIN
+
+if TYPE_CHECKING:
+    from homeassistant.core import HomeAssistant
+    from homeassistant.data_entry_flow import FlowResult
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -26,7 +30,20 @@ STEP_USER_DATA_SCHEMA = vol.Schema(
 
 
 async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str, Any]:
-    """Validate the user input allows us to connect."""
+    """Validate the user input allows us to connect.
+
+    Args:
+        hass: Home Assistant instance.
+        data: User input data containing lieu_conso and nom_lieu.
+
+    Returns:
+        Dictionary with title for the config entry.
+
+    Raises:
+        CannotConnect: When unable to connect to the API.
+        InvalidLieuConso: When the lieu de consommation is invalid.
+
+    """
     lieu_conso = data[CONF_LIEU_CONSO]
     url = API_URL.format(lieu_conso)
     session = async_get_clientsession(hass)
@@ -38,7 +55,7 @@ async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str,
             if response.status != 200:
                 raise CannotConnect
             json_data = await response.json()
-            if not json_data or len(json_data) == 0:
+            if not json_data:
                 raise InvalidLieuConso
     except aiohttp.ClientError as err:
         _LOGGER.debug("HydroPannes config_flow network error: %s", err)
@@ -57,13 +74,29 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     def async_get_options_flow(
         config_entry: config_entries.ConfigEntry,
     ) -> OptionsFlowHandler:
-        """Get the options flow for this handler."""
+        """Get the options flow for this handler.
+
+        Args:
+            config_entry: The config entry to get options flow for.
+
+        Returns:
+            The options flow handler.
+
+        """
         return OptionsFlowHandler(config_entry)
 
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
     ) -> FlowResult:
-        """Handle the initial step."""
+        """Handle the initial step.
+
+        Args:
+            user_input: User provided input data.
+
+        Returns:
+            Flow result for the next step or entry creation.
+
+        """
         errors: dict[str, str] = {}
         if user_input is not None:
             try:
@@ -88,16 +121,32 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
     """Handle options flow for Hydro-Pannes."""
 
     def __init__(self, config_entry: config_entries.ConfigEntry) -> None:
-        """Initialize options flow."""
+        """Initialize options flow.
+
+        Args:
+            config_entry: The config entry to handle options for.
+
+        """
         self.config_entry = config_entry
 
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
     ) -> FlowResult:
-        """Manage the options."""
+        """Manage the options.
+
+        Args:
+            user_input: User provided input data.
+
+        Returns:
+            Flow result for options update.
+
+        """
         if user_input is not None:
             # Update the config entry data with new nom_lieu
-            new_data = {**self.config_entry.data, CONF_NOM_LIEU: user_input[CONF_NOM_LIEU]}
+            new_data = {
+                **self.config_entry.data,
+                CONF_NOM_LIEU: user_input[CONF_NOM_LIEU],
+            }
             self.hass.config_entries.async_update_entry(
                 self.config_entry,
                 data=new_data,
