@@ -887,11 +887,12 @@ class HydroPannesEtatAPIBrutSensor(HydroPannesSensorBase):
             "coordinator_last_update_success": self.coordinator.last_update_success,
         }
 
-        # Add coordinator timing info
-        if self.coordinator.last_update_success_time:
-            attrs["derniere_maj_reussie"] = (
-                self.coordinator.last_update_success_time.isoformat()
-            )
+        # Add coordinator timing info if available (HA 2023.9+)
+        if hasattr(self.coordinator, "last_update_success_time"):
+            if self.coordinator.last_update_success_time:
+                attrs["derniere_maj_reussie"] = (
+                    self.coordinator.last_update_success_time.isoformat()
+                )
 
         # Add raw data from first/active interruption
         interruption = self._get_current_interruption()
