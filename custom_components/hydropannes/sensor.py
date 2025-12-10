@@ -53,6 +53,7 @@ async def async_setup_entry(
         HydroPannesLieuConsoSensor(coordinator, entry, nom_lieu),
         HydroPannesEtatAPIBrutSensor(coordinator, entry, nom_lieu),
         HydroPannesEtatInterruptionSensor(coordinator, entry, nom_lieu),
+        HydroPannesCodeInterventionSensor(coordinator, entry, nom_lieu),
     ]
 
     async_add_entities(sensors)
@@ -1006,3 +1007,58 @@ class HydroPannesEtatInterruptionSensor(HydroPannesSensorBase):
         }
 
         return attrs
+
+
+class HydroPannesCodeInterventionSensor(HydroPannesSensorBase):
+    """
+    Diagnostic sensor for the raw intervention code.
+
+    This sensor exposes the 'codeIntervention' field from the current
+    interruption to help debug API behavior. Common values:
+    - "A" : Travaux assignés
+    - "L" : Équipe au travail
+    - "R" : Équipe en route
+
+    Returns None if no interruption exists.
+    """
+
+    def __init__(
+        self,
+        coordinator: HydroPannesDataUpdateCoordinator,
+        entry: ConfigEntry,
+        nom_lieu: str,
+    ) -> None:
+        """Initialize the sensor."""
+        super().__init__(coordinator, entry, nom_lieu)
+        self._attr_name = "Code intervention"
+        self._attr_unique_id = f"{entry.entry_id}_code_intervention"
+        self._attr_icon = "mdi:wrench"
+        self._attr_entity_category = EntityCategory.DIAGNOSTIC
+
+    @property
+    def native_value(self) -> str | None:
+        """Return the intervention code or None if no interruption."""
+        interruption = self._get_current_interruption()
+
+        if not interruption:
+            return None
+
+        return interruption.get("codeIntervention")
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return additional context about the intervention code."""
+        interruption = self._get_current_interruption()
+
+        if not interruption:
+            return {}
+
+        code = interruption.get("codeIntervention")
+
+        return {
+            "code_brut": code,
+            "description": INTERVENTION_CODES.get(code) if code else None,
+            "etat_principal": self._get_main_etat(),
+            "etat_interruption": interruption.get("etat"),
+            "interruption_planifiee": interruption.get("interruptionPlanifiee"),
+        }
