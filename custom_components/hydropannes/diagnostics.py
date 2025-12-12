@@ -32,6 +32,20 @@ async def async_get_config_entry_diagnostics(
     lieu_conso = coordinator.lieu_conso
     masked_lieu = f"****{lieu_conso[-4:]}" if len(lieu_conso) > 4 else "****"
 
+    # Build coordinator info
+    coordinator_info: dict[str, Any] = {
+        "last_update_success": coordinator.last_update_success,
+        "update_interval": str(coordinator.update_interval),
+    }
+
+    # Add last_update_success_time if available (HA 2023.9+)
+    if hasattr(coordinator, "last_update_success_time"):
+        coordinator_info["last_update_success_time"] = (
+            coordinator.last_update_success_time.isoformat()
+            if coordinator.last_update_success_time
+            else None
+        )
+
     return {
         "entry": {
             "entry_id": entry.entry_id,
@@ -43,15 +57,7 @@ async def async_get_config_entry_diagnostics(
                 "nom_lieu": entry.data.get("nom_lieu"),
             },
         },
-        "coordinator": {
-            "last_update_success": coordinator.last_update_success,
-            "last_update_success_time": (
-                coordinator.last_update_success_time.isoformat()
-                if coordinator.last_update_success_time
-                else None
-            ),
-            "update_interval": str(coordinator.update_interval),
-        },
+        "coordinator": coordinator_info,
         "data": _redact_data(coordinator.data) if coordinator.data else None,
     }
 
