@@ -8,9 +8,11 @@ from datetime import timedelta
 from typing import TYPE_CHECKING, Any
 
 import aiohttp
-
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
-from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
+from homeassistant.helpers.update_coordinator import (
+    DataUpdateCoordinator,
+    UpdateFailed,
+)
 
 from .const import API_URL, DOMAIN, UPDATE_INTERVAL
 
@@ -101,7 +103,8 @@ class HydroPannesDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                             "Successfully fetched data for lieu %s",
                             self.lieu_conso,
                         )
-                        return data[0]
+                        result: dict[str, Any] = data[0]
+                        return result
 
             except TimeoutError:
                 if attempt < MAX_RETRIES:
@@ -160,7 +163,7 @@ class HydroPannesDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 error_msg,
                 self.lieu_conso,
             )
-            return self.data
+            return dict(self.data)
 
         _LOGGER.warning(
             "%s for lieu %s - no previous data available",

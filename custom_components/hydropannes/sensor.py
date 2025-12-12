@@ -128,7 +128,8 @@ class HydroPannesSensorBase(
         """Get the list of interruptions from API response."""
         if not self.coordinator.data:
             return []
-        return self.coordinator.data.get("interruptions", [])
+        result: list[dict[str, Any]] = self.coordinator.data.get("interruptions", [])
+        return result
 
     def _is_outage_active(self, intr: dict[str, Any]) -> bool:
         """Check if an interruption represents an active outage.
@@ -145,7 +146,6 @@ class HydroPannesSensorBase(
             return False
 
         date_fin = self._parse_dt(intr.get("dateFin"))
-        # SIM103 fix: return condition directly
         return not date_fin or self._is_date_in_future(date_fin)
 
     def _is_outage_terminated(self, intr: dict[str, Any]) -> bool:
@@ -159,7 +159,8 @@ class HydroPannesSensorBase(
 
     def _is_planned_intervention(self, intr: dict[str, Any]) -> bool:
         """Check if an interruption is a planned intervention."""
-        return intr.get("interruptionPlanifiee", False)
+        result: bool = intr.get("interruptionPlanifiee", False)
+        return result
 
     def _is_future_planned(self, intr: dict[str, Any]) -> bool:
         """Check if an interruption is a future planned intervention.
@@ -486,7 +487,8 @@ class HydroPannesNombreClientSensor(HydroPannesSensorBase):
         if not outage:
             return None
 
-        return outage.get("nbClient")
+        nb_client: int | None = outage.get("nbClient")
+        return nb_client
 
 
 class HydroPannesDebutSensor(HydroPannesSensorBase):
@@ -822,7 +824,8 @@ class HydroPannesLieuConsoSensor(HydroPannesSensorBase):
         if not self.coordinator.data:
             return None
 
-        return self.coordinator.data.get("idLieuConso")
+        lieu: str | None = self.coordinator.data.get("idLieuConso")
+        return lieu
 
 
 class HydroPannesEtatAPIBrutSensor(HydroPannesSensorBase):
@@ -869,7 +872,7 @@ class HydroPannesEtatAPIBrutSensor(HydroPannesSensorBase):
             "coordinator_last_update_success": self.coordinator.last_update_success,
         }
 
-        # SIM102 fix: combine conditions with 'and'
+        # Add coordinator timing info if available (HA 2023.9+)
         if (
             hasattr(self.coordinator, "last_update_success_time")
             and self.coordinator.last_update_success_time
@@ -952,7 +955,8 @@ class HydroPannesEtatInterruptionSensor(HydroPannesSensorBase):
         if not interruption:
             return None
 
-        return interruption.get("etat")
+        etat: str | None = interruption.get("etat")
+        return etat
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
@@ -1024,7 +1028,8 @@ class HydroPannesCodeInterventionSensor(HydroPannesSensorBase):
         if not interruption:
             return None
 
-        return interruption.get("codeIntervention")
+        code: str | None = interruption.get("codeIntervention")
+        return code
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:

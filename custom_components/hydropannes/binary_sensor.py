@@ -109,7 +109,8 @@ class HydroPannesBinarySensorBase(
         """Get the list of interruptions from API response."""
         if not self.coordinator.data:
             return []
-        return self.coordinator.data.get("interruptions", [])
+        result: list[dict[str, Any]] = self.coordinator.data.get("interruptions", [])
+        return result
 
     def _is_outage_active(self, intr: dict[str, Any]) -> bool:
         """Check if an interruption represents an active outage.
@@ -126,7 +127,6 @@ class HydroPannesBinarySensorBase(
             return False
 
         date_fin = self._parse_dt(intr.get("dateFin"))
-        # Active if no dateFin or dateFin is in the future
         return not date_fin or self._is_date_in_future(date_fin)
 
     def _is_outage_terminated(self, intr: dict[str, Any]) -> bool:
@@ -140,7 +140,8 @@ class HydroPannesBinarySensorBase(
 
     def _is_planned_intervention(self, intr: dict[str, Any]) -> bool:
         """Check if an interruption is a planned intervention."""
-        return intr.get("interruptionPlanifiee", False)
+        result: bool = intr.get("interruptionPlanifiee", False)
+        return result
 
     def _get_active_outage(self) -> dict[str, Any] | None:
         """Get the first active non-planned outage.
@@ -328,8 +329,9 @@ class HydroPannesInterventionPlanifieeBinarySensor(HydroPannesBinarySensorBase):
             return None
 
         for intr in self._get_interruptions():
-            # Combine conditions with 'and' (SIM102 fix)
-            if self._is_planned_intervention(intr) and not self._is_outage_terminated(intr):
+            if self._is_planned_intervention(intr) and not self._is_outage_terminated(
+                intr
+            ):
                 return True
 
         return False
@@ -357,8 +359,9 @@ class HydroPannesInterventionPlanifieeBinarySensor(HydroPannesBinarySensorBase):
         # Find the most relevant planned intervention (not terminated)
         planned = None
         for intr in interruptions:
-            # Combine conditions with 'and' (SIM102 fix)
-            if self._is_planned_intervention(intr) and not self._is_outage_terminated(intr):
+            if self._is_planned_intervention(intr) and not self._is_outage_terminated(
+                intr
+            ):
                 planned = intr
                 break
 
