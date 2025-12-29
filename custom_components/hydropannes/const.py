@@ -1,22 +1,20 @@
 """Constants for the Hydro-Pannes integration."""
 
-from typing import Final
+DOMAIN = "hydropannes"
 
-DOMAIN: Final[str] = "hydropannes"
+CONF_LIEU_CONSO = "lieu_consommation"
+CONF_NOM_LIEU = "nom_lieu"
 
-CONF_LIEU_CONSO: Final[str] = "lieu_consommation"
-CONF_NOM_LIEU: Final[str] = "nom_lieu"
-
-API_URL: Final[str] = (
+API_URL = (
     "https://services-bs.solutions.hydroquebec.com/"
     "pan/web/api/v1/lieux-conso/etats/{}"
 )
 
-UPDATE_INTERVAL: Final[int] = 180  # seconds
+UPDATE_INTERVAL = 180  # seconds
 
-ATTRIBUTION: Final[str] = "Données fournies par Hydro-Québec"
+ATTRIBUTION = "Données fournies par Hydro-Québec"
 
-CAUSE_CODES: Final[dict[str, str]] = {
+CAUSE_CODES: dict[str, str] = {
     "11": "Bris d'équipement",
     "12": "Bris d'équipement",
     "13": "Bris d'équipement",
@@ -52,7 +50,7 @@ CAUSE_CODES: Final[dict[str, str]] = {
     "71": "Amélioration ou entretien du réseau",
 }
 
-INTERVENTION_CODES: Final[dict[str, str]] = {
+INTERVENTION_CODES: dict[str, str] = {
     "A": "Travaux assignés",
     "L": "Équipe au travail",
     "R": "Équipe en route",

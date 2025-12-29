@@ -22,26 +22,15 @@ if TYPE_CHECKING:
 _LOGGER = logging.getLogger(__name__)
 
 # Retry config for transient server errors (5xx)
-MAX_RETRIES: int = 2
-RETRY_DELAY: int = 2  # seconds
+MAX_RETRIES = 2
+RETRY_DELAY = 2  # seconds
 
 
 class HydroPannesDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
-    """Class to manage fetching Hydro-Pannes data.
-
-    When the API returns empty data or is unreachable, UpdateFailed is raised.
-    This causes the coordinator to keep the last known valid data and
-    prevents sensors from being updated with invalid/empty values.
-    """
+    """Class to manage fetching Hydro-Pannes data."""
 
     def __init__(self, hass: HomeAssistant, lieu_conso: str) -> None:
-        """Initialize the coordinator.
-
-        Args:
-            hass: Home Assistant instance.
-            lieu_conso: The consumption location ID.
-
-        """
+        """Initialize the coordinator."""
         self.lieu_conso = lieu_conso
         super().__init__(
             hass,
@@ -51,18 +40,7 @@ class HydroPannesDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         )
 
     async def _async_update_data(self) -> dict[str, Any]:
-        """Fetch data from the Hydro-Québec API.
-
-        Implements retry logic for transient 5xx errors.
-        If all retries fail and we have existing data, keep it.
-
-        Returns:
-            API response data as a dictionary.
-
-        Raises:
-            UpdateFailed: When API fails and no previous data exists.
-
-        """
+        """Fetch data from the Hydro-Québec API."""
         url = API_URL.format(self.lieu_conso)
         session = async_get_clientsession(self.hass)
 
@@ -103,8 +81,7 @@ class HydroPannesDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                             "Successfully fetched data for lieu %s",
                             self.lieu_conso,
                         )
-                        result: dict[str, Any] = data[0]
-                        return result
+                        return data[0]
 
             except TimeoutError:
                 if attempt < MAX_RETRIES:
@@ -142,21 +119,7 @@ class HydroPannesDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         return self._handle_failure("Unknown error")
 
     def _handle_failure(self, error_msg: str) -> dict[str, Any]:
-        """Handle API failure by keeping previous data or raising UpdateFailed.
-
-        If we have existing valid data, return it to prevent sensors going None.
-        Otherwise, raise UpdateFailed.
-
-        Args:
-            error_msg: Description of the error that occurred.
-
-        Returns:
-            Previous data if available.
-
-        Raises:
-            UpdateFailed: When no previous data is available.
-
-        """
+        """Handle API failure by keeping previous data or raising UpdateFailed."""
         if self.data is not None:
             _LOGGER.warning(
                 "%s for lieu %s - keeping previous data",

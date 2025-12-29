@@ -42,7 +42,7 @@ async def async_setup_entry(
     coordinator: HydroPannesDataUpdateCoordinator = hass.data[DOMAIN][entry.entry_id]
     nom_lieu = entry.data[CONF_NOM_LIEU]
 
-    sensors = [
+    sensors: list[HydroPannesSensorBase] = [
         HydroPannesInfoPannesSensor(coordinator, entry, nom_lieu),
         HydroPannesNiveauUrgenceSensor(coordinator, entry, nom_lieu),
         HydroPannesNombreClientSensor(coordinator, entry, nom_lieu),
@@ -128,8 +128,7 @@ class HydroPannesSensorBase(
         """Get the list of interruptions from API response."""
         if not self.coordinator.data:
             return []
-        result: list[dict[str, Any]] = self.coordinator.data.get("interruptions", [])
-        return result
+        return self.coordinator.data.get("interruptions", [])
 
     def _is_outage_active(self, intr: dict[str, Any]) -> bool:
         """Check if an interruption represents an active outage.
@@ -159,8 +158,7 @@ class HydroPannesSensorBase(
 
     def _is_planned_intervention(self, intr: dict[str, Any]) -> bool:
         """Check if an interruption is a planned intervention."""
-        result: bool = intr.get("interruptionPlanifiee", False)
-        return result
+        return intr.get("interruptionPlanifiee", False)
 
     def _is_future_planned(self, intr: dict[str, Any]) -> bool:
         """Check if an interruption is a future planned intervention.
@@ -487,8 +485,7 @@ class HydroPannesNombreClientSensor(HydroPannesSensorBase):
         if not outage:
             return None
 
-        nb_client: int | None = outage.get("nbClient")
-        return nb_client
+        return outage.get("nbClient")
 
 
 class HydroPannesDebutSensor(HydroPannesSensorBase):
@@ -803,7 +800,10 @@ class HydroPannesDerniereMAJSensor(HydroPannesSensorBase):
 
 
 class HydroPannesLieuConsoSensor(HydroPannesSensorBase):
-    """Sensor for consumption location ID (diagnostic)."""
+    """Sensor for consumption location ID (diagnostic).
+
+    This sensor is visible by default as it shows useful location info.
+    """
 
     def __init__(
         self,
@@ -824,20 +824,16 @@ class HydroPannesLieuConsoSensor(HydroPannesSensorBase):
         if not self.coordinator.data:
             return None
 
-        lieu: str | None = self.coordinator.data.get("idLieuConso")
-        return lieu
+        return self.coordinator.data.get("idLieuConso")
 
 
 class HydroPannesEtatAPIBrutSensor(HydroPannesSensorBase):
     """Diagnostic sensor exposing raw API state for debugging.
 
-    This sensor helps troubleshoot issues by showing:
-    - Main 'etat' value from API
-    - Number of interruptions
-    - Key fields from the first/active interruption
-
-    The state shows the main 'etat' field, attributes contain details.
+    This sensor is disabled by default.
     """
+
+    _attr_entity_registry_enabled_default = False
 
     def __init__(
         self,
@@ -922,17 +918,10 @@ class HydroPannesEtatAPIBrutSensor(HydroPannesSensorBase):
 class HydroPannesEtatInterruptionSensor(HydroPannesSensorBase):
     """Diagnostic sensor for the raw interruption 'etat' field.
 
-    This sensor exposes the 'etat' field from the current interruption
-    to help debug API behavior. Common values:
-    - "T" : Terminé (Terminated)
-    - "C" : Complété (Completed)
-    - "A" : Actif (Active)
-    - "P" : Planifié (Planned/Future)
-    - "R" : En route
-    - "L" : Au travail
-
-    Returns None if no interruption exists.
+    This sensor is disabled by default.
     """
+
+    _attr_entity_registry_enabled_default = False
 
     def __init__(
         self,
@@ -955,8 +944,7 @@ class HydroPannesEtatInterruptionSensor(HydroPannesSensorBase):
         if not interruption:
             return None
 
-        etat: str | None = interruption.get("etat")
-        return etat
+        return interruption.get("etat")
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
@@ -998,14 +986,10 @@ class HydroPannesEtatInterruptionSensor(HydroPannesSensorBase):
 class HydroPannesCodeInterventionSensor(HydroPannesSensorBase):
     """Diagnostic sensor for the raw intervention code.
 
-    This sensor exposes the 'codeIntervention' field from the current
-    interruption to help debug API behavior. Common values:
-    - "A" : Travaux assignés
-    - "L" : Équipe au travail
-    - "R" : Équipe en route
-
-    Returns None if no interruption exists.
+    This sensor is disabled by default.
     """
+
+    _attr_entity_registry_enabled_default = False
 
     def __init__(
         self,
@@ -1028,8 +1012,7 @@ class HydroPannesCodeInterventionSensor(HydroPannesSensorBase):
         if not interruption:
             return None
 
-        code: str | None = interruption.get("codeIntervention")
-        return code
+        return interruption.get("codeIntervention")
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
