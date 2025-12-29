@@ -81,7 +81,8 @@ class HydroPannesDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                             "Successfully fetched data for lieu %s",
                             self.lieu_conso,
                         )
-                        return data[0]
+                        result: dict[str, Any] = data[0]
+                        return result
 
             except TimeoutError:
                 if attempt < MAX_RETRIES:

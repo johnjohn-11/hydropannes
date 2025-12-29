@@ -109,7 +109,8 @@ class HydroPannesBinarySensorBase(
         """Get the list of interruptions from API response."""
         if not self.coordinator.data:
             return []
-        return self.coordinator.data.get("interruptions", [])
+        result: list[dict[str, Any]] = self.coordinator.data.get("interruptions", [])
+        return result
 
     def _is_outage_active(self, intr: dict[str, Any]) -> bool:
         """Check if an interruption represents an active outage."""
@@ -127,7 +128,8 @@ class HydroPannesBinarySensorBase(
 
     def _is_planned_intervention(self, intr: dict[str, Any]) -> bool:
         """Check if an interruption is a planned intervention."""
-        return intr.get("interruptionPlanifiee", False)
+        result: bool = intr.get("interruptionPlanifiee", False)
+        return result
 
     def _get_active_outage(self) -> dict[str, Any] | None:
         """Get the first active non-planned outage."""

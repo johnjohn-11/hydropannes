@@ -128,7 +128,8 @@ class HydroPannesSensorBase(
         """Get the list of interruptions from API response."""
         if not self.coordinator.data:
             return []
-        return self.coordinator.data.get("interruptions", [])
+        result: list[dict[str, Any]] = self.coordinator.data.get("interruptions", [])
+        return result
 
     def _is_outage_active(self, intr: dict[str, Any]) -> bool:
         """Check if an interruption represents an active outage.
@@ -158,7 +159,8 @@ class HydroPannesSensorBase(
 
     def _is_planned_intervention(self, intr: dict[str, Any]) -> bool:
         """Check if an interruption is a planned intervention."""
-        return intr.get("interruptionPlanifiee", False)
+        result: bool = intr.get("interruptionPlanifiee", False)
+        return result
 
     def _is_future_planned(self, intr: dict[str, Any]) -> bool:
         """Check if an interruption is a future planned intervention.
