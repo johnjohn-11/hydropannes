@@ -29,20 +29,7 @@ STEP_USER_DATA_SCHEMA = vol.Schema(
 
 
 async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str, Any]:
-    """Validate the user input allows us to connect.
-
-    Args:
-        hass: Home Assistant instance.
-        data: User input data containing lieu_conso and nom_lieu.
-
-    Returns:
-        Dictionary with title for the config entry.
-
-    Raises:
-        CannotConnect: When unable to connect to the API.
-        InvalidLieuConso: When the lieu de consommation is invalid.
-
-    """
+    """Validate the user input allows us to connect."""
     lieu_conso = data[CONF_LIEU_CONSO]
     url = API_URL.format(lieu_conso)
     session = async_get_clientsession(hass)
@@ -73,29 +60,13 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     def async_get_options_flow(
         config_entry: config_entries.ConfigEntry,
     ) -> OptionsFlowHandler:
-        """Get the options flow for this handler.
-
-        Args:
-            config_entry: The config entry to get options flow for.
-
-        Returns:
-            The options flow handler.
-
-        """
+        """Get the options flow for this handler."""
         return OptionsFlowHandler()
 
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        """Handle the initial step.
-
-        Args:
-            user_input: User provided input data.
-
-        Returns:
-            Flow result for the next step or entry creation.
-
-        """
+        """Handle the initial step."""
         errors: dict[str, str] = {}
         if user_input is not None:
             try:
@@ -122,15 +93,7 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        """Manage the options.
-
-        Args:
-            user_input: User provided input data.
-
-        Returns:
-            Flow result for options update.
-
-        """
+        """Manage the options."""
         if user_input is not None:
             # Update the config entry data with new nom_lieu
             new_data = {

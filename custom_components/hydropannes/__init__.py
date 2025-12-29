@@ -20,16 +20,7 @@ PLATFORMS: list[Platform] = [Platform.SENSOR, Platform.BINARY_SENSOR]
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    """Set up Hydro-Pannes from a config entry.
-
-    Args:
-        hass: Home Assistant instance.
-        entry: Config entry to set up.
-
-    Returns:
-        True if setup was successful.
-
-    """
+    """Set up Hydro-Pannes from a config entry."""
     hass.data.setdefault(DOMAIN, {})
 
     coordinator = HydroPannesDataUpdateCoordinator(
@@ -47,16 +38,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    """Unload a config entry.
-
-    Args:
-        hass: Home Assistant instance.
-        entry: Config entry to unload.
-
-    Returns:
-        True if unload was successful.
-
-    """
+    """Unload a config entry."""
     if unload_ok := await hass.config_entries.async_unload_platforms(entry, PLATFORMS):
         hass.data[DOMAIN].pop(entry.entry_id)
 

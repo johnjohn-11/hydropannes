@@ -16,16 +16,7 @@ if TYPE_CHECKING:
 async def async_get_config_entry_diagnostics(
     hass: HomeAssistant, entry: ConfigEntry
 ) -> dict[str, Any]:
-    """Return diagnostics for a config entry.
-
-    Args:
-        hass: Home Assistant instance.
-        entry: Config entry to get diagnostics for.
-
-    Returns:
-        Dictionary containing diagnostic information.
-
-    """
+    """Return diagnostics for a config entry."""
     coordinator: HydroPannesDataUpdateCoordinator = hass.data[DOMAIN][entry.entry_id]
 
     # Mask the lieu_conso for privacy (show only last 4 digits)
@@ -63,15 +54,7 @@ async def async_get_config_entry_diagnostics(
 
 
 def _redact_data(data: dict[str, Any]) -> dict[str, Any]:
-    """Redact sensitive information from the data.
-
-    Args:
-        data: Raw API data to redact.
-
-    Returns:
-        Data with sensitive information masked.
-
-    """
+    """Redact sensitive information from the data."""
     if not data:
         return {}
 
