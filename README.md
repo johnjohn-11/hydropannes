@@ -24,6 +24,10 @@ Cette intégration permet de suivre en temps réel l'état du service électriqu
 
 ### HACS (recommandé)
 
+[![Ouvrir dans HACS](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=johnjohn-11&repository=hydropannes&category=integration)
+
+Ou manuellement :
+
 1. Ouvrir HACS dans Home Assistant
 2. Cliquer sur les 3 points en haut à droite → **Dépôts personnalisés**
 3. Ajouter l'URL du dépôt : `https://github.com/johnjohn-11/hydropannes`
@@ -41,6 +45,10 @@ Cette intégration permet de suivre en temps réel l'état du service électriqu
 ## Configuration
 
 ### Ajouter un lieu
+
+[![Ajouter l'intégration](https://my.home-assistant.io/badges/config_flow_start.svg)](https://my.home-assistant.io/redirect/config_flow_start/?domain=hydropannes)
+
+Ou manuellement :
 
 1. Aller dans **Paramètres** → **Appareils et services**
 2. Cliquer sur **+ Ajouter une intégration**
@@ -77,6 +85,16 @@ Consultez le guide détaillé : [Comment trouver votre lieu de consommation](htt
 | `sensor.hydropannes_*_derniere_maj` | Dernière mise à jour des données |
 | `sensor.hydropannes_*_lieu_conso` | Numéro de lieu de consommation (diagnostic) |
 
+### Sensors de diagnostic (désactivés par défaut)
+
+Ces sensors sont utiles pour le débogage et peuvent être activés manuellement :
+
+| Entité | Description |
+|--------|-------------|
+| `sensor.hydropannes_*_etat_api_brut` | État brut retourné par l'API |
+| `sensor.hydropannes_*_etat_interruption` | État de l'interruption en cours |
+| `sensor.hydropannes_*_code_intervention` | Code d'intervention brut |
+
 ### Binary Sensors
 
 | Entité | Description |
@@ -96,6 +114,7 @@ Consultez le guide détaillé : [Comment trouver votre lieu de consommation](htt
 | `Interruption planifiée à venir` | Travaux planifiés annoncés |
 
 ## Exemple d'automatisation
+
 ```yaml
 automation:
   - alias: "Notification panne électrique"
@@ -138,7 +157,7 @@ Les sensors affichent toujours les informations de la panne réelle en priorité
 
 ## Fréquence de mise à jour
 
-Les données sont récupérées de l'API Hydro-Québec toutes les **5 minutes** par défaut.
+Les données sont récupérées de l'API Hydro-Québec toutes les **3 minutes** par défaut.
 
 Si l'API est inaccessible ou ne retourne pas de données, les sensors conservent leur dernière valeur connue.
 
