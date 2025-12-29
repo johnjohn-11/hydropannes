@@ -14,7 +14,7 @@ UPDATE_INTERVAL = 180  # seconds
 
 ATTRIBUTION = "Données fournies par Hydro-Québec"
 
-CAUSE_CODES: dict[str, str] = {
+CAUSE_CODES = {
     "11": "Bris d'équipement",
     "12": "Bris d'équipement",
     "13": "Bris d'équipement",
@@ -50,7 +50,7 @@ CAUSE_CODES: dict[str, str] = {
     "71": "Amélioration ou entretien du réseau",
 }
 
-INTERVENTION_CODES: dict[str, str] = {
+INTERVENTION_CODES = {
     "A": "Travaux assignés",
     "L": "Équipe au travail",
     "R": "Équipe en route",
