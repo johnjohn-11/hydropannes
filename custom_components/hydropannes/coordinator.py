@@ -146,7 +146,7 @@ class HydroPannesDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         raise UpdateFailed(f"Error communicating with API: {error_msg}")
 
     async def _save_json_if_changed(self, lieu_id: str, data: dict[str, Any]) -> None:
-        """Save raw JSON to JSONL log file only if data has changed since last entry."""
+        """Save raw JSON to JSONL log only if data has changed since last entry."""
         try:
             log_dir = self.hass.config.path("hydropannes_logs")
             os.makedirs(log_dir, exist_ok=True)
@@ -169,7 +169,6 @@ class HydroPannesDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 if size_mb >= JSON_LOG_MAX_SIZE_MB:
                     self._rotate_log(log_file)
 
-            # Append new entry
             entry = {
                 "timestamp": dt_util.utcnow().isoformat(),
                 "data": data,
