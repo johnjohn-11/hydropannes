@@ -737,7 +737,7 @@ class HydroPannesCauseSensor(HydroPannesSensorBase):
 
         code = outage.get("codeCause")
         if code is None:
-            return None
+            return "Indéterminée"
 
         code_str = str(code)
         cause_text = CAUSE_CODES.get(code_str)
