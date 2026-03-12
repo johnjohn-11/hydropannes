@@ -69,10 +69,14 @@ NIVEAU_URGENCE_CODES = {
 }
 
 # typeFinPrevue → step 5 label
+# Sources officielles HQ : U, D, P
+# F, E : observés empiriquement, labels provisoires (non confirmés)
 TYPE_FIN_PREVUE_CODES = {
-    "U": "Heure de rétablissement en cours d'évaluation",
-    "D": "Rétablissement prévu (D)",
-    "P": "Rétablissement prévu (P)",
+    "U": "Heure de rétablissement en cours d'évaluation",  # pas de date
+    "D": "Rétablissement prévu",                           # date fiable
+    "P": "Rétablissement prévu",                           # panne majeure, délais non garantis
+    "F": "Fin non déterminée",                             # panne majeure, pas de dateFinEstimeeMax
+    "E": "Rétablissement prévu",                           # panne majeure, dateFinEstimeeMax présent (estimé)
 }
 
 ETAT_INTERRUPTION_CODES = {
