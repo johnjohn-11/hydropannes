@@ -52,7 +52,102 @@ CAUSE_CODES = {
 }
 
 INTERVENTION_CODES = {
+    "N": "Évaluation des travaux",
     "A": "Travaux assignés",
-    "L": "Équipe au travail",
     "R": "Équipe en route",
+    "L": "Équipe au travail",
+}
+
+NIVEAU_URGENCE_CODES = {
+    "N": "Normal",
+    "P": "Panne majeure",
+}
+
+TYPE_FIN_PREVUE_CODES = {
+    "U": "Indéterminée",
+    "D": "Déterminée",
+    "P": "Panne majeure",
+}
+
+ETAT_INTERRUPTION_CODES = {
+    "C": "En cours d'évaluation",
+    "N": "Non-alimenté",
+    "T": "Terminée",
+    "P": "Planifiée",
+}"""Constants for the Hydro-Pannes integration."""
+
+DOMAIN = "hydropannes"
+
+CONF_LIEU_CONSO = "lieu_consommation"
+CONF_NOM_LIEU = "nom_lieu"
+
+API_URL = (
+    "https://services-bs.solutions.hydroquebec.com/"
+    "pan/web/api/v1/lieux-conso/etats/{}"
+)
+
+UPDATE_INTERVAL = 180  # seconds
+
+ATTRIBUTION = "Données fournies par Hydro-Québec"
+
+CAUSE_CODES = {
+    "11": "Bris d'équipement",
+    "12": "Bris d'équipement",
+    "13": "Bris d'équipement",
+    "14": "Bris d'équipement",
+    "15": "Bris d'équipement",
+    "58": "Bris d'équipement",
+    "70": "Bris d'équipement",
+    "72": "Bris d'équipement",
+    "73": "Bris d'équipement",
+    "74": "Bris d'équipement",
+    "79": "Bris d'équipement",
+    "21": "Conditions météorologiques",
+    "22": "Conditions météorologiques",
+    "24": "Conditions météorologiques",
+    "25": "Conditions météorologiques",
+    "26": "Conditions météorologiques",
+    "31": "Accident ou incident",
+    "32": "Accident ou incident",
+    "33": "Accident ou incident",
+    "34": "Incendie ou fuite de gaz",
+    "41": "Accident ou incident",
+    "42": "Accident ou incident",
+    "43": "Accident ou incident",
+    "44": "Interruption - Sécurité publique",
+    "54": "Accident ou incident",
+    "55": "Accident ou incident",
+    "56": "Accident ou incident",
+    "57": "Accident ou incident",
+    "51": "Dommages dus à la végétation",
+    "52": "Dommages dus à un animal",
+    "53": "Dommages dus à un animal",
+    "63": "Amélioration ou entretien du réseau",
+    "68": "Travaux planifiés - Renforcement de réseau",
+    "71": "Amélioration ou entretien du réseau",
+}
+
+INTERVENTION_CODES = {
+    "N": "Évaluation des travaux",
+    "A": "Travaux assignés",
+    "R": "Équipe en route",
+    "L": "Équipe au travail",
+}
+
+NIVEAU_URGENCE_CODES = {
+    "N": "Normal",
+    "P": "Panne majeure",
+}
+
+TYPE_FIN_PREVUE_CODES = {
+    "U": "Indéterminée",
+    "D": "Déterminée",
+    "P": "Panne majeure",
+}
+
+ETAT_INTERRUPTION_CODES = {
+    "C": "En cours d'évaluation",
+    "N": "Non-alimenté",
+    "T": "Terminée",
+    "P": "Planifiée",
 }
