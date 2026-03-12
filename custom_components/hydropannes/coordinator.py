@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
+import json
 import logging
+import os
 from datetime import timedelta
 from typing import TYPE_CHECKING, Any
 
@@ -13,6 +16,7 @@ from homeassistant.helpers.update_coordinator import (
     DataUpdateCoordinator,
     UpdateFailed,
 )
+from homeassistant.util import dt as dt_util
 
 from .const import API_URL, DOMAIN, UPDATE_INTERVAL
 
@@ -25,6 +29,9 @@ _LOGGER = logging.getLogger(__name__)
 MAX_RETRIES = 2
 RETRY_DELAY = 2  # seconds
 
+# JSON logging config
+JSON_LOG_MAX_SIZE_MB = 5
+
 
 class HydroPannesDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     """Class to manage fetching Hydro-Pannes data."""
@@ -32,6 +39,7 @@ class HydroPannesDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     def __init__(self, hass: HomeAssistant, lieu_conso: str) -> None:
         """Initialize the coordinator."""
         self.lieu_conso = lieu_conso
+        self._last_hashes: dict[str, str] = {}
         super().__init__(
             hass,
             _LOGGER,
@@ -82,6 +90,7 @@ class HydroPannesDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                             self.lieu_conso,
                         )
                         result: dict[str, Any] = data[0]
+                        await self._save_json_if_changed(self.lieu_conso, result)
                         return result
 
             except TimeoutError:
@@ -135,3 +144,60 @@ class HydroPannesDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             self.lieu_conso,
         )
         raise UpdateFailed(f"Error communicating with API: {error_msg}")
+
+    async def _save_json_if_changed(self, lieu_id: str, data: dict[str, Any]) -> None:
+        """Save raw JSON to JSONL log file only if data has changed since last entry."""
+        try:
+            log_dir = self.hass.config.path("hydropannes_logs")
+            os.makedirs(log_dir, exist_ok=True)
+            log_file = os.path.join(log_dir, f"{lieu_id}.jsonl")
+
+            # Compute hash of current data
+            current_hash = hashlib.md5(
+                json.dumps(data, sort_keys=True).encode()
+            ).hexdigest()
+
+            # Skip if data hasn't changed
+            if self._last_hashes.get(lieu_id) == current_hash:
+                return
+
+            self._last_hashes[lieu_id] = current_hash
+
+            # Rotate if file exceeds size limit
+            if os.path.exists(log_file):
+                size_mb = os.path.getsize(log_file) / (1024 * 1024)
+                if size_mb >= JSON_LOG_MAX_SIZE_MB:
+                    self._rotate_log(log_file)
+
+            # Append new entry
+            entry = {
+                "timestamp": dt_util.utcnow().isoformat(),
+                "data": data,
+            }
+            with open(log_file, "a", encoding="utf-8") as f:
+                f.write(json.dumps(entry) + "\n")
+
+            _LOGGER.debug("JSON change logged for lieu %s", lieu_id)
+
+        except OSError:
+            _LOGGER.exception("Failed to write JSON log for lieu %s", lieu_id)
+
+    def _rotate_log(self, log_file: str) -> None:
+        """Keep only the most recent half of log entries."""
+        try:
+            with open(log_file, encoding="utf-8") as f:
+                lines = f.readlines()
+
+            keep = lines[len(lines) // 2 :]
+
+            with open(log_file, "w", encoding="utf-8") as f:
+                f.writelines(keep)
+
+            _LOGGER.info(
+                "Rotated log file %s: kept %d/%d entries",
+                log_file,
+                len(keep),
+                len(lines),
+            )
+        except OSError:
+            _LOGGER.exception("Failed to rotate log file %s", log_file)
