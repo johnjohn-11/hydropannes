@@ -19,7 +19,10 @@ from .const import (
     CAUSE_CODES,
     CONF_NOM_LIEU,
     DOMAIN,
+    ETAT_INTERRUPTION_CODES,
     INTERVENTION_CODES,
+    NIVEAU_URGENCE_CODES,
+    TYPE_FIN_PREVUE_CODES,
 )
 from .coordinator import HydroPannesDataUpdateCoordinator
 
@@ -57,6 +60,7 @@ async def async_setup_entry(
         HydroPannesEtatAPIBrutSensor(coordinator, entry, nom_lieu),
         HydroPannesEtatInterruptionSensor(coordinator, entry, nom_lieu),
         HydroPannesCodeInterventionSensor(coordinator, entry, nom_lieu),
+        HydroPannesTypeFinPrevueSensor(coordinator, entry, nom_lieu),
     ]
 
     async_add_entities(sensors)
@@ -427,8 +431,8 @@ class HydroPannesNiveauUrgenceSensor(HydroPannesSensorBase):
     """Sensor for urgency level.
 
     Values:
-      - "P" -> "Panne"
-      - "N" -> "Panne majeure"
+      - "N" -> "Normal"
+      - "P" -> "Panne majeure"
       - Other -> "Inconnu (code)"
       - No interruption -> None
     """
@@ -454,12 +458,9 @@ class HydroPannesNiveauUrgenceSensor(HydroPannesSensorBase):
             return None
 
         niveau = interruption.get("niveauUrgence")
-
-        if niveau == "P":
-            return "Panne"
-        if niveau == "N":
-            return "Panne majeure"
-        return f"Inconnu ({niveau})" if niveau else None
+        if niveau is None:
+            return None
+        return NIVEAU_URGENCE_CODES.get(niveau, f"Inconnu ({niveau})")
 
 
 class HydroPannesNombreClientSensor(HydroPannesSensorBase):
@@ -1032,4 +1033,76 @@ class HydroPannesCodeInterventionSensor(HydroPannesSensorBase):
             "etat_principal": self._get_main_etat(),
             "etat_interruption": interruption.get("etat"),
             "interruption_planifiee": interruption.get("interruptionPlanifiee"),
+        }
+
+
+class HydroPannesTypeFinPrevueSensor(HydroPannesSensorBase):
+    """Sensor for the type of expected end (typeFinPrevue).
+
+    Values:
+      - "U" -> "Indéterminée" (no estimated end date)
+      - "D" -> "Déterminée" (estimated end date available)
+      - "P" -> "Panne majeure" (estimated date, but not guaranteed)
+      - No interruption -> None
+    """
+
+    def __init__(
+        self,
+        coordinator: HydroPannesDataUpdateCoordinator,
+        entry: ConfigEntry,
+        nom_lieu: str,
+    ) -> None:
+        """Initialize the sensor."""
+        super().__init__(coordinator, entry, nom_lieu)
+        self._attr_name = "Type fin prévue"
+        self._attr_unique_id = f"{entry.entry_id}_type_fin_prevue"
+        self._attr_icon = "mdi:clock-question"
+
+    @property
+    def native_value(self) -> str | None:
+        """Return the type of expected end."""
+        interruption = self._get_current_interruption()
+
+        if not interruption:
+            return None
+
+        code = interruption.get("typeFinPrevue")
+        if code is None:
+            return None
+
+        return TYPE_FIN_PREVUE_CODES.get(code, f"Inconnu ({code})")
+
+    @property
+    def icon(self) -> str:
+        """Return icon based on typeFinPrevue value."""
+        interruption = self._get_current_interruption()
+        if not interruption:
+            return "mdi:clock-question"
+        code = interruption.get("typeFinPrevue")
+        if code == "U":
+            return "mdi:clock-remove"
+        if code == "D":
+            return "mdi:clock-check"
+        if code == "P":
+            return "mdi:clock-alert"
+        return "mdi:clock-question"
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return additional context about the type of expected end."""
+        interruption = self._get_current_interruption()
+
+        if not interruption:
+            return {}
+
+        code = interruption.get("typeFinPrevue")
+        date_fin_estimee = self._parse_dt(interruption.get("dateFinEstimeeMax"))
+
+        return {
+            "code_brut": code,
+            "date_fin_estimee_max": (
+                date_fin_estimee.isoformat() if date_fin_estimee else None
+            ),
+            "etat_principal": self._get_main_etat(),
+            "niveauUrgence": interruption.get("niveauUrgence"),
         }
