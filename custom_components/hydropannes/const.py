@@ -46,7 +46,8 @@ CAUSE_CODES = {
     "51": "Dommages dus à la végétation",
     "52": "Dommages dus à un animal",
     "53": "Dommages dus à un animal",
-    "68": "Travaux planifiés - Remforcement de réseau",
+    "63": "Amélioration ou entretien du réseau",
+    "68": "Travaux planifiés - Renforcement de réseau",
     "71": "Amélioration ou entretien du réseau",
 }
 
