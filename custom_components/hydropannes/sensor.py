@@ -20,7 +20,9 @@ from .const import (
     CONF_NOM_LIEU,
     DOMAIN,
     ETAT_INTERRUPTION_CODES,
+    INFO_PANNES_STATES,
     INTERVENTION_CODES,
+    INTERVENTION_CODES_MAJEUR,
     NIVEAU_URGENCE_CODES,
     TYPE_FIN_PREVUE_CODES,
 )
@@ -270,24 +272,28 @@ class HydroPannesSensorBase(
 class HydroPannesInfoPannesSensor(HydroPannesSensorBase):
     """Sensor for service status info.
 
-    Logic (in priority order):
+    Logic (in priority order) — matches HQ TYPE-DE-PANNES exactly:
     -------------------------
-    PRIORITY 1 - Active non-planned outage:
-      - Main etat = "N" AND (no dateFin OR dateFin in future)
-      - interruptionPlanifiee = False
-      -> "Panne en cours"
+    PRIORITY 1 - Rétablissement graduel (GRAP):
+      - repriseGraduellePossible = True AND active outage
+      -> "Rétablissement graduel du service en cours"
 
-    PRIORITY 2 - Terminated non-planned outage:
-      - dateFin exists AND is in the past
-      - interruptionPlanifiee = False
-      -> "Courant rétabli"
+    PRIORITY 2 - Active non-planned outage:
+      - Main etat = "N", interruptionPlanifiee = False
+      - If niveauUrgence = "P" -> "Panne majeure en cours"
+      - Otherwise -> "Panne en cours"
 
-    PRIORITY 3 - Planned intervention:
+    PRIORITY 3 - Terminated non-planned outage:
+      - dateFin exists and in the past
+      -> "Service rétabli"
+
+    PRIORITY 4 - Planned intervention:
       - interruptionPlanifiee = True
-      - If dateFin in past -> "Intervention planifiée terminée"
-      - If main etat = "N" -> "Intervention planifiée en cours"
+      - If annulée (codeRemarque = "A" or etat = "A") -> "Interruption planifiée annulée"
+      - If dateFin in past -> "Interruption planifiée terminée"
+      - If main etat = "N" -> "Interruption planifiée en cours"
       - If dateDebut in future -> "Interruption planifiée à venir"
-      -> "Interruption planifiée" (generic)
+      -> "Interruption planifiée à venir" (generic)
 
     FALLBACK:
       - Main etat = "A" and no relevant interruption -> "Aucune panne détectée"
@@ -306,6 +312,10 @@ class HydroPannesInfoPannesSensor(HydroPannesSensorBase):
         self._attr_unique_id = f"{entry.entry_id}_info_pannes"
         self._attr_icon = "mdi:information-outline"
 
+    def _is_aip_annulee(self, intr: dict[str, Any]) -> bool:
+        """Check if a planned interruption is cancelled."""
+        return intr.get("etat") == "A" or str(intr.get("codeRemarque", "")) == "A"
+
     @property
     def native_value(self) -> str | None:
         """Return the state based on priority logic."""
@@ -318,47 +328,46 @@ class HydroPannesInfoPannesSensor(HydroPannesSensorBase):
         # No interruptions at all
         if not interruptions:
             if main_etat == "A":
-                return "Aucune panne détectée"
-            # Main etat is "N" but no interruptions - unusual state
+                return INFO_PANNES_STATES["aucune_panne"]
             if main_etat == "N":
-                return "Panne en cours"
+                return INFO_PANNES_STATES["panne_en_cours"]
             return None
 
-        # PRIORITY 1: Active non-planned outage
+        # PRIORITY 1: Rétablissement graduel (GRAP)
         active_outage = self._get_active_outage()
-        if active_outage:
-            return "Panne en cours"
+        if active_outage and self.coordinator.data.get("repriseGraduellePossible"):
+            return INFO_PANNES_STATES["reprise_graduelle"]
 
-        # PRIORITY 2: Terminated non-planned outage (Courant rétabli)
+        # PRIORITY 2: Active non-planned outage
+        if active_outage:
+            niveau = active_outage.get("niveauUrgence")
+            if niveau == "P":
+                return INFO_PANNES_STATES["panne_majeure"]
+            return INFO_PANNES_STATES["panne_en_cours"]
+
+        # PRIORITY 3: Terminated non-planned outage
         terminated_outage = self._get_terminated_outage()
         if terminated_outage:
-            return "Courant rétabli"
+            return INFO_PANNES_STATES["service_retabli"]
 
-        # PRIORITY 3: Planned intervention
+        # PRIORITY 4: Planned intervention
         planned = self._get_planned_intervention()
         if planned:
-            # Terminated planned intervention
+            if self._is_aip_annulee(planned):
+                return INFO_PANNES_STATES["aip_annulee"]
             if self._is_outage_terminated(planned):
-                return "Intervention planifiée terminée"
-
-            # Active planned intervention (main etat = "N")
+                return INFO_PANNES_STATES["aip_terminee"]
             if main_etat == "N":
-                return "Intervention planifiée en cours"
-
-            # Future planned intervention
+                return INFO_PANNES_STATES["aip_en_cours"]
             if self._is_future_planned(planned):
-                return "Interruption planifiée à venir"
+                return INFO_PANNES_STATES["aip_a_venir"]
+            return INFO_PANNES_STATES["aip_a_venir"]
 
-            # Generic planned state
-            return "Interruption planifiée"
-
-        # FALLBACK: No active or planned interruptions
+        # FALLBACK
         if main_etat == "A":
-            return "Aucune panne détectée"
-
-        # Main etat is "N" but couldn't match any interruption state
+            return INFO_PANNES_STATES["aucune_panne"]
         if main_etat == "N":
-            return "Panne en cours"
+            return INFO_PANNES_STATES["panne_en_cours"]
 
         return None
 
@@ -366,17 +375,24 @@ class HydroPannesInfoPannesSensor(HydroPannesSensorBase):
     def icon(self) -> str:
         """Return the icon based on current state."""
         state = self.native_value
-        if state == "Aucune panne détectée":
+        if state == INFO_PANNES_STATES["aucune_panne"]:
             return "mdi:check-circle"
-        if state in ("Courant rétabli", "Intervention planifiée terminée"):
+        if state in (
+            INFO_PANNES_STATES["service_retabli"],
+            INFO_PANNES_STATES["aip_terminee"],
+        ):
             return "mdi:check-circle-outline"
         if state in (
-            "Interruption planifiée à venir",
-            "Intervention planifiée en cours",
-            "Interruption planifiée",
+            INFO_PANNES_STATES["aip_a_venir"],
+            INFO_PANNES_STATES["aip_en_cours"],
+            INFO_PANNES_STATES["aip_annulee"],
         ):
             return "mdi:calendar-clock"
-        if state == "Panne en cours":
+        if state == INFO_PANNES_STATES["panne_majeure"]:
+            return "mdi:alert-octagon"
+        if state == INFO_PANNES_STATES["reprise_graduelle"]:
+            return "mdi:restore-alert"
+        if state == INFO_PANNES_STATES["panne_en_cours"]:
             return "mdi:alert-circle"
         return "mdi:help-circle"
 
@@ -390,7 +406,6 @@ class HydroPannesInfoPannesSensor(HydroPannesSensorBase):
         if not interruptions:
             return {"attribution": "Données fournies par Hydro-Québec"}
 
-        # Select interruption based on priority
         inter = self._get_active_outage()
         if not inter:
             inter = self._get_terminated_outage()
@@ -416,6 +431,7 @@ class HydroPannesInfoPannesSensor(HydroPannesSensorBase):
             "dureePrevu",
             "probabilite",
             "interruptionPlanifiee",
+            "typeFinPrevue",
         ):
             val = inter.get(key)
             if key.startswith("date") and val:
@@ -423,6 +439,10 @@ class HydroPannesInfoPannesSensor(HydroPannesSensorBase):
                 attrs[key] = parsed.isoformat() if parsed else val
             elif val is not None:
                 attrs[key] = val
+
+        attrs["repriseGraduellePossible"] = self.coordinator.data.get(
+            "repriseGraduellePossible", False
+        )
         attrs["attribution"] = "Données fournies par Hydro-Québec"
         return attrs
 
@@ -582,12 +602,18 @@ class HydroPannesFinEstimeeSensor(HydroPannesSensorBase):
 
 
 class HydroPannesStatutInterventionSensor(HydroPannesSensorBase):
-    """Sensor for intervention status.
+    """Sensor for intervention status — matches HQ ETAPE-PANNE exactly.
 
-    Values:
-      - If dateFin exists and in the past -> "Intervention terminée"
-      - Otherwise -> INTERVENTION_CODES[codeIntervention]
-      - No intervention -> None
+    Steps:
+      1. Début de la panne (dateDebut)
+      2. Évaluation des travaux requis       (codeIntervention = "N")
+      3. Équipe désignée                     (codeIntervention = "A" or "R")
+      4. Travaux en cours sur le réseau      (codeIntervention = "L", normal)
+         Réalisation des travaux par ordre   (codeIntervention = "L", niveauUrgence = "P")
+      5. Heure de rétablissement en cours d'évaluation (typeFinPrevue = "U")
+         Rétablissement prévu                (typeFinPrevue = "D" or "P")
+         Rétablissement graduel              (repriseGraduellePossible = True)
+      -> Service rétabli                     (dateFin in past)
     """
 
     def __init__(
@@ -610,14 +636,33 @@ class HydroPannesStatutInterventionSensor(HydroPannesSensorBase):
         if not outage:
             return None
 
-        # Check if intervention is terminated (dateFin in the past)
+        # Terminated
         if self._is_outage_terminated(outage):
-            return "Intervention terminée"
+            return INFO_PANNES_STATES["service_retabli"]
 
-        # Return intervention code text
+        # GRAP — gradual restoration
+        if self.coordinator.data and self.coordinator.data.get(
+            "repriseGraduellePossible"
+        ):
+            return INFO_PANNES_STATES["reprise_graduelle"]
+
         code = outage.get("codeIntervention")
-        if code:
-            return INTERVENTION_CODES.get(code)
+        niveau = outage.get("niveauUrgence")
+        type_fin = outage.get("typeFinPrevue")
+
+        # Step 4 — work in progress
+        if code == "L":
+            if niveau == "P":
+                return INTERVENTION_CODES_MAJEUR["L"]
+            return INTERVENTION_CODES.get("L")
+
+        # Steps 2 & 3
+        if code in INTERVENTION_CODES:
+            return INTERVENTION_CODES[code]
+
+        # Step 5 — restoration estimate (no crew code yet or after work)
+        if type_fin:
+            return TYPE_FIN_PREVUE_CODES.get(type_fin, f"Inconnu ({type_fin})")
 
         return None
 
@@ -1030,6 +1075,11 @@ class HydroPannesCodeInterventionSensor(HydroPannesSensorBase):
         return {
             "code_brut": code,
             "description": INTERVENTION_CODES.get(code) if code else None,
+            "description_majeur": (
+                INTERVENTION_CODES_MAJEUR.get(code)
+                if code and interruption.get("niveauUrgence") == "P"
+                else None
+            ),
             "etat_principal": self._get_main_etat(),
             "etat_interruption": interruption.get("etat"),
             "interruption_planifiee": interruption.get("interruptionPlanifiee"),
@@ -1039,12 +1089,16 @@ class HydroPannesCodeInterventionSensor(HydroPannesSensorBase):
 class HydroPannesTypeFinPrevueSensor(HydroPannesSensorBase):
     """Sensor for the type of expected end (typeFinPrevue).
 
-    Values:
-      - "U" -> "Indéterminée" (no estimated end date)
-      - "D" -> "Déterminée" (estimated end date available)
-      - "P" -> "Panne majeure" (estimated date, but not guaranteed)
+    Matches HQ ETAPE-PANNE step 5 labels:
+      - "U" -> "Heure de rétablissement en cours d'évaluation"
+      - "D" -> "Rétablissement prévu"
+      - "P" -> "Rétablissement prévu" (panne majeure — delays not guaranteed)
       - No interruption -> None
+
+    This sensor is disabled by default (diagnostic).
     """
+
+    _attr_entity_registry_enabled_default = False
 
     def __init__(
         self,
@@ -1057,6 +1111,7 @@ class HydroPannesTypeFinPrevueSensor(HydroPannesSensorBase):
         self._attr_name = "Type fin prévue"
         self._attr_unique_id = f"{entry.entry_id}_type_fin_prevue"
         self._attr_icon = "mdi:clock-question"
+        self._attr_entity_category = EntityCategory.DIAGNOSTIC
 
     @property
     def native_value(self) -> str | None:
@@ -1104,5 +1159,8 @@ class HydroPannesTypeFinPrevueSensor(HydroPannesSensorBase):
                 date_fin_estimee.isoformat() if date_fin_estimee else None
             ),
             "etat_principal": self._get_main_etat(),
-            "niveauUrgence": interruption.get("niveauUrgence"),
+            "niveau_urgence": interruption.get("niveauUrgence"),
+            "reprise_graduelle": self.coordinator.data.get(
+                "repriseGraduellePossible", False
+            ) if self.coordinator.data else False,
         }
