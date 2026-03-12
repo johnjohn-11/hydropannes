@@ -77,6 +77,7 @@ TYPE_FIN_PREVUE_CODES = {
     "P": "Rétablissement prévu",                           # panne majeure, délais non garantis
     "F": "Fin non déterminée",                             # panne majeure, pas de dateFinEstimeeMax
     "E": "Rétablissement prévu",                           # panne majeure, dateFinEstimeeMax présent (estimé)
+    "X": "Rétablissement prévu",                           # observé en fin de panne majeure, signification exacte à confirmer
 }
 
 ETAT_INTERRUPTION_CODES = {
