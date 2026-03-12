@@ -122,7 +122,13 @@ class HydroPannesBinarySensorBase(
         return not date_fin or self._is_date_in_future(date_fin)
 
     def _is_outage_terminated(self, intr: dict[str, Any]) -> bool:
-        """Check if an interruption is terminated (power restored)."""
+        """Check if an interruption is terminated (power restored).
+
+        Postponed interventions (etat = "R") are NOT terminated even if
+        their original dateFin is in the past.
+        """
+        if intr.get("etat") == "R":
+            return False
         date_fin = self._parse_dt(intr.get("dateFin"))
         return self._is_date_in_past(date_fin)
 
@@ -152,9 +158,12 @@ class HydroPannesBinarySensorBase(
             if self._is_outage_active(p):
                 return p
 
-        # Priority 2: Future planned intervention
+        # Priority 2: Future planned intervention (use report date if postponed)
         for p in planned:
-            date_debut = self._parse_dt(p.get("dateDebut"))
+            if p.get("etat") == "R":
+                date_debut = self._parse_dt(p.get("dateDebutReport")) or self._parse_dt(p.get("dateDebut"))
+            else:
+                date_debut = self._parse_dt(p.get("dateDebut"))
             if self._is_date_in_future(date_debut):
                 return p
 
@@ -230,6 +239,8 @@ class HydroPannesEtatServiceBinarySensor(HydroPannesBinarySensorBase):
         return {
             "dateDebut": active_interruption.get("dateDebut"),
             "dateFin": active_interruption.get("dateFin"),
+            "dateDebutReport": active_interruption.get("dateDebutReport"),
+            "dateFinReport": active_interruption.get("dateFinReport"),
             "dateFinEstimeeMax": active_interruption.get("dateFinEstimeeMax"),
             "etat": active_interruption.get("etat"),
             "interruptionPlanifiee": active_interruption.get("interruptionPlanifiee"),
@@ -304,6 +315,8 @@ class HydroPannesInterventionPlanifieeBinarySensor(HydroPannesBinarySensorBase):
         return {
             "dateDebut": planned.get("dateDebut"),
             "dateFin": planned.get("dateFin"),
+            "dateDebutReport": planned.get("dateDebutReport"),
+            "dateFinReport": planned.get("dateFinReport"),
             "dateFinEstimeeMax": planned.get("dateFinEstimeeMax"),
             "etat": planned.get("etat"),
             "interruptionPlanifiee": planned.get("interruptionPlanifiee"),
