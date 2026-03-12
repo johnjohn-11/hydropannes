@@ -172,13 +172,34 @@ class HydroPannesSensorBase(
 
         Returns True if:
         - interruptionPlanifiee = True
-        - AND dateDebut is in the future
+        - AND effective dateDebut is in the future (uses report date if postponed)
         """
         if not self._is_planned_intervention(intr):
             return False
 
-        date_debut = self._parse_dt(intr.get("dateDebut"))
-        return self._is_date_in_future(date_debut)
+        effective_debut, _ = self._get_effective_dates(intr)
+        return self._is_date_in_future(effective_debut)
+
+    def _get_effective_dates(
+        self, intr: dict[str, Any]
+    ) -> tuple[datetime | None, datetime | None]:
+        """Return effective start/end dates for a planned intervention.
+
+        If etat = "R" (postponed), use dateDebutReport/dateFinReport.
+        Otherwise use dateDebut/dateFin.
+
+        Returns: (effective_debut, effective_fin)
+        """
+        if intr.get("etat") == "R":
+            debut = self._parse_dt(intr.get("dateDebutReport"))
+            fin = self._parse_dt(intr.get("dateFinReport"))
+            # Fall back to original if report dates are missing
+            if debut:
+                return debut, fin
+        return (
+            self._parse_dt(intr.get("dateDebut")),
+            self._parse_dt(intr.get("dateFin")),
+        )
 
     def _get_active_outage(self) -> dict[str, Any] | None:
         """Get the first active non-planned outage.
@@ -420,6 +441,8 @@ class HydroPannesInfoPannesSensor(HydroPannesSensorBase):
             "etat",
             "dateFinEstimeeMin",
             "dateFinEstimeeMax",
+            "dateDebutReport",
+            "dateFinReport",
             "codeIntervention",
             "niveauUrgence",
             "nbClient",
@@ -511,7 +534,11 @@ class HydroPannesNombreClientSensor(HydroPannesSensorBase):
 
 
 class HydroPannesDebutSensor(HydroPannesSensorBase):
-    """Sensor for outage start time."""
+    """Sensor for outage/interruption start time.
+
+    For postponed planned interruptions (etat = "R"), returns dateDebutReport.
+    Otherwise returns dateDebut.
+    """
 
     def __init__(
         self,
@@ -528,25 +555,28 @@ class HydroPannesDebutSensor(HydroPannesSensorBase):
 
     @property
     def native_value(self) -> datetime | None:
-        """Return the outage start time."""
+        """Return the effective start time."""
         outage = self._get_current_interruption()
 
-        if not outage or "dateDebut" not in outage:
+        if not outage:
             return None
 
-        return self._parse_dt(outage["dateDebut"])
+        effective_debut, _ = self._get_effective_dates(outage)
+        return effective_debut
 
 
 class HydroPannesFinEstimeeSensor(HydroPannesSensorBase):
     """Sensor for estimated or actual end time.
 
+    For postponed planned interruptions (etat = "R"), returns dateFinReport.
     Sub-priority for value:
-      1. dateFin (actual end)
+      1. dateFin / dateFinReport (actual or postponed end)
       2. dateFinEstimeeMax (estimated end)
 
     Icons:
-      - mdi:clock-check (actual end time - dateFin)
-      - mdi:clock-alert (estimated end time - dateFinEstimeeMax)
+      - mdi:clock-check  (actual end time - dateFin)
+      - mdi:clock-alert  (estimated end time - dateFinEstimeeMax)
+      - mdi:calendar-clock (postponed - dateFinReport)
     """
 
     def __init__(
@@ -561,40 +591,48 @@ class HydroPannesFinEstimeeSensor(HydroPannesSensorBase):
         self._attr_unique_id = f"{entry.entry_id}_datefin"
         self._attr_device_class = SensorDeviceClass.TIMESTAMP
 
-    def _get_end_time_info(self) -> tuple[datetime | None, bool]:
-        """Get end time and whether it's actual or estimated.
+    def _get_end_time_info(self) -> tuple[datetime | None, bool, bool]:
+        """Get end time, whether it's actual, and whether it's postponed.
 
-        Returns: (datetime or None, is_actual: bool)
+        Returns: (datetime or None, is_actual: bool, is_postponed: bool)
         """
         outage = self._get_current_interruption()
 
         if not outage:
-            return None, False
+            return None, False, False
 
-        # Sub-priority 1: actual end time (dateFin)
+        # Postponed planned interruption — use dateFinReport
+        if outage.get("etat") == "R":
+            _, fin_report = self._get_effective_dates(outage)
+            if fin_report:
+                return fin_report, False, True
+
+        # Actual end time (dateFin)
         date_fin = self._parse_dt(outage.get("dateFin"))
         if date_fin:
-            return date_fin, True
+            return date_fin, True, False
 
-        # Sub-priority 2: estimated end time (dateFinEstimeeMax)
+        # Estimated end time (dateFinEstimeeMax)
         date_fin_estimee = self._parse_dt(outage.get("dateFinEstimeeMax"))
         if date_fin_estimee:
-            return date_fin_estimee, False
+            return date_fin_estimee, False, False
 
-        return None, False
+        return None, False, False
 
     @property
     def native_value(self) -> datetime | None:
-        """Return the actual or estimated end time."""
-        end_time, _ = self._get_end_time_info()
+        """Return the effective end time."""
+        end_time, _, _ = self._get_end_time_info()
         return end_time
 
     @property
     def icon(self) -> str:
-        """Return icon based on whether end time is actual or estimated."""
-        end_time, is_actual = self._get_end_time_info()
+        """Return icon based on end time type."""
+        end_time, is_actual, is_postponed = self._get_end_time_info()
         if end_time is None:
             return "mdi:clock-end"
+        if is_postponed:
+            return "mdi:calendar-clock"
         if is_actual:
             return "mdi:clock-check"
         return "mdi:clock-alert"
