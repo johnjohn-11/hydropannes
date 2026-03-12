@@ -71,8 +71,8 @@ NIVEAU_URGENCE_CODES = {
 # typeFinPrevue → step 5 label
 TYPE_FIN_PREVUE_CODES = {
     "U": "Heure de rétablissement en cours d'évaluation",
-    "D": "Rétablissement prévu",
-    "P": "Rétablissement prévu",
+    "D": "Rétablissement prévu (D)",
+    "P": "Rétablissement prévu (P)",
 }
 
 ETAT_INTERRUPTION_CODES = {
@@ -80,6 +80,8 @@ ETAT_INTERRUPTION_CODES = {
     "N": "Non-alimenté",
     "T": "Terminée",
     "P": "Planifiée",
+    "R": "Reportée",
+    "A": "Annulée",
 }
 
 # TYPE-DE-PANNES — exact labels from HQ i18n
