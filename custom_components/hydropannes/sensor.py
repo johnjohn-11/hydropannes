@@ -158,7 +158,11 @@ class HydroPannesSensorBase(
 
         An outage is TERMINATED if:
         - dateFin exists AND is in the past
+        - AND etat != "R" (postponed interruptions are NOT terminated,
+          their original dateFin is in the past but the work is rescheduled)
         """
+        if intr.get("etat") == "R":
+            return False
         date_fin = self._parse_dt(intr.get("dateFin"))
         return self._is_date_in_past(date_fin)
 
@@ -676,6 +680,10 @@ class HydroPannesStatutInterventionSensor(HydroPannesSensorBase):
         # Terminated
         if self._is_outage_terminated(outage):
             return INFO_PANNES_STATES["service_retabli"]
+
+        # Postponed planned intervention
+        if outage.get("etat") == "R":
+            return INFO_PANNES_STATES["aip_a_venir"]
 
         # GRAP — gradual restoration
         if self.coordinator.data and self.coordinator.data.get(
