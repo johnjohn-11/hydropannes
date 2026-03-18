@@ -146,6 +146,20 @@ class HydroPannesBinarySensorBase(
                 return intr
         return None
 
+    def _get_terminated_outage(self) -> dict[str, Any] | None:
+        """Get the most recent terminated non-planned outage."""
+        candidates = [
+            intr for intr in self._get_interruptions()
+            if not self._is_planned_intervention(intr)
+            and self._is_outage_terminated(intr)
+        ]
+        if not candidates:
+            return None
+        return max(
+            candidates,
+            key=lambda i: self._parse_dt(i.get("dateFin")) or dt_util.utc_from_timestamp(0),
+        )
+
     def _get_planned_intervention(self) -> dict[str, Any] | None:
         """Get the most relevant planned intervention."""
         interruptions = self._get_interruptions()
