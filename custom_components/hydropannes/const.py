@@ -80,6 +80,13 @@ TYPE_FIN_PREVUE_CODES = {
     "X": "Rétablissement prévu",                           # observé en fin de panne majeure, signification exacte à confirmer
 }
 
+# codeRemarque → signification observée empiriquement
+# Utilisé dans _is_aip_annulee() pour détecter les AIP annulées
+CODE_REMARQUE_CODES: dict[str, str] = {
+    "92": "Annulation d'une AIP",
+    "93": "Report d'une AIP",
+}
+
 ETAT_INTERRUPTION_CODES = {
     "C": "En cours d'évaluation",
     "N": "Non-alimenté",
