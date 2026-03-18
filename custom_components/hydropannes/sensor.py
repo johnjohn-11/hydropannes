@@ -17,6 +17,7 @@ from homeassistant.util import dt as dt_util
 
 from .const import (
     CAUSE_CODES,
+    CODE_REMARQUE_CODES,
     CONF_NOM_LIEU,
     DOMAIN,
     INFO_PANNES_STATES,
@@ -62,6 +63,7 @@ async def async_setup_entry(
         HydroPannesEtatInterruptionSensor(coordinator, entry, nom_lieu),
         HydroPannesCodeInterventionSensor(coordinator, entry, nom_lieu),
         HydroPannesTypeFinPrevueSensor(coordinator, entry, nom_lieu),
+        HydroPannesCodeRemarqueSensor(coordinator, entry, nom_lieu),
     ]
 
     async_add_entities(sensors)
@@ -221,16 +223,23 @@ class HydroPannesSensorBase(
         return None
 
     def _get_terminated_outage(self) -> dict[str, Any] | None:
-        """Get a terminated non-planned outage (for "Courant rétabli" state).
+        """Get the most recent terminated non-planned outage.
 
-        Returns the first non-planned interruption that has dateFin in the past.
+        When multiple terminated interruptions exist (e.g. HQ splits a panne
+        into sections), returns the one with the latest dateFin.
         """
-        for intr in self._get_interruptions():
-            if self._is_planned_intervention(intr):
-                continue
-            if self._is_outage_terminated(intr):
-                return intr
-        return None
+        candidates = [
+            intr for intr in self._get_interruptions()
+            if not self._is_planned_intervention(intr)
+            and self._is_outage_terminated(intr)
+        ]
+        if not candidates:
+            return None
+        # Return the one with the latest dateFin
+        return max(
+            candidates,
+            key=lambda i: self._parse_dt(i.get("dateFin")) or dt_util.utc_from_timestamp(0),
+        )
 
     def _get_planned_intervention(self) -> dict[str, Any] | None:
         """Get the most relevant planned intervention.
@@ -337,8 +346,15 @@ class HydroPannesInfoPannesSensor(HydroPannesSensorBase):
         self._attr_icon = "mdi:information-outline"
 
     def _is_aip_annulee(self, intr: dict[str, Any]) -> bool:
-        """Check if a planned interruption is cancelled."""
-        return intr.get("etat") == "A" or str(intr.get("codeRemarque", "")) == "A"
+        """Check if a planned interruption is cancelled.
+
+        Detected via:
+        - etat = "A" (annulée)
+        - codeRemarque = "92" (annulation d'une AIP, observé empiriquement)
+        """
+        etat = intr.get("etat")
+        code_remarque = str(intr.get("codeRemarque", ""))
+        return etat == "A" or code_remarque == "92"
 
     @property
     def native_value(self) -> str | None:
@@ -370,9 +386,14 @@ class HydroPannesInfoPannesSensor(HydroPannesSensorBase):
             return INFO_PANNES_STATES["panne_en_cours"]
 
         # PRIORITY 3: Terminated non-planned outage
+        # BUT: if a non-cancelled planned intervention is also present,
+        # show the AIP state instead (it takes precedence over a past outage)
         terminated_outage = self._get_terminated_outage()
         if terminated_outage:
-            return INFO_PANNES_STATES["service_retabli"]
+            planned_check = self._get_planned_intervention()
+            if not planned_check or self._is_aip_annulee(planned_check) or self._is_outage_terminated(planned_check):
+                return INFO_PANNES_STATES["service_retabli"]
+            # Fall through to PRIORITY 4 to show the AIP state
 
         # PRIORITY 4: Planned intervention
         planned = self._get_planned_intervention()
@@ -1208,4 +1229,55 @@ class HydroPannesTypeFinPrevueSensor(HydroPannesSensorBase):
             "reprise_graduelle": self.coordinator.data.get(
                 "repriseGraduellePossible", False
             ) if self.coordinator.data else False,
+        }
+
+
+class HydroPannesCodeRemarqueSensor(HydroPannesSensorBase):
+    """Sensor for the codeRemarque field (administrative status of an interruption).
+
+    Known values (observed empirically):
+      - "92" -> Annulation d'une AIP
+      - "93" -> Report d'une AIP
+      - ""   -> (no remark)
+
+    This sensor is disabled by default (diagnostic).
+    """
+
+    _attr_entity_registry_enabled_default = False
+
+    def __init__(
+        self,
+        coordinator: HydroPannesDataUpdateCoordinator,
+        entry: ConfigEntry,
+        nom_lieu: str,
+    ) -> None:
+        """Initialize the sensor."""
+        super().__init__(coordinator, entry, nom_lieu)
+        self._attr_name = "Code remarque"
+        self._attr_unique_id = f"{entry.entry_id}_code_remarque"
+        self._attr_icon = "mdi:note-text-outline"
+        self._attr_entity_category = EntityCategory.DIAGNOSTIC
+
+    @property
+    def native_value(self) -> str | None:
+        """Return the codeRemarque label."""
+        interruption = self._get_current_interruption()
+
+        if not interruption:
+            return None
+
+        code = str(interruption.get("codeRemarque", ""))
+        if not code:
+            return None
+
+        return CODE_REMARQUE_CODES.get(code, f"Inconnu ({code})")
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return raw codeRemarque for debugging."""
+        interruption = self._get_current_interruption()
+        if not interruption:
+            return {}
+        return {
+            "code_brut": interruption.get("codeRemarque", ""),
         }
