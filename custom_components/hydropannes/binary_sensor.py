@@ -15,6 +15,7 @@ from homeassistant.util import dt as dt_util
 
 from .const import CONF_NOM_LIEU, DOMAIN
 from .coordinator import HydroPannesDataUpdateCoordinator
+from .helpers import HydroPannesHelperMixin
 
 if TYPE_CHECKING:
     from datetime import datetime
@@ -44,7 +45,9 @@ async def async_setup_entry(
 
 
 class HydroPannesBinarySensorBase(
-    CoordinatorEntity[HydroPannesDataUpdateCoordinator], BinarySensorEntity
+    HydroPannesHelperMixin,
+    CoordinatorEntity[HydroPannesDataUpdateCoordinator],
+    BinarySensorEntity,
 ):
     """Base class for Hydro-Pannes binary sensors."""
 
@@ -71,118 +74,6 @@ class HydroPannesBinarySensorBase(
             model="Info-pannes",
         )
 
-    # ==========================================================================
-    # Helper methods (same logic as sensor.py)
-    # ==========================================================================
-
-    def _parse_dt(self, value: str | None) -> datetime | None:
-        """Parse an ISO datetime string to localized datetime or return None."""
-        if not value:
-            return None
-        try:
-            dt = dt_util.parse_datetime(value)
-            if not dt:
-                return None
-            return dt_util.as_local(dt)
-        except (ValueError, TypeError):
-            return None
-
-    def _is_date_in_past(self, date_value: datetime | None) -> bool:
-        """Check if a datetime is in the past."""
-        if not date_value:
-            return False
-        return date_value <= dt_util.now()
-
-    def _is_date_in_future(self, date_value: datetime | None) -> bool:
-        """Check if a datetime is in the future."""
-        if not date_value:
-            return False
-        return date_value > dt_util.now()
-
-    def _get_main_etat(self) -> str | None:
-        """Get the main 'etat' field from API response."""
-        if not self.coordinator.data:
-            return None
-        return self.coordinator.data.get("etat")
-
-    def _get_interruptions(self) -> list[dict[str, Any]]:
-        """Get the list of interruptions from API response."""
-        if not self.coordinator.data:
-            return []
-        result: list[dict[str, Any]] = self.coordinator.data.get("interruptions", [])
-        return result
-
-    def _is_outage_active(self, intr: dict[str, Any]) -> bool:
-        """Check if an interruption represents an active outage."""
-        main_etat = self._get_main_etat()
-        if main_etat != "N":
-            return False
-
-        date_fin = self._parse_dt(intr.get("dateFin"))
-        return not date_fin or self._is_date_in_future(date_fin)
-
-    def _is_outage_terminated(self, intr: dict[str, Any]) -> bool:
-        """Check if an interruption is terminated (power restored).
-
-        Postponed interventions (etat = "R") are NOT terminated even if
-        their original dateFin is in the past.
-        """
-        if intr.get("etat") == "R":
-            return False
-        date_fin = self._parse_dt(intr.get("dateFin"))
-        return self._is_date_in_past(date_fin)
-
-    def _is_planned_intervention(self, intr: dict[str, Any]) -> bool:
-        """Check if an interruption is a planned intervention."""
-        result: bool = intr.get("interruptionPlanifiee", False)
-        return result
-
-    def _get_active_outage(self) -> dict[str, Any] | None:
-        """Get the first active non-planned outage."""
-        for intr in self._get_interruptions():
-            if self._is_planned_intervention(intr):
-                continue
-            if self._is_outage_active(intr):
-                return intr
-        return None
-
-    def _get_terminated_outage(self) -> dict[str, Any] | None:
-        """Get the most recent terminated non-planned outage."""
-        candidates = [
-            intr for intr in self._get_interruptions()
-            if not self._is_planned_intervention(intr)
-            and self._is_outage_terminated(intr)
-        ]
-        if not candidates:
-            return None
-        return max(
-            candidates,
-            key=lambda i: self._parse_dt(i.get("dateFin")) or dt_util.utc_from_timestamp(0),
-        )
-
-    def _get_planned_intervention(self) -> dict[str, Any] | None:
-        """Get the most relevant planned intervention."""
-        interruptions = self._get_interruptions()
-        planned = [i for i in interruptions if self._is_planned_intervention(i)]
-        if not planned:
-            return None
-
-        # Priority 1: Active planned intervention
-        for p in planned:
-            if self._is_outage_active(p):
-                return p
-
-        # Priority 2: Future planned intervention (use report date if postponed)
-        for p in planned:
-            if p.get("etat") == "R":
-                date_debut = self._parse_dt(p.get("dateDebutReport")) or self._parse_dt(p.get("dateDebut"))
-            else:
-                date_debut = self._parse_dt(p.get("dateDebut"))
-            if self._is_date_in_future(date_debut):
-                return p
-
-        # Priority 3: Any planned (including terminated)
-        return planned[0]
 
 
 class HydroPannesEtatServiceBinarySensor(HydroPannesBinarySensorBase):
