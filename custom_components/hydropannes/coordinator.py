@@ -146,22 +146,40 @@ class HydroPannesDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         raise UpdateFailed(f"Error communicating with API: {error_msg}")
 
     async def _save_json_if_changed(self, lieu_id: str, data: dict[str, Any]) -> None:
-        """Save raw JSON to JSONL log only if data has changed since last entry."""
+        """Save raw JSON to JSONL log only if data has changed since last entry.
+
+        File I/O is offloaded to a thread via async_add_executor_job to avoid
+        blocking the Home Assistant event loop.
+        """
+        # Compute hash in the event loop (CPU-only, fast)
+        current_hash = hashlib.md5(
+            json.dumps(data, sort_keys=True).encode()
+        ).hexdigest()
+
+        # Skip if data hasn't changed
+        if self._last_hashes.get(lieu_id) == current_hash:
+            return
+
+        self._last_hashes[lieu_id] = current_hash
+
+        # Prepare the log entry here (event loop) before handing off to thread
+        entry = {
+            "timestamp": dt_util.utcnow().isoformat(),
+            "data": data,
+        }
+        entry_line = json.dumps(entry) + "\n"
+        log_dir = self.hass.config.path("hydropannes_logs")
+
+        # Offload all file I/O to a thread pool worker
+        await self.hass.async_add_executor_job(
+            self._write_log_sync, lieu_id, log_dir, entry_line
+        )
+
+    def _write_log_sync(self, lieu_id: str, log_dir: str, entry_line: str) -> None:
+        """Write log entry to disk — runs in executor thread, not event loop."""
         try:
-            log_dir = self.hass.config.path("hydropannes_logs")
             os.makedirs(log_dir, exist_ok=True)
             log_file = os.path.join(log_dir, f"{lieu_id}.jsonl")
-
-            # Compute hash of current data
-            current_hash = hashlib.md5(
-                json.dumps(data, sort_keys=True).encode()
-            ).hexdigest()
-
-            # Skip if data hasn't changed
-            if self._last_hashes.get(lieu_id) == current_hash:
-                return
-
-            self._last_hashes[lieu_id] = current_hash
 
             # Rotate if file exceeds size limit
             if os.path.exists(log_file):
@@ -169,12 +187,8 @@ class HydroPannesDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 if size_mb >= JSON_LOG_MAX_SIZE_MB:
                     self._rotate_log(log_file)
 
-            entry = {
-                "timestamp": dt_util.utcnow().isoformat(),
-                "data": data,
-            }
             with open(log_file, "a", encoding="utf-8") as f:
-                f.write(json.dumps(entry) + "\n")
+                f.write(entry_line)
 
             _LOGGER.debug("JSON change logged for lieu %s", lieu_id)
 
@@ -182,7 +196,10 @@ class HydroPannesDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             _LOGGER.exception("Failed to write JSON log for lieu %s", lieu_id)
 
     def _rotate_log(self, log_file: str) -> None:
-        """Keep only the most recent half of log entries."""
+        """Keep only the most recent half of log entries.
+
+        Called from _write_log_sync — already running in executor thread.
+        """
         try:
             with open(log_file, encoding="utf-8") as f:
                 lines = f.readlines()
