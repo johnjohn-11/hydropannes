@@ -11,7 +11,7 @@ Suivez en temps réel l'état du service électrique pour un ou plusieurs lieux 
 
 > ⚠️ **Cette intégration n'est pas affiliée à Hydro-Québec.**
 > En cas de problème, ouvrez une [issue sur GitHub](https://github.com/johnjohn-11/hydropannes/issues).
-> **Ne contactez pas le service client d'Hydro-Québec.**
+> **Ne contactez pas le service à la clientèle d'Hydro-Québec.**
 
 ## Fonctionnalités
 
