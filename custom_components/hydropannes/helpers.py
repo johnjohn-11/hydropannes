@@ -2,8 +2,8 @@
 
 All business logic for interpreting the Hydro-Québec API response lives here.
 Both HydroPannesSensorBase (sensor.py) and HydroPannesBinarySensorBase
-(binary_sensor.py) inherit from HydroPannesHelperMixin, ensuring a single
-source of truth for outage detection, date parsing, and priority logic.
+(binary_sensor.py) inherit from HydroPannesHelperMixin, providing a single
+source of truth for outage detection, date parsing, and priority selection.
 """
 
 from __future__ import annotations
@@ -32,7 +32,7 @@ class HydroPannesHelperMixin:
     # ==========================================================================
 
     def _parse_dt(self, value: str | None) -> datetime | None:
-        """Parse an ISO datetime string to localized datetime or return None."""
+        """Parse an ISO datetime string to a localized datetime, or return None."""
         if not value:
             return None
         try:
@@ -44,13 +44,13 @@ class HydroPannesHelperMixin:
             return None
 
     def _is_date_in_past(self, date_value: datetime | None) -> bool:
-        """Check if a datetime is in the past."""
+        """Return True if the given datetime is in the past."""
         if not date_value:
             return False
         return date_value <= dt_util.now()
 
     def _is_date_in_future(self, date_value: datetime | None) -> bool:
-        """Check if a datetime is in the future."""
+        """Return True if the given datetime is in the future."""
         if not date_value:
             return False
         return date_value > dt_util.now()
@@ -60,13 +60,13 @@ class HydroPannesHelperMixin:
     # ==========================================================================
 
     def _get_main_etat(self) -> str | None:
-        """Get the main 'etat' field from API response."""
+        """Return the top-level 'etat' field from the API response."""
         if not self.coordinator.data:
             return None
         return self.coordinator.data.get("etat")
 
     def _get_interruptions(self) -> list[dict[str, Any]]:
-        """Get the list of interruptions from API response."""
+        """Return the list of interruptions from the API response."""
         if not self.coordinator.data:
             return []
         result: list[dict[str, Any]] = self.coordinator.data.get("interruptions", [])
@@ -77,14 +77,14 @@ class HydroPannesHelperMixin:
     # ==========================================================================
 
     def _is_outage_active(self, intr: dict[str, Any]) -> bool:
-        """Check if an interruption represents an active outage.
+        """Return True if the interruption represents an active outage.
 
-        An outage is considered ACTIVE if:
-        - Main etat = "N" (outage state)
-        - AND (no dateFin OR dateFin is in the future)
+        An outage is active when:
+        - The top-level etat is "N" (power out), AND
+        - dateFin is absent or in the future.
 
-        Note: We ignore the interruption's own 'etat' field (T, C, etc.)
-        as it doesn't reliably indicate active state.
+        The interruption's own 'etat' field is intentionally ignored here,
+        as it does not reliably indicate whether power is currently restored.
         """
         main_etat = self._get_main_etat()
         if main_etat != "N":
@@ -94,12 +94,11 @@ class HydroPannesHelperMixin:
         return not date_fin or self._is_date_in_future(date_fin)
 
     def _is_outage_terminated(self, intr: dict[str, Any]) -> bool:
-        """Check if an interruption is terminated (power restored).
+        """Return True if the interruption is terminated (power restored).
 
-        An outage is TERMINATED if:
-        - dateFin exists AND is in the past
-        - AND etat != "R" (postponed interruptions are NOT terminated —
-          their original dateFin is in the past but the work is rescheduled)
+        An outage is terminated when dateFin is in the past, unless etat is "R"
+        (postponed): a postponed interruption has a past dateFin but is rescheduled,
+        not completed.
         """
         if intr.get("etat") == "R":
             return False
@@ -107,16 +106,16 @@ class HydroPannesHelperMixin:
         return self._is_date_in_past(date_fin)
 
     def _is_planned_intervention(self, intr: dict[str, Any]) -> bool:
-        """Check if an interruption is a planned intervention (AIP)."""
+        """Return True if the interruption is a planned intervention (AIP)."""
         result: bool = intr.get("interruptionPlanifiee", False)
         return result
 
     def _is_aip_annulee(self, intr: dict[str, Any]) -> bool:
-        """Check if a planned intervention is cancelled.
+        """Return True if the planned intervention has been cancelled.
 
-        Detected via:
-        - etat = "A" (annulée)
-        - codeRemarque = "92" (annulation d'une AIP, observé empiriquement)
+        Cancellation is detected via:
+        - etat = "A" (annulée), or
+        - codeRemarque = "92" (AIP cancellation code, observed empirically).
         """
         etat = intr.get("etat")
         code_remarque = str(intr.get("codeRemarque", ""))
@@ -129,17 +128,16 @@ class HydroPannesHelperMixin:
     def _get_effective_dates(
         self, intr: dict[str, Any]
     ) -> tuple[datetime | None, datetime | None]:
-        """Return effective start/end dates for a planned intervention.
+        """Return the effective start and end dates for an interruption.
 
-        If etat = "R" (postponed), use dateDebutReport/dateFinReport.
-        Otherwise use dateDebut/dateFin.
+        For postponed interventions (etat = "R"), uses dateDebutReport/dateFinReport.
+        Falls back to dateDebut/dateFin if report dates are absent.
 
         Returns: (effective_debut, effective_fin)
         """
         if intr.get("etat") == "R":
             debut = self._parse_dt(intr.get("dateDebutReport"))
             fin = self._parse_dt(intr.get("dateFinReport"))
-            # Fall back to original if report dates are missing
             if debut:
                 return debut, fin
         return (
@@ -148,11 +146,9 @@ class HydroPannesHelperMixin:
         )
 
     def _is_future_planned(self, intr: dict[str, Any]) -> bool:
-        """Check if an interruption is a future planned intervention.
+        """Return True if the interruption is a planned intervention with a future start.
 
-        Returns True if:
-        - interruptionPlanifiee = True
-        - AND effective dateDebut is in the future (uses report date if postponed)
+        Uses the report date for postponed interventions (etat = "R").
         """
         if not self._is_planned_intervention(intr):
             return False
@@ -165,12 +161,10 @@ class HydroPannesHelperMixin:
     # ==========================================================================
 
     def _get_active_outage(self) -> dict[str, Any] | None:
-        """Get the first active non-planned outage.
+        """Return the first active non-planned outage, or None.
 
-        Returns the first interruption where:
-        - interruptionPlanifiee = False
-        - Main etat = "N"
-        - No dateFin or dateFin in the future
+        An active outage is unplanned, has main etat = "N",
+        and has no dateFin or a dateFin in the future.
         """
         for intr in self._get_interruptions():
             if self._is_planned_intervention(intr):
@@ -180,10 +174,10 @@ class HydroPannesHelperMixin:
         return None
 
     def _get_terminated_outage(self) -> dict[str, Any] | None:
-        """Get the most recent terminated non-planned outage.
+        """Return the most recently terminated non-planned outage, or None.
 
-        When multiple terminated interruptions exist (e.g. HQ splits a panne
-        into sections), returns the one with the latest dateFin.
+        When HQ splits a single panne into multiple sections, there may be
+        several terminated interruptions. Returns the one with the latest dateFin.
         """
         candidates = [
             intr for intr in self._get_interruptions()
@@ -192,7 +186,6 @@ class HydroPannesHelperMixin:
         ]
         if not candidates:
             return None
-        # Return the one with the latest dateFin
         return max(
             candidates,
             key=lambda i: self._parse_dt(i.get("dateFin"))
@@ -200,61 +193,63 @@ class HydroPannesHelperMixin:
         )
 
     def _get_planned_intervention(self) -> dict[str, Any] | None:
-        """Get the most relevant planned intervention (AIP).
+        """Return the most relevant planned intervention (AIP), or None.
 
-        Priority:
-        1. Active planned (main etat = "N", no dateFin or dateFin in future)
-        2. Future planned (effective dateDebut in future)
-        3. Any planned intervention (including terminated — fallback)
+        Selection priority:
+        1. Active planned intervention (main etat = "N", dateFin absent or future).
+        2. Future planned intervention (effective dateDebut in the future).
+        3. Any planned intervention, including terminated (fallback).
         """
         interruptions = self._get_interruptions()
         planned = [i for i in interruptions if self._is_planned_intervention(i)]
         if not planned:
             return None
 
-        # Priority 1: Active planned intervention
         for p in planned:
             if self._is_outage_active(p):
                 return p
 
-        # Priority 2: Future planned intervention (uses report date if postponed)
         for p in planned:
             if self._is_future_planned(p):
                 return p
 
-        # Priority 3: Any planned (including terminated)
         return planned[0]
 
     def _get_current_interruption(self) -> dict[str, Any] | None:
-        """Get the most relevant interruption for displaying sensor data.
+        """Return the most relevant interruption for sensor display.
 
-        Priority logic:
-        1. Active non-planned outage (ongoing — power is out)
-        2. Terminated non-planned outage (recently finished — "Service rétabli")
-           UNLESS a non-cancelled, non-terminated AIP also exists (AIP takes over)
-        3. Planned intervention (active, future, or terminated)
-        4. First interruption in list (fallback)
+        Selection priority:
+        1. Active non-planned outage (power is currently out).
+        2. Terminated non-planned outage ("Service rétabli"), unless a
+           non-cancelled, non-terminated AIP also exists — in that case
+           the AIP takes precedence.
+        3. Planned intervention (active, future, or terminated).
+        4. First interruption in list (fallback).
         """
-        # Priority 1: Active non-planned outage
+        # Priority 1: active unplanned outage
         interruption = self._get_active_outage()
         if interruption:
             return interruption
 
-        # Priority 2: Terminated non-planned outage
-        # But yield to an active/future AIP if one exists simultaneously
+        # Priority 2: terminated unplanned outage
+        # Yield to an active or future AIP when one coexists.
         terminated_outage = self._get_terminated_outage()
         if terminated_outage:
             planned_check = self._get_planned_intervention()
-            if not planned_check or self._is_aip_annulee(planned_check) or self._is_outage_terminated(planned_check):
+            if (
+                not planned_check
+                or self._is_aip_annulee(planned_check)
+                or self._is_outage_terminated(planned_check)
+            ):
                 return terminated_outage
-            # Fall through to Priority 3 — show the AIP state instead
+            # Fall through to Priority 3 — AIP state supersedes the past outage.
 
-        # Priority 3: Planned intervention
+        # Priority 3: planned intervention
         interruption = self._get_planned_intervention()
         if interruption:
             return interruption
 
-        # Priority 4: Fallback to first interruption if any
+        # Priority 4: fallback to first available interruption
         interruptions = self._get_interruptions()
         if interruptions:
             return interruptions[0]

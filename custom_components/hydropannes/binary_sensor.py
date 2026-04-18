@@ -11,15 +11,12 @@ from homeassistant.components.binary_sensor import (
 )
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
-from homeassistant.util import dt as dt_util
 
 from .const import CONF_NOM_LIEU, DOMAIN
 from .coordinator import HydroPannesDataUpdateCoordinator
 from .helpers import HydroPannesHelperMixin
 
 if TYPE_CHECKING:
-    from datetime import datetime
-
     from homeassistant.config_entries import ConfigEntry
     from homeassistant.core import HomeAssistant
     from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -32,7 +29,7 @@ async def async_setup_entry(
     entry: ConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
-    """Set up the Hydro-Pannes binary sensors."""
+    """Set up Hydro-Pannes binary sensors for a config entry."""
     coordinator: HydroPannesDataUpdateCoordinator = hass.data[DOMAIN][entry.entry_id]
     nom_lieu = entry.data[CONF_NOM_LIEU]
 
@@ -49,7 +46,7 @@ class HydroPannesBinarySensorBase(
     CoordinatorEntity[HydroPannesDataUpdateCoordinator],
     BinarySensorEntity,
 ):
-    """Base class for Hydro-Pannes binary sensors."""
+    """Base class for all Hydro-Pannes binary sensors."""
 
     _attr_has_entity_name = True
 
@@ -65,19 +62,28 @@ class HydroPannesBinarySensorBase(
         self._nom_lieu = nom_lieu
 
     @property
+    def available(self) -> bool:
+        """Return True only when the coordinator has successfully fetched data."""
+        return super().available and self.coordinator.data is not None
+
+    @property
     def device_info(self) -> DeviceInfo:
-        """Return device information."""
+        """Return device registry information."""
         return DeviceInfo(
             identifiers={(DOMAIN, self._entry.entry_id)},
             name=f"HydroPannes {self._nom_lieu}",
-            manufacturer=None,
+            manufacturer="Hydro-Québec",
             model="Info-pannes",
         )
 
 
-
 class HydroPannesEtatServiceBinarySensor(HydroPannesBinarySensorBase):
-    """Binary sensor for Hydro-Pannes service status."""
+    """Binary sensor indicating whether there is an active service problem.
+
+    On  (True)  → power is currently out (active unplanned or planned outage).
+    Off (False) → service is normal.
+    None        → coordinator has no data, or the outage state is indeterminate.
+    """
 
     def __init__(
         self,
@@ -93,40 +99,38 @@ class HydroPannesEtatServiceBinarySensor(HydroPannesBinarySensorBase):
 
     @property
     def is_on(self) -> bool | None:
-        """Return true if there's an active outage (service problem)."""
+        """Return True if there is an active outage, False if normal, None if unknown."""
         if not self.coordinator.data:
             return None
 
         main_etat = self._get_main_etat()
 
-        # If main state is not "N", there is no outage
         if main_etat != "N":
             return False
 
-        # Check for active non-planned outage
-        active_outage = self._get_active_outage()
-        if active_outage:
+        # Active non-planned outage
+        if self._get_active_outage():
             return True
 
-        # Also check if there's an active planned intervention causing the outage
+        # Active planned intervention causing a power cut
         planned = self._get_planned_intervention()
         if planned and self._is_outage_active(planned):
             return True
 
-        # Main etat is "N" but no active interruption found
-        # This could be a transitional state, return True to be safe
-        return True
+        # main etat is "N" but no matching active interruption found —
+        # state is ambiguous (e.g. transitional API response); report as unknown.
+        return None
 
     @property
     def icon(self) -> str:
-        """Return the icon based on state."""
+        """Return an icon reflecting the current service state."""
         if self.is_on:
             return "mdi:power-plug-off"
         return "mdi:power-plug"
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
-        """Return extra attributes from the active interruption."""
+        """Return key fields from the selected interruption."""
         if not self.coordinator.data:
             return {}
 
@@ -134,7 +138,6 @@ class HydroPannesEtatServiceBinarySensor(HydroPannesBinarySensorBase):
         if not interruptions:
             return {}
 
-        # Select interruption based on priority
         active_interruption = self._get_active_outage()
         if not active_interruption:
             active_interruption = self._get_planned_intervention()
@@ -161,7 +164,7 @@ class HydroPannesEtatServiceBinarySensor(HydroPannesBinarySensorBase):
 
 
 class HydroPannesInterventionPlanifieeBinarySensor(HydroPannesBinarySensorBase):
-    """Binary sensor for planned intervention status."""
+    """Binary sensor indicating whether a planned intervention is active or upcoming."""
 
     def __init__(
         self,
@@ -176,7 +179,7 @@ class HydroPannesInterventionPlanifieeBinarySensor(HydroPannesBinarySensorBase):
 
     @property
     def is_on(self) -> bool | None:
-        """Return true if there's an active or upcoming planned intervention."""
+        """Return True if a non-terminated planned intervention exists."""
         if not self.coordinator.data:
             return None
 
@@ -190,14 +193,14 @@ class HydroPannesInterventionPlanifieeBinarySensor(HydroPannesBinarySensorBase):
 
     @property
     def icon(self) -> str:
-        """Return the icon based on state."""
+        """Return an icon reflecting the planned intervention state."""
         if self.is_on:
             return "mdi:calendar-clock"
         return "mdi:calendar-check"
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
-        """Return extra attributes from the planned intervention."""
+        """Return key fields from the most relevant non-terminated planned intervention."""
         if not self.coordinator.data:
             return {}
 
@@ -205,14 +208,14 @@ class HydroPannesInterventionPlanifieeBinarySensor(HydroPannesBinarySensorBase):
         if not interruptions:
             return {}
 
-        # Find the most relevant planned intervention (not terminated)
-        planned = None
-        for intr in interruptions:
-            if self._is_planned_intervention(intr) and not self._is_outage_terminated(
-                intr
-            ):
-                planned = intr
-                break
+        planned = next(
+            (
+                intr for intr in interruptions
+                if self._is_planned_intervention(intr)
+                and not self._is_outage_terminated(intr)
+            ),
+            None,
+        )
 
         if not planned:
             return {}

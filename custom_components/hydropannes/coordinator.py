@@ -25,16 +25,14 @@ if TYPE_CHECKING:
 
 _LOGGER = logging.getLogger(__name__)
 
-# Retry config for transient server errors (5xx)
 MAX_RETRIES = 2
-RETRY_DELAY = 2  # seconds
-
-# JSON logging config
+RETRY_DELAY = 2  # seconds between retry attempts
+ACTIVE_OUTAGE_UPDATE_INTERVAL = 60  # seconds — faster polling during an active outage
 JSON_LOG_MAX_SIZE_MB = 5
 
 
 class HydroPannesDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
-    """Class to manage fetching Hydro-Pannes data."""
+    """Coordinator managing Hydro-Pannes data fetching and caching."""
 
     def __init__(self, hass: HomeAssistant, lieu_conso: str) -> None:
         """Initialize the coordinator."""
@@ -48,7 +46,7 @@ class HydroPannesDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         )
 
     async def _async_update_data(self) -> dict[str, Any]:
-        """Fetch data from the Hydro-Québec API."""
+        """Fetch latest data from the Hydro-Québec API."""
         url = API_URL.format(self.lieu_conso)
         session = async_get_clientsession(self.hass)
 
@@ -56,11 +54,10 @@ class HydroPannesDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             try:
                 async with asyncio.timeout(10):
                     async with session.get(url) as response:
-                        # Retry on server errors (5xx)
                         if 500 <= response.status < 600:
                             if attempt < MAX_RETRIES:
                                 _LOGGER.debug(
-                                    "API returned status %s for lieu %s, retry %s/%s",
+                                    "API returned %s for lieu %s, retry %s/%s",
                                     response.status,
                                     self.lieu_conso,
                                     attempt + 1,
@@ -68,9 +65,8 @@ class HydroPannesDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                                 )
                                 await asyncio.sleep(RETRY_DELAY)
                                 continue
-                            # All retries failed - keep previous data if available
                             return self._handle_failure(
-                                f"API returned status {response.status} "
+                                f"API returned {response.status} "
                                 f"after {MAX_RETRIES + 1} attempts"
                             )
 
@@ -80,16 +76,12 @@ class HydroPannesDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                             )
 
                         data = await response.json()
-
-                        # Validate that we received data
                         if not data:
                             return self._handle_failure("API returned empty data")
 
-                        _LOGGER.debug(
-                            "Successfully fetched data for lieu %s",
-                            self.lieu_conso,
-                        )
+                        _LOGGER.debug("Fetched data for lieu %s", self.lieu_conso)
                         result: dict[str, Any] = data[0]
+                        self._adjust_update_interval(result)
                         await self._save_json_if_changed(self.lieu_conso, result)
                         return result
 
@@ -119,50 +111,77 @@ class HydroPannesDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 return self._handle_failure(f"Connection error: {err}")
 
             except Exception as err:
-                _LOGGER.exception(
-                    "Unexpected error fetching data for lieu %s",
-                    self.lieu_conso,
-                )
+                _LOGGER.exception("Unexpected error for lieu %s", self.lieu_conso)
                 return self._handle_failure(f"Unexpected error: {err}")
 
-        # Should not reach here, but just in case
         return self._handle_failure("Unknown error")
 
     def _handle_failure(self, error_msg: str) -> dict[str, Any]:
-        """Handle API failure by keeping previous data or raising UpdateFailed."""
+        """Return stale data on transient failure, or raise UpdateFailed if none exists."""
         if self.data is not None:
             _LOGGER.warning(
-                "%s for lieu %s - keeping previous data",
+                "%s for lieu %s — keeping previous data",
                 error_msg,
                 self.lieu_conso,
             )
             return dict(self.data)
 
         _LOGGER.warning(
-            "%s for lieu %s - no previous data available",
+            "%s for lieu %s — no previous data available",
             error_msg,
             self.lieu_conso,
         )
         raise UpdateFailed(f"Error communicating with API: {error_msg}")
 
-    async def _save_json_if_changed(self, lieu_id: str, data: dict[str, Any]) -> None:
-        """Save raw JSON to JSONL log only if data has changed since last entry.
+    def _adjust_update_interval(self, data: dict[str, Any]) -> None:
+        """Switch between fast and normal polling based on outage state.
 
-        File I/O is offloaded to a thread via async_add_executor_job to avoid
+        Polls every 60 s during an active outage for timely status updates,
+        and falls back to the default 180 s interval otherwise.
+        """
+        target_seconds = (
+            ACTIVE_OUTAGE_UPDATE_INTERVAL
+            if self._is_active_outage_in_data(data)
+            else UPDATE_INTERVAL
+        )
+        target = timedelta(seconds=target_seconds)
+        if self.update_interval != target:
+            self.update_interval = target
+            _LOGGER.debug(
+                "Polling interval set to %ss for lieu %s",
+                target_seconds,
+                self.lieu_conso,
+            )
+
+    def _is_active_outage_in_data(self, data: dict[str, Any]) -> bool:
+        """Return True if data contains at least one active (non-terminated) outage."""
+        if data.get("etat") != "N":
+            return False
+        now = dt_util.now()
+        for intr in data.get("interruptions", []):
+            date_fin_str = intr.get("dateFin")
+            if not date_fin_str:
+                return True  # no end date means the outage is still ongoing
+            dt = dt_util.parse_datetime(date_fin_str)
+            if dt and dt_util.as_local(dt) > now:
+                return True
+        return False
+
+    async def _save_json_if_changed(self, lieu_id: str, data: dict[str, Any]) -> None:
+        """Append a JSONL log entry only when data has changed since the last write.
+
+        File I/O is dispatched to a thread pool via async_add_executor_job to avoid
         blocking the Home Assistant event loop.
         """
-        # Compute hash in the event loop (CPU-only, fast)
         current_hash = hashlib.md5(
             json.dumps(data, sort_keys=True).encode()
         ).hexdigest()
 
-        # Skip if data hasn't changed
         if self._last_hashes.get(lieu_id) == current_hash:
             return
 
         self._last_hashes[lieu_id] = current_hash
 
-        # Prepare the log entry here (event loop) before handing off to thread
         entry = {
             "timestamp": dt_util.utcnow().isoformat(),
             "data": data,
@@ -170,18 +189,16 @@ class HydroPannesDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         entry_line = json.dumps(entry) + "\n"
         log_dir = self.hass.config.path("hydropannes_logs")
 
-        # Offload all file I/O to a thread pool worker
         await self.hass.async_add_executor_job(
             self._write_log_sync, lieu_id, log_dir, entry_line
         )
 
     def _write_log_sync(self, lieu_id: str, log_dir: str, entry_line: str) -> None:
-        """Write log entry to disk — runs in executor thread, not event loop."""
+        """Write a log entry to disk. Runs in an executor thread, not the event loop."""
         try:
             os.makedirs(log_dir, exist_ok=True)
             log_file = os.path.join(log_dir, f"{lieu_id}.jsonl")
 
-            # Rotate if file exceeds size limit
             if os.path.exists(log_file):
                 size_mb = os.path.getsize(log_file) / (1024 * 1024)
                 if size_mb >= JSON_LOG_MAX_SIZE_MB:
@@ -190,27 +207,27 @@ class HydroPannesDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             with open(log_file, "a", encoding="utf-8") as f:
                 f.write(entry_line)
 
-            _LOGGER.debug("JSON change logged for lieu %s", lieu_id)
+            _LOGGER.debug("Logged change for lieu %s", lieu_id)
 
         except OSError:
-            _LOGGER.exception("Failed to write JSON log for lieu %s", lieu_id)
+            _LOGGER.exception("Failed to write log for lieu %s", lieu_id)
 
     def _rotate_log(self, log_file: str) -> None:
-        """Keep only the most recent half of log entries.
+        """Trim the log file to its most recent half when it exceeds the size limit.
 
-        Called from _write_log_sync — already running in executor thread.
+        Called from _write_log_sync; already running in an executor thread.
         """
         try:
             with open(log_file, encoding="utf-8") as f:
                 lines = f.readlines()
 
-            keep = lines[len(lines) // 2 :]
+            keep = lines[len(lines) // 2:]
 
             with open(log_file, "w", encoding="utf-8") as f:
                 f.writelines(keep)
 
             _LOGGER.info(
-                "Rotated log file %s: kept %d/%d entries",
+                "Rotated %s: kept %d/%d entries",
                 log_file,
                 len(keep),
                 len(lines),

@@ -18,5 +18,15 @@
     "abort": {
       "already_configured": "Ce lieu de consommation est déjà configuré"
     }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Modifier le lieu",
+        "data": {
+          "nom_lieu": "Nom du lieu"
+        }
+      }
+    }
   }
 }

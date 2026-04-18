@@ -18,5 +18,15 @@
     "abort": {
       "already_configured": "This consumption location is already configured"
     }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Modify location",
+        "data": {
+          "nom_lieu": "Location name"
+        }
+      }
+    }
   }
 }

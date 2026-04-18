@@ -29,7 +29,7 @@ STEP_USER_DATA_SCHEMA = vol.Schema(
 
 
 async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str, Any]:
-    """Validate the user input allows us to connect."""
+    """Validate the user-supplied lieu de consommation by querying the API."""
     lieu_conso = data[CONF_LIEU_CONSO]
     url = API_URL.format(lieu_conso)
     session = async_get_clientsession(hass)
@@ -51,7 +51,7 @@ async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str,
 
 
 class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
-    """Handle a config flow for Hydro-Pannes."""
+    """Handle the initial configuration flow for Hydro-Pannes."""
 
     VERSION = 1
 
@@ -60,13 +60,13 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     def async_get_options_flow(
         config_entry: config_entries.ConfigEntry,
     ) -> OptionsFlowHandler:
-        """Get the options flow for this handler."""
+        """Return the options flow handler."""
         return OptionsFlowHandler()
 
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        """Handle the initial step."""
+        """Handle the user-initiated setup step."""
         errors: dict[str, str] = {}
         if user_input is not None:
             try:
@@ -88,14 +88,13 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
 
 class OptionsFlowHandler(config_entries.OptionsFlow):
-    """Handle options flow for Hydro-Pannes."""
+    """Handle options flow for renaming a configured location."""
 
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        """Manage the options."""
+        """Present the options form and apply changes when submitted."""
         if user_input is not None:
-            # Update the config entry data with new nom_lieu
             new_data = {
                 **self.config_entry.data,
                 CONF_NOM_LIEU: user_input[CONF_NOM_LIEU],
@@ -121,8 +120,8 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
 
 
 class CannotConnect(HomeAssistantError):
-    """Error to indicate we cannot connect."""
+    """Raised when the API is unreachable."""
 
 
 class InvalidLieuConso(HomeAssistantError):
-    """Error to indicate the provided lieu de consommation is invalid."""
+    """Raised when the lieu de consommation number returns no data."""

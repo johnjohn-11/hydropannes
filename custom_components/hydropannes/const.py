@@ -10,7 +10,7 @@ API_URL = (
     "pan/web/api/v1/lieux-conso/etats/{}"
 )
 
-UPDATE_INTERVAL = 180  # seconds
+UPDATE_INTERVAL = 180  # seconds — default polling interval (no active outage)
 
 ATTRIBUTION = "Données fournies par Hydro-Québec"
 
@@ -58,7 +58,7 @@ INTERVENTION_CODES = {
     "L": "Travaux en cours sur le réseau électrique",
 }
 
-# Used for major outages (niveauUrgence = "P") — overrides INTERVENTION_CODES for "L"
+# Overrides INTERVENTION_CODES["L"] for major outages (niveauUrgence = "P").
 INTERVENTION_CODES_MAJEUR = {
     "L": "Réalisation des travaux par ordre de priorité",
 }
@@ -68,20 +68,20 @@ NIVEAU_URGENCE_CODES = {
     "P": "Panne majeure",
 }
 
-# typeFinPrevue → step 5 label
-# Sources officielles HQ : U, D, P
-# F, E : observés empiriquement, labels provisoires (non confirmés)
+# typeFinPrevue → ETAPE-PANNE step 5 label.
+# U, D, P: documented by HQ.
+# F, E, X: observed empirically; labels are provisional.
 TYPE_FIN_PREVUE_CODES = {
-    "U": "Heure de rétablissement en cours d'évaluation",  # pas de date
-    "D": "Rétablissement prévu",                           # date fiable
-    "P": "Rétablissement prévu",                           # panne majeure, délais non garantis
-    "F": "Fin non déterminée",                             # panne majeure, pas de dateFinEstimeeMax
-    "E": "Rétablissement prévu",                           # panne majeure, dateFinEstimeeMax présent (estimé)
-    "X": "Rétablissement prévu",                           # observé en fin de panne majeure, signification exacte à confirmer
+    "U": "Heure de rétablissement en cours d'évaluation",  # no estimated date
+    "D": "Rétablissement prévu",                           # reliable date
+    "P": "Rétablissement prévu",                           # major outage, delays not guaranteed
+    "F": "Fin non déterminée",                             # major outage, no dateFinEstimeeMax
+    "E": "Rétablissement prévu",                           # major outage, dateFinEstimeeMax present (estimated)
+    "X": "Rétablissement prévu",                           # observed near end of major outage; exact meaning unconfirmed
 }
 
-# codeRemarque → signification observée empiriquement
-# Utilisé dans _is_aip_annulee() pour détecter les AIP annulées
+# codeRemarque → meaning observed empirically.
+# Used in _is_aip_annulee() to detect cancelled planned interventions.
 CODE_REMARQUE_CODES: dict[str, str] = {
     "92": "Annulation d'une AIP",
     "93": "Report d'une AIP",
@@ -96,7 +96,7 @@ ETAT_INTERRUPTION_CODES = {
     "A": "Annulée",
 }
 
-# TYPE-DE-PANNES — exact labels from HQ i18n
+# Canonical state strings matching HQ TYPE-DE-PANNES labels.
 INFO_PANNES_STATES = {
     "aucune_panne": "Aucune panne détectée",
     "panne_en_cours": "Panne en cours",
