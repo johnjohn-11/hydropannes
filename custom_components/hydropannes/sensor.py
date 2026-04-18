@@ -11,9 +11,7 @@ from homeassistant.components.sensor import (
     SensorStateClass,
 )
 from homeassistant.const import EntityCategory, UnitOfTime
-from homeassistant.core import callback
 from homeassistant.helpers.device_registry import DeviceInfo
-from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.util import dt as dt_util
 
@@ -25,7 +23,6 @@ from .const import (
     INTERVENTION_CODES,
     INTERVENTION_CODES_MAJEUR,
     NIVEAU_URGENCE_CODES,
-    SIGNAL_NEW_COORDINATOR,
     TYPE_FIN_PREVUE_CODES,
 )
 from .coordinator import HydroPannesDataUpdateCoordinator
@@ -62,7 +59,6 @@ async def async_setup_entry(
         HydroPannesDureeAvantRetablissementSensor(coordinator, entry, nom_lieu),
         HydroPannesDerniereMAJSensor(coordinator, entry, nom_lieu),
         HydroPannesLieuConsoSensor(coordinator, entry, nom_lieu),
-        HydroPannesSommaireSensor(coordinator, entry, nom_lieu),
     ]
 
     async_add_entities(sensors)
@@ -695,120 +691,3 @@ class HydroPannesLieuConsoSensor(HydroPannesSensorBase):
         return self.coordinator.data.get("idLieuConso")
 
 
-class HydroPannesSommaireSensor(HydroPannesSensorBase):
-    """Sensor aggregating the outage state across all configured locations.
-
-    Useful when monitoring multiple sites (e.g. home and cottage). Shows a
-    human-readable summary such as "2 pannes actives sur 3 lieux".
-
-    Each configured location creates its own instance of this sensor, but all
-    instances reflect the same global state. Users with multiple locations
-    should enable one instance and disable the rest.
-
-    Disabled by default — opt in via the entity registry.
-    """
-
-    _attr_entity_registry_enabled_default = False
-
-    def __init__(
-        self,
-        coordinator: HydroPannesDataUpdateCoordinator,
-        entry: ConfigEntry,
-        nom_lieu: str,
-    ) -> None:
-        """Initialize the summary sensor."""
-        super().__init__(coordinator, entry, nom_lieu)
-        self._attr_name = "Sommaire"
-        self._attr_unique_id = f"{entry.entry_id}_sommaire"
-        self._attr_icon = "mdi:map-marker-multiple"
-        self._unsub_coordinators: list[Any] = []
-        self._unsub_signal: Any = None
-
-    async def async_added_to_hass(self) -> None:
-        """Subscribe to all current coordinators and the new-coordinator signal."""
-        await super().async_added_to_hass()
-        self._resubscribe_all()
-        self._unsub_signal = async_dispatcher_connect(
-            self.hass, SIGNAL_NEW_COORDINATOR, self._on_coordinators_changed
-        )
-
-    async def async_will_remove_from_hass(self) -> None:
-        """Unsubscribe from all coordinators and the dispatcher signal."""
-        for unsub in self._unsub_coordinators:
-            unsub()
-        if self._unsub_signal:
-            self._unsub_signal()
-
-    def _resubscribe_all(self) -> None:
-        """Replace existing coordinator subscriptions with the current set.
-
-        Skips the entity's own coordinator (already handled by CoordinatorEntity).
-        """
-        for unsub in self._unsub_coordinators:
-            unsub()
-        self._unsub_coordinators = [
-            coord.async_add_listener(self.async_write_ha_state)
-            for coord in self.hass.data.get(DOMAIN, {}).values()
-            if isinstance(coord, HydroPannesDataUpdateCoordinator)
-            and coord is not self.coordinator
-        ]
-
-    @callback
-    def _on_coordinators_changed(self) -> None:
-        """Re-subscribe and refresh state when locations are added or removed."""
-        self._resubscribe_all()
-        self.async_write_ha_state()
-
-    def _all_coordinators(self) -> list[HydroPannesDataUpdateCoordinator]:
-        """Return all active coordinators from the HA data store."""
-        return [
-            c for c in self.hass.data.get(DOMAIN, {}).values()
-            if isinstance(c, HydroPannesDataUpdateCoordinator)
-        ]
-
-    @property
-    def native_value(self) -> str:
-        """Return a human-readable summary of outage state across all locations."""
-        coordinators = self._all_coordinators()
-        total = len(coordinators)
-        active = sum(
-            1 for c in coordinators if c.data and c.data.get("etat") == "N"
-        )
-
-        lieux_label = f"lieu{'x' if total > 1 else ''}"
-        surveille_label = f"surveillé{'s' if total > 1 else ''}"
-
-        if active == 0:
-            return f"Aucune panne — {total} {lieux_label} {surveille_label}"
-
-        pannes_label = f"panne{'s' if active > 1 else ''} active{'s' if active > 1 else ''}"
-        return f"{active} {pannes_label} sur {total} {lieux_label}"
-
-    @property
-    def extra_state_attributes(self) -> dict[str, Any]:
-        """Return per-location outage state and aggregate counts."""
-        coordinators = self._all_coordinators()
-        active_count = sum(
-            1 for c in coordinators if c.data and c.data.get("etat") == "N"
-        )
-
-        lieux: list[dict[str, Any]] = []
-        for coord in coordinators:
-            info: dict[str, Any] = {
-                "lieu_conso": f"****{coord.lieu_conso[-4:]}",
-                "etat": coord.data.get("etat") if coord.data else None,
-                "en_panne": bool(coord.data and coord.data.get("etat") == "N"),
-            }
-            if (
-                hasattr(coord, "last_update_success_time")
-                and coord.last_update_success_time
-            ):
-                info["derniere_maj"] = coord.last_update_success_time.isoformat()
-            lieux.append(info)
-
-        return {
-            "total_lieux": len(coordinators),
-            "lieux_en_panne": active_count,
-            "lieux": lieux,
-            "attribution": "Données fournies par Hydro-Québec",
-        }
