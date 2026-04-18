@@ -9,6 +9,10 @@ Intégration Home Assistant pour surveiller les pannes d'électricité d'Hydro-Q
 
 Suivez en temps réel l'état du service électrique pour un ou plusieurs lieux de consommation — pannes en cours, interventions planifiées, et estimation du rétablissement.
 
+> ⚠️ **Cette intégration est développée de façon indépendante et n'est pas affiliée à Hydro-Québec.**
+> En cas de problème, ouvrez une [issue sur GitHub](https://github.com/johnjohn-11/hydropannes/issues).
+> **Ne contactez pas le service client d'Hydro-Québec.**
+
 ## Fonctionnalités
 
 - 🔌 **État du service** — Détection des pannes en temps réel
@@ -17,7 +21,7 @@ Suivez en temps réel l'état du service électrique pour un ou plusieurs lieux 
 - 🕐 **Estimation de rétablissement** — Compte à rebours avant le retour du courant
 - 👥 **Adresses touchées** — Nombre de clients affectés
 - 🔧 **Statut d'intervention** — Évaluation, équipe en route, travaux en cours, etc.
-- 📍 **Multi-lieux** — Surveillance de plusieurs adresses avec un sensor sommaire global
+- 📍 **Multi-lieux** — Surveillance de plusieurs adresses indépendantes
 - ⚡ **Polling adaptatif** — Mise à jour toutes les 60 s pendant une panne, 3 min sinon
 - 📊 **Données post-panne** — Informations conservées après le rétablissement
 
@@ -82,15 +86,7 @@ Consultez le guide : [Comment trouver votre lieu de consommation](https://github
 | `sensor.*_duree` | Durée de la panne en secondes |
 | `sensor.*_duree_avant_retablissement` | Temps restant avant le rétablissement estimé |
 | `sensor.*_derniere_maj` | Horodatage de la dernière mise à jour des données |
-
-### Sensors spéciaux
-
-| Entité | Catégorie | Description |
-|--------|-----------|-------------|
-| `sensor.*_lieu_conso` | Diagnostic | Numéro de lieu de consommation (idLieuConso) |
-| `sensor.*_sommaire` | Désactivé par défaut | Résumé global sur tous les lieux configurés |
-
-Le sensor **Sommaire** est utile lorsque plusieurs lieux sont configurés. Il affiche par exemple `2 pannes actives sur 3 lieux` et liste l'état de chaque lieu en attributs. Activez-en une seule instance via le registre d'entités.
+| `sensor.*_lieu_conso` | Numéro de lieu de consommation — catégorie Diagnostic |
 
 ### Binary Sensors
 
