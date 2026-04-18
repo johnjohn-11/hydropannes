@@ -9,7 +9,7 @@ Intégration Home Assistant pour surveiller les pannes d'électricité d'Hydro-Q
 
 Suivez en temps réel l'état du service électrique pour un ou plusieurs lieux de consommation — pannes en cours, interventions planifiées, et estimation du rétablissement.
 
-> ⚠️ **Cette intégration est développée de façon indépendante et n'est pas affiliée à Hydro-Québec.**
+> ⚠️ **Cette intégration n'est pas affiliée à Hydro-Québec.**
 > En cas de problème, ouvrez une [issue sur GitHub](https://github.com/johnjohn-11/hydropannes/issues).
 > **Ne contactez pas le service client d'Hydro-Québec.**
 
