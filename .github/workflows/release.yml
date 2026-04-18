@@ -20,15 +20,21 @@ jobs:
         id: version
         run: echo "version=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
 
-      - name: Verify manifest version
+      - name: Install just
+        uses: extractions/setup-just@v2
+
+      - name: Bump version in all files
+        run: just bump ${{ steps.version.outputs.version }}
+
+      - name: Verify versions are in sync
         run: |
-          MANIFEST_VERSION=$(python -c "import json; print(json.load(open('custom_components/hydropannes/manifest.json'))['version'])")
-          TAG_VERSION="${{ steps.version.outputs.version }}"
-          if [[ "$MANIFEST_VERSION" != "$TAG_VERSION" ]]; then
-            echo "❌ Version mismatch: manifest.json ($MANIFEST_VERSION) != tag ($TAG_VERSION)"
+          MANIFEST=$(python -c "import json; print(json.load(open('custom_components/hydropannes/manifest.json'))['version'])")
+          TAG="${{ steps.version.outputs.version }}"
+          if [[ "$MANIFEST" != "$TAG" ]]; then
+            echo "❌ Version mismatch after bump: manifest.json ($MANIFEST) != tag ($TAG)"
             exit 1
           fi
-          echo "✅ Version match: $TAG_VERSION"
+          echo "✅ Version $TAG applied successfully"
 
       - name: Create release zip
         run: |
