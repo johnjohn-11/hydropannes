@@ -55,6 +55,16 @@ jobs:
         run: |
           python -m json.tool custom_components/hydropannes/manifest.json > /dev/null
           echo "✅ manifest.json is valid"
+      - name: Check version sync
+        run: |
+          MANIFEST=$(python -c "import json; print(json.load(open('custom_components/hydropannes/manifest.json'))['version'])")
+          PYPROJECT=$(python -c "import re,sys; m=re.search(r'version = .(.+).', open('pyproject.toml').read()); print(m.group(1))")
+          if [[ "$MANIFEST" != "$PYPROJECT" ]]; then
+            echo "❌ Version mismatch: manifest.json ($MANIFEST) != pyproject.toml ($PYPROJECT)"
+            echo "Run: just bump <version>"
+            exit 1
+          fi
+          echo "✅ Versions are in sync: $MANIFEST"
       - name: Check required files
         run: |
           files=(
