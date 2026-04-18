@@ -16,20 +16,17 @@ if TYPE_CHECKING:
 async def async_get_config_entry_diagnostics(
     hass: HomeAssistant, entry: ConfigEntry
 ) -> dict[str, Any]:
-    """Return diagnostics for a config entry."""
+    """Return diagnostics for a config entry, with sensitive fields redacted."""
     coordinator: HydroPannesDataUpdateCoordinator = hass.data[DOMAIN][entry.entry_id]
 
-    # Mask the lieu_conso for privacy (show only last 4 digits)
     lieu_conso = coordinator.lieu_conso
     masked_lieu = f"****{lieu_conso[-4:]}" if len(lieu_conso) > 4 else "****"
 
-    # Build coordinator info
     coordinator_info: dict[str, Any] = {
         "last_update_success": coordinator.last_update_success,
         "update_interval": str(coordinator.update_interval),
     }
 
-    # Add last_update_success_time if available (HA 2023.9+)
     if hasattr(coordinator, "last_update_success_time"):
         coordinator_info["last_update_success_time"] = (
             coordinator.last_update_success_time.isoformat()
@@ -54,13 +51,12 @@ async def async_get_config_entry_diagnostics(
 
 
 def _redact_data(data: dict[str, Any]) -> dict[str, Any]:
-    """Redact sensitive information from the data."""
+    """Return a copy of the API data with the idLieuConso field masked."""
     if not data:
         return {}
 
     redacted = dict(data)
 
-    # Mask the idLieuConso
     if "idLieuConso" in redacted:
         lieu = redacted["idLieuConso"]
         redacted["idLieuConso"] = f"****{lieu[-4:]}" if len(lieu) > 4 else "****"

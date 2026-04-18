@@ -108,3 +108,7 @@ INFO_PANNES_STATES = {
     "aip_terminee": "Interruption planifiée terminée",
     "aip_annulee": "Interruption planifiée annulée",
 }
+
+# Dispatcher signal fired after a coordinator is added or removed.
+# Used by HydroPannesSommaireSensor to re-subscribe when locations change.
+SIGNAL_NEW_COORDINATOR = f"{DOMAIN}_new_coordinator"

@@ -6,8 +6,9 @@ import logging
 from typing import TYPE_CHECKING
 
 from homeassistant.const import Platform
+from homeassistant.helpers.dispatcher import async_dispatcher_send
 
-from .const import CONF_LIEU_CONSO, DOMAIN
+from .const import CONF_LIEU_CONSO, DOMAIN, SIGNAL_NEW_COORDINATOR
 from .coordinator import HydroPannesDataUpdateCoordinator
 
 if TYPE_CHECKING:
@@ -34,6 +35,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
+    # Notify any existing summary sensors that a new location is available.
+    async_dispatcher_send(hass, SIGNAL_NEW_COORDINATOR)
+
     return True
 
 
@@ -41,5 +45,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a config entry."""
     if unload_ok := await hass.config_entries.async_unload_platforms(entry, PLATFORMS):
         hass.data[DOMAIN].pop(entry.entry_id)
+        # Notify summary sensors so they drop the removed coordinator's subscription.
+        async_dispatcher_send(hass, SIGNAL_NEW_COORDINATOR)
 
     return unload_ok
