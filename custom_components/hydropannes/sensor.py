@@ -536,7 +536,7 @@ class HydroPannesCauseSensor(HydroPannesSensorBase):
 class HydroPannesDureeSensor(HydroPannesSensorBase):
     """Sensor reporting the duration of the current interruption in seconds.
 
-    Uses dateFin − dateDebut for terminated outages, or now − dateDebut
+    Uses dateFin - dateDebut for terminated outages, or now - dateDebut
     for ongoing ones.
     """
 
@@ -664,7 +664,8 @@ class HydroPannesDerniereMAJSensor(HydroPannesSensorBase):
             hasattr(self.coordinator, "last_update_success_time")
             and self.coordinator.last_update_success_time
         ):
-            return self.coordinator.last_update_success_time
+            from datetime import datetime as dt
+            return dt_util.as_local(self.coordinator.last_update_success_time) if isinstance(self.coordinator.last_update_success_time, dt) else None
 
         return None
 
