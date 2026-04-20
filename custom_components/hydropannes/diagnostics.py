@@ -34,6 +34,15 @@ async def async_get_config_entry_diagnostics(
             else None
         )
 
+    # Redact sensitive fields in each history snapshot.
+    api_history = [
+        {
+            "timestamp": snapshot["timestamp"],
+            "data": _redact_data(snapshot["data"]),
+        }
+        for snapshot in coordinator.api_history
+    ]
+
     return {
         "entry": {
             "entry_id": entry.entry_id,
@@ -46,7 +55,8 @@ async def async_get_config_entry_diagnostics(
             },
         },
         "coordinator": coordinator_info,
-        "data": _redact_data(coordinator.data) if coordinator.data else None,
+        "current_data": _redact_data(coordinator.data) if coordinator.data else None,
+        "api_history": api_history,
     }
 
 
