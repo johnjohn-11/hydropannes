@@ -13,13 +13,13 @@ from homeassistant.const import EntityCategory
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import DOMAIN
+from .coordinator import HydroPannesDataUpdateCoordinator
 from .helpers import HydroPannesHelperMixin
 
 if TYPE_CHECKING:
     from homeassistant.config_entries import ConfigEntry
     from homeassistant.core import HomeAssistant
     from homeassistant.helpers.entity_platform import AddEntitiesCallback
-    from .coordinator import HydroPannesDataUpdateCoordinator
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -79,7 +79,7 @@ class HydroPannesBinarySensorBase(
 class HydroPannesEtatServiceBinarySensor(HydroPannesBinarySensorBase):
     """Binary sensor for the overall service status (Power Outage)."""
 
-    def __init__(self, coordinator, entry, nom_lieu) -> None:
+    def __init__(self, coordinator: HydroPannesDataUpdateCoordinator, entry: ConfigEntry, nom_lieu: str) -> None:
         """Initialize the sensor."""
         super().__init__(coordinator, entry, nom_lieu)
         self._attr_name = "État du service"
@@ -87,9 +87,11 @@ class HydroPannesEtatServiceBinarySensor(HydroPannesBinarySensorBase):
         self._attr_device_class = BinarySensorDeviceClass.PROBLEM
 
     @property
-    def is_on(self) -> bool:
+    def is_on(self) -> bool | None:
         """Return True if an active (non-planned) outage is detected."""
-        return self._is_outage_active(self.coordinator.data)
+        if not self.coordinator.data:
+            return None
+        return self._get_active_outage() is not None
 
     @property
     def icon(self) -> str:
@@ -100,7 +102,7 @@ class HydroPannesEtatServiceBinarySensor(HydroPannesBinarySensorBase):
 class HydroPannesInterventionPlanifieeBinarySensor(HydroPannesBinarySensorBase):
     """Binary sensor for planned maintenance (AIP)."""
 
-    def __init__(self, coordinator, entry, nom_lieu) -> None:
+    def __init__(self, coordinator: HydroPannesDataUpdateCoordinator, entry: ConfigEntry, nom_lieu: str) -> None:
         """Initialize the sensor."""
         super().__init__(coordinator, entry, nom_lieu)
         self._attr_name = "Intervention planifiée"
@@ -108,9 +110,11 @@ class HydroPannesInterventionPlanifieeBinarySensor(HydroPannesBinarySensorBase):
         self._attr_device_class = BinarySensorDeviceClass.UPDATE
 
     @property
-    def is_on(self) -> bool:
+    def is_on(self) -> bool | None:
         """Return True if a planned intervention is detected."""
-        return self._has_planned_intervention(self.coordinator.data)
+        if not self.coordinator.data:
+            return None
+        return self._get_planned_intervention() is not None
 
     @property
     def icon(self) -> str:
@@ -121,7 +125,7 @@ class HydroPannesInterventionPlanifieeBinarySensor(HydroPannesBinarySensorBase):
 class HydroPannesAPICompatibilityBinarySensor(HydroPannesBinarySensorBase):
     """Diagnostic binary sensor to monitor API structure changes."""
 
-    def __init__(self, coordinator, entry, nom_lieu) -> None:
+    def __init__(self, coordinator: HydroPannesDataUpdateCoordinator, entry: ConfigEntry, nom_lieu: str) -> None:
         """Initialize the diagnostic sensor."""
         super().__init__(coordinator, entry, nom_lieu)
         self._attr_name = "Compatibilité API"
