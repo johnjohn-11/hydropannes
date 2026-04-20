@@ -2,43 +2,49 @@
   "config": {
     "step": {
       "user": {
-        "title": "Configure Hydro-Pannes",
-        "description": "Enter your consumption location information",
         "data": {
-          "lieu_consommation": "Consumption location number",
-          "nom_lieu": "Location name (e.g., Home, Cottage)"
-        }
+          "lieu_conso": "Consumption Location (10 digits)",
+          "name": "Installation Name"
+        },
+        "description": "Enter your Hydro-Québec consumption location ID to monitor power outages."
       }
     },
     "error": {
-      "cannot_connect": "Unable to connect to Hydro-Québec API",
-      "invalid_format": "The consumption location number must be exactly 10 digits",
-      "invalid_lieu": "Invalid consumption location number",
+      "cannot_connect": "Failed to connect to Hydro-Québec API",
+      "invalid_auth": "Invalid consumption location",
       "unknown": "Unexpected error"
     },
     "abort": {
-      "already_configured": "This consumption location is already configured"
+      "already_configured": "This consumption location is already configured."
     }
   },
-  "options": {
-    "step": {
-      "init": {
-        "title": "Modify location",
-        "data": {
-          "nom_lieu": "Location name"
-        }
+  "entity": {
+    "binary_sensor": {
+      "service_status": {
+        "name": "Service status"
+      },
+      "planned_intervention": {
+        "name": "Planned intervention"
+      },
+      "api_compatibility": {
+        "name": "API compatibility"
       }
-    }
-  },
-  "services": {
-    "refresh": {
-      "name": "Refresh data",
-      "description": "Force an immediate data refresh from the Hydro-Québec API.",
-      "fields": {
-        "entry_id": {
-          "name": "Config entry ID",
-          "description": "The entry ID to refresh. Leave empty to refresh all locations."
-        }
+    },
+    "sensor": {
+      "outage_info": {
+        "name": "Outage info"
+      },
+      "outage_duration": {
+        "name": "Outage duration"
+      },
+      "time_until_restoration": {
+        "name": "Time until restoration"
+      },
+      "intervention_status": {
+        "name": "Intervention status"
+      },
+      "affected_customers": {
+        "name": "Affected customers"
       }
     }
   }
