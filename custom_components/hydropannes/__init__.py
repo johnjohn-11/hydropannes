@@ -5,7 +5,9 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
+import voluptuous as vol
 from homeassistant.const import Platform
+from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.dispatcher import async_dispatcher_send
 
 from .const import CONF_LIEU_CONSO, DOMAIN, SIGNAL_NEW_COORDINATOR
@@ -13,11 +15,16 @@ from .coordinator import HydroPannesDataUpdateCoordinator
 
 if TYPE_CHECKING:
     from homeassistant.config_entries import ConfigEntry
-    from homeassistant.core import HomeAssistant
+    from homeassistant.core import HomeAssistant, ServiceCall
 
 _LOGGER = logging.getLogger(__name__)
 
 PLATFORMS: list[Platform] = [Platform.SENSOR, Platform.BINARY_SENSOR]
+
+SERVICE_REFRESH = "refresh"
+SERVICE_REFRESH_SCHEMA = vol.Schema({
+    vol.Optional("entry_id"): cv.string,
+})
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -35,8 +42,33 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
-    # Notify any existing summary sensors that a new location is available.
     async_dispatcher_send(hass, SIGNAL_NEW_COORDINATOR)
+
+    # Register the refresh service only once, on the first config entry setup.
+    if not hass.services.has_service(DOMAIN, SERVICE_REFRESH):
+
+        async def _handle_refresh(call: ServiceCall) -> None:
+            """Force an immediate data refresh for one or all locations."""
+            entry_id: str | None = call.data.get("entry_id")
+
+            if entry_id:
+                if coord := hass.data[DOMAIN].get(entry_id):
+                    await coord.async_request_refresh()
+                else:
+                    _LOGGER.warning(
+                        "Refresh service called with unknown entry_id: %s", entry_id
+                    )
+            else:
+                for coord in hass.data[DOMAIN].values():
+                    if isinstance(coord, HydroPannesDataUpdateCoordinator):
+                        await coord.async_request_refresh()
+
+        hass.services.async_register(
+            DOMAIN,
+            SERVICE_REFRESH,
+            _handle_refresh,
+            schema=SERVICE_REFRESH_SCHEMA,
+        )
 
     return True
 
@@ -45,7 +77,10 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a config entry."""
     if unload_ok := await hass.config_entries.async_unload_platforms(entry, PLATFORMS):
         hass.data[DOMAIN].pop(entry.entry_id)
-        # Notify summary sensors so they drop the removed coordinator's subscription.
         async_dispatcher_send(hass, SIGNAL_NEW_COORDINATOR)
+
+        # Remove the service when there are no more configured locations.
+        if not hass.data[DOMAIN]:
+            hass.services.async_remove(DOMAIN, SERVICE_REFRESH)
 
     return unload_ok
