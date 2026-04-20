@@ -12,6 +12,7 @@
     },
     "error": {
       "cannot_connect": "Impossible de se connecter à l'API Hydro-Québec",
+      "invalid_format": "Le numéro de lieu de consommation doit contenir exactement 10 chiffres",
       "invalid_lieu": "Numéro de lieu de consommation invalide",
       "unknown": "Erreur inattendue"
     },
@@ -25,6 +26,18 @@
         "title": "Modifier le lieu",
         "data": {
           "nom_lieu": "Nom du lieu"
+        }
+      }
+    }
+  },
+  "services": {
+    "refresh": {
+      "name": "Rafraîchir les données",
+      "description": "Force un rafraîchissement immédiat des données depuis l'API Hydro-Québec.",
+      "fields": {
+        "entry_id": {
+          "name": "ID de l'entrée",
+          "description": "L'ID de l'entrée à rafraîchir. Laisser vide pour rafraîchir tous les lieux."
         }
       }
     }
