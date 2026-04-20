@@ -12,7 +12,7 @@ from homeassistant.components.binary_sensor import (
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .const import CONF_NOM_LIEU, DOMAIN
+from .const import ATTRIBUTION, CONF_NOM_LIEU, DOMAIN
 from .coordinator import HydroPannesDataUpdateCoordinator
 from .helpers import HydroPannesHelperMixin
 
@@ -33,12 +33,10 @@ async def async_setup_entry(
     coordinator: HydroPannesDataUpdateCoordinator = hass.data[DOMAIN][entry.entry_id]
     nom_lieu = entry.data[CONF_NOM_LIEU]
 
-    binary_sensors: list[HydroPannesBinarySensorBase] = [
+    async_add_entities([
         HydroPannesEtatServiceBinarySensor(coordinator, entry, nom_lieu),
         HydroPannesInterventionPlanifieeBinarySensor(coordinator, entry, nom_lieu),
-    ]
-
-    async_add_entities(binary_sensors)
+    ])
 
 
 class HydroPannesBinarySensorBase(
@@ -104,15 +102,12 @@ class HydroPannesEtatServiceBinarySensor(HydroPannesBinarySensorBase):
             return None
 
         main_etat = self._get_main_etat()
-
         if main_etat != "N":
             return False
 
-        # Active non-planned outage
         if self._get_active_outage():
             return True
 
-        # Active planned intervention causing a power cut
         planned = self._get_planned_intervention()
         if planned and self._is_outage_active(planned):
             return True
@@ -159,7 +154,7 @@ class HydroPannesEtatServiceBinarySensor(HydroPannesBinarySensorBase):
             "codeMunicipal": active_interruption.get("codeMunicipal"),
             "dureePrevu": active_interruption.get("dureePrevu"),
             "typeFinPrevue": active_interruption.get("typeFinPrevue"),
-            "attribution": "Données fournies par Hydro-Québec",
+            "attribution": ATTRIBUTION,
         }
 
 
@@ -176,6 +171,7 @@ class HydroPannesInterventionPlanifieeBinarySensor(HydroPannesBinarySensorBase):
         super().__init__(coordinator, entry, nom_lieu)
         self._attr_name = "Intervention planifiée"
         self._attr_unique_id = f"{entry.entry_id}_intervention_planifiee"
+        self._attr_device_class = BinarySensorDeviceClass.RUNNING
 
     @property
     def is_on(self) -> bool | None:
@@ -184,9 +180,7 @@ class HydroPannesInterventionPlanifieeBinarySensor(HydroPannesBinarySensorBase):
             return None
 
         for intr in self._get_interruptions():
-            if self._is_planned_intervention(intr) and not self._is_outage_terminated(
-                intr
-            ):
+            if self._is_planned_intervention(intr) and not self._is_outage_terminated(intr):
                 return True
 
         return False
@@ -238,5 +232,5 @@ class HydroPannesInterventionPlanifieeBinarySensor(HydroPannesBinarySensorBase):
             "datePublication": planned.get("datePublication"),
             "codeRemarque": planned.get("codeRemarque"),
             "probabilite": planned.get("probabilite"),
-            "attribution": "Données fournies par Hydro-Québec",
+            "attribution": ATTRIBUTION,
         }
