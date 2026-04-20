@@ -1,0 +1,13 @@
+refresh:
+  name: Rafraîchir les données
+  description: Force un rafraîchissement immédiat des données depuis l'API Hydro-Québec.
+  fields:
+    entry_id:
+      name: ID de l'entrée
+      description: >
+        L'identifiant de l'entrée à rafraîchir.
+        Laisser vide pour rafraîchir tous les lieux configurés.
+      required: false
+      example: "abc123def456abc123def456"
+      selector:
+        text:
