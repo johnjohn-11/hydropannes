@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import re
 from typing import TYPE_CHECKING, Any
 
 import aiohttp
@@ -20,6 +21,9 @@ if TYPE_CHECKING:
 
 _LOGGER = logging.getLogger(__name__)
 
+# Hydro-Québec lieu de consommation numbers are exactly 10 digits.
+_LIEU_CONSO_RE = re.compile(r"^\d{10}$")
+
 STEP_USER_DATA_SCHEMA = vol.Schema(
     {
         vol.Required(CONF_LIEU_CONSO): str,
@@ -30,7 +34,11 @@ STEP_USER_DATA_SCHEMA = vol.Schema(
 
 async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str, Any]:
     """Validate the user-supplied lieu de consommation by querying the API."""
-    lieu_conso = data[CONF_LIEU_CONSO]
+    lieu_conso = data[CONF_LIEU_CONSO].strip()
+
+    if not _LIEU_CONSO_RE.match(lieu_conso):
+        raise InvalidFormat
+
     url = API_URL.format(lieu_conso)
     session = async_get_clientsession(hass)
 
@@ -71,9 +79,11 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         if user_input is not None:
             try:
                 info = await validate_input(self.hass, user_input)
-                await self.async_set_unique_id(user_input[CONF_LIEU_CONSO])
+                await self.async_set_unique_id(user_input[CONF_LIEU_CONSO].strip())
                 self._abort_if_unique_id_configured()
                 return self.async_create_entry(title=info["title"], data=user_input)
+            except InvalidFormat:
+                errors[CONF_LIEU_CONSO] = "invalid_format"
             except CannotConnect:
                 errors["base"] = "cannot_connect"
             except InvalidLieuConso:
@@ -125,3 +135,7 @@ class CannotConnect(HomeAssistantError):
 
 class InvalidLieuConso(HomeAssistantError):
     """Raised when the lieu de consommation number returns no data."""
+
+
+class InvalidFormat(HomeAssistantError):
+    """Raised when the lieu de consommation number does not match the expected format."""
