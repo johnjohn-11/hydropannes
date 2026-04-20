@@ -16,6 +16,7 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.util import dt as dt_util
 
 from .const import DOMAIN
+from .coordinator import HydroPannesDataUpdateCoordinator
 from .helpers import HydroPannesHelperMixin
 
 if TYPE_CHECKING:
@@ -24,7 +25,6 @@ if TYPE_CHECKING:
     from homeassistant.config_entries import ConfigEntry
     from homeassistant.core import HomeAssistant
     from homeassistant.helpers.entity_platform import AddEntitiesCallback
-    from .coordinator import HydroPannesDataUpdateCoordinator
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -73,24 +73,21 @@ async def async_setup_entry(
     coordinator: HydroPannesDataUpdateCoordinator = hass.data[DOMAIN][entry.entry_id]
     nom_lieu = entry.title
 
-    entities = [
+    entities: list[CoordinatorEntity[HydroPannesDataUpdateCoordinator]] = [
         HydroPannesSensor(coordinator, description, entry, nom_lieu)
         for description in SENSOR_TYPES
     ]
 
-    # Ajout des capteurs temporels spécifiques (restauration et début)
-    entities.extend(
-        [
-            HydroPannesTimeSensor(coordinator, entry, nom_lieu),
-            HydroPannesStartTimeSensor(coordinator, entry, nom_lieu),
-        ]
-    )
+    entities.extend([
+        HydroPannesTimeSensor(coordinator, entry, nom_lieu),
+        HydroPannesStartTimeSensor(coordinator, entry, nom_lieu),
+    ])
 
     async_add_entities(entities)
 
 
 class HydroPannesSensor(
-    CoordinatorEntity["HydroPannesDataUpdateCoordinator"],
+    CoordinatorEntity[HydroPannesDataUpdateCoordinator],
     SensorEntity,
     HydroPannesHelperMixin,
 ):
@@ -121,22 +118,20 @@ class HydroPannesSensor(
     @property
     def native_value(self) -> Any:
         """Return the state of the sensor."""
-        data = self._get_current_interruption(self.coordinator.data)
+        data = self._get_current_interruption()
         if not data:
             return None
-        
+
         val = self.entity_description.value_fn(data)
-        
-        # Correction Mypy pour les clients affectés (int)
+
         if self.entity_description.key == "affected_customers":
             return int(val) if val is not None else None
-            
-        # Correction Mypy pour les chaînes de caractères
+
         return str(val) if val is not None else None
 
 
 class HydroPannesTimeSensor(
-    CoordinatorEntity["HydroPannesDataUpdateCoordinator"],
+    CoordinatorEntity[HydroPannesDataUpdateCoordinator],
     SensorEntity,
     HydroPannesHelperMixin,
 ):
@@ -163,20 +158,19 @@ class HydroPannesTimeSensor(
     @property
     def native_value(self) -> datetime | None:
         """Return the estimated restoration time."""
-        data = self._get_current_interruption(self.coordinator.data)
+        data = self._get_current_interruption()
         if not data:
             return None
 
         res = data.get("dateFin")
         if not res:
             return None
-            
-        dt = dt_util.parse_datetime(str(res))
-        return dt if dt else None
+
+        return dt_util.parse_datetime(str(res))
 
 
 class HydroPannesStartTimeSensor(
-    CoordinatorEntity["HydroPannesDataUpdateCoordinator"],
+    CoordinatorEntity[HydroPannesDataUpdateCoordinator],
     SensorEntity,
     HydroPannesHelperMixin,
 ):
@@ -204,13 +198,12 @@ class HydroPannesStartTimeSensor(
     @property
     def native_value(self) -> datetime | None:
         """Return the start time of the interruption."""
-        data = self._get_current_interruption(self.coordinator.data)
+        data = self._get_current_interruption()
         if not data:
             return None
 
         res = data.get("dateDebut")
         if not res:
             return None
-            
-        dt = dt_util.parse_datetime(str(res))
-        return dt if dt else None
+
+        return dt_util.parse_datetime(str(res))
