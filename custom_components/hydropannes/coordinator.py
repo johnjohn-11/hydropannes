@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
+import json
 import logging
+import os
 from collections import deque
 from datetime import timedelta
 from typing import TYPE_CHECKING, Any
@@ -27,6 +30,7 @@ MAX_RETRIES = 2
 RETRY_DELAY = 2  # seconds between retry attempts
 ACTIVE_OUTAGE_UPDATE_INTERVAL = 60  # seconds — faster polling during an active outage
 API_HISTORY_SIZE = 5  # number of distinct API payloads to keep in memory
+JSON_LOG_MAX_SIZE_MB = 5
 
 
 class HydroPannesDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
@@ -36,9 +40,9 @@ class HydroPannesDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         """Initialize the coordinator."""
         self.lieu_conso = lieu_conso
         self.api_compatible = True
+        self._last_hashes: dict[str, str] = {}
         # Ring buffer of the last API_HISTORY_SIZE distinct payloads with timestamps.
         self.api_history: deque[dict[str, Any]] = deque(maxlen=API_HISTORY_SIZE)
-        
         super().__init__(
             hass,
             _LOGGER,
@@ -77,24 +81,27 @@ class HydroPannesDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                             )
 
                         data = await response.json()
-                        
-                        # Vérification de la compatibilité de la structure
+
                         if not data or not isinstance(data, list):
                             self.api_compatible = False
-                            return self._handle_failure("API returned invalid data format (expected list)")
+                            return self._handle_failure(
+                                "API returned invalid data format (expected list)"
+                            )
 
                         result: dict[str, Any] = data[0]
-                        
-                        # Vérification de la présence d'une clé racine critique (ex: 'etat')
+
                         if "etat" not in result:
                             if self.api_compatible:
-                                _LOGGER.error("Structure de l'API Hydro-Québec non reconnue ou modifiée")
+                                _LOGGER.error(
+                                    "Structure de l'API Hydro-Québec non reconnue ou modifiée"
+                                )
                             self.api_compatible = False
                         else:
                             self.api_compatible = True
 
                         self._record_if_changed(result)
                         self._adjust_update_interval(result)
+                        await self._save_json_if_changed(self.lieu_conso, result)
                         return result
 
             except TimeoutError:
@@ -191,3 +198,71 @@ class HydroPannesDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             if dt and dt_util.as_local(dt) > now:
                 return True
         return False
+
+    async def _save_json_if_changed(self, lieu_id: str, data: dict[str, Any]) -> None:
+        """Append a JSONL log entry only when data has changed since the last write.
+
+        File I/O is dispatched to a thread pool via async_add_executor_job to avoid
+        blocking the Home Assistant event loop.
+        """
+        current_hash = hashlib.md5(
+            json.dumps(data, sort_keys=True).encode()
+        ).hexdigest()
+
+        if self._last_hashes.get(lieu_id) == current_hash:
+            return
+
+        self._last_hashes[lieu_id] = current_hash
+
+        entry = {
+            "timestamp": dt_util.utcnow().isoformat(),
+            "data": data,
+        }
+        entry_line = json.dumps(entry) + "\n"
+        log_dir = self.hass.config.path("hydropannes_logs")
+
+        await self.hass.async_add_executor_job(
+            self._write_log_sync, lieu_id, log_dir, entry_line
+        )
+
+    def _write_log_sync(self, lieu_id: str, log_dir: str, entry_line: str) -> None:
+        """Write a log entry to disk. Runs in an executor thread, not the event loop."""
+        try:
+            os.makedirs(log_dir, exist_ok=True)
+            log_file = os.path.join(log_dir, f"{lieu_id}.jsonl")
+
+            if os.path.exists(log_file):
+                size_mb = os.path.getsize(log_file) / (1024 * 1024)
+                if size_mb >= JSON_LOG_MAX_SIZE_MB:
+                    self._rotate_log(log_file)
+
+            with open(log_file, "a", encoding="utf-8") as f:
+                f.write(entry_line)
+
+            _LOGGER.debug("Logged change for lieu %s", lieu_id)
+
+        except OSError:
+            _LOGGER.exception("Failed to write log for lieu %s", lieu_id)
+
+    def _rotate_log(self, log_file: str) -> None:
+        """Trim the log file to its most recent half when it exceeds the size limit.
+
+        Called from _write_log_sync; already running in an executor thread.
+        """
+        try:
+            with open(log_file, encoding="utf-8") as f:
+                lines = f.readlines()
+
+            keep = lines[len(lines) // 2:]
+
+            with open(log_file, "w", encoding="utf-8") as f:
+                f.writelines(keep)
+
+            _LOGGER.info(
+                "Rotated %s: kept %d/%d entries",
+                log_file,
+                len(keep),
+                len(lines),
+            )
+        except OSError:
+            _LOGGER.exception("Failed to rotate log file %s", log_file)
