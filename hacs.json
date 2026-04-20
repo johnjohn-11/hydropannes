@@ -1,7 +1,7 @@
 {
   "name": "Hydro-Pannes",
-  "content_directory": "custom_components/hydropannes",
+  "content_in_root": false,
+  "filename": "hydropannes",
   "homeassistant": "2024.1.0",
-  "render_readme": true,
-  "country": ["CA"]
+  "render_readme": true
 }
