@@ -35,8 +35,10 @@ class HydroPannesDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     def __init__(self, hass: HomeAssistant, lieu_conso: str) -> None:
         """Initialize the coordinator."""
         self.lieu_conso = lieu_conso
+        self.api_compatible = True
         # Ring buffer of the last API_HISTORY_SIZE distinct payloads with timestamps.
         self.api_history: deque[dict[str, Any]] = deque(maxlen=API_HISTORY_SIZE)
+        
         super().__init__(
             hass,
             _LOGGER,
@@ -75,10 +77,22 @@ class HydroPannesDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                             )
 
                         data = await response.json()
-                        if not data:
-                            return self._handle_failure("API returned empty data")
+                        
+                        # Vérification de la compatibilité de la structure
+                        if not data or not isinstance(data, list):
+                            self.api_compatible = False
+                            return self._handle_failure("API returned invalid data format (expected list)")
 
                         result: dict[str, Any] = data[0]
+                        
+                        # Vérification de la présence d'une clé racine critique (ex: 'etat')
+                        if "etat" not in result:
+                            if self.api_compatible:
+                                _LOGGER.error("Structure de l'API Hydro-Québec non reconnue ou modifiée")
+                            self.api_compatible = False
+                        else:
+                            self.api_compatible = True
+
                         self._record_if_changed(result)
                         self._adjust_update_interval(result)
                         return result
@@ -132,11 +146,7 @@ class HydroPannesDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         raise UpdateFailed(f"Error communicating with API: {error_msg}")
 
     def _record_if_changed(self, data: dict[str, Any]) -> None:
-        """Append a timestamped snapshot to api_history when the payload has changed.
-
-        Compares the new payload against the most recent history entry to avoid
-        recording identical consecutive responses.
-        """
+        """Append a timestamped snapshot to api_history when the payload has changed."""
         if self.api_history and self.api_history[-1]["data"] == data:
             return
 
@@ -153,11 +163,7 @@ class HydroPannesDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         )
 
     def _adjust_update_interval(self, data: dict[str, Any]) -> None:
-        """Switch between fast and normal polling based on outage state.
-
-        Polls every 60 s during an active outage for timely status updates,
-        and falls back to the default 180 s interval otherwise.
-        """
+        """Switch between fast and normal polling based on outage state."""
         target_seconds = (
             ACTIVE_OUTAGE_UPDATE_INTERVAL
             if self._is_active_outage_in_data(data)
