@@ -15,15 +15,16 @@ Suivez en temps réel l'état du service électrique pour un ou plusieurs lieux 
 
 ## Fonctionnalités
 
-- 🔌 **État du service** — Détection des pannes en temps réel
-- 📅 **Interventions planifiées** — Travaux annoncés à l'avance
-- ⏱️ **Durée de la panne** — Temps écoulé depuis le début
-- 🕐 **Estimation de rétablissement** — Compte à rebours avant le retour du courant
-- 👥 **Adresses touchées** — Nombre de clients affectés
-- 🔧 **Statut d'intervention** — Évaluation, équipe en route, travaux en cours, etc.
-- 📍 **Multi-lieux** — Surveillance de plusieurs adresses indépendantes
-- ⚡ **Polling adaptatif** — Mise à jour toutes les 60 s pendant une panne, 3 min sinon
-- 📊 **Données post-panne** — Informations conservées après le rétablissement
+- 🔌 **État du service** : Détection des pannes en temps réel
+- 📅 **Interventions planifiées** : Travaux annoncés à l'avance
+- ⏱️ **Durée de la panne** : Temps écoulé depuis le début
+- 🕐 **Estimation de rétablissement** : Compte à rebours avant le retour du courant
+- 👥 **Adresses touchées** : Nombre de clients affectés
+- 🔧 **Statut d'intervention** : Évaluation, équipe en route, travaux en cours, etc.
+- 📍 **Multi-lieux** : Surveillance de plusieurs adresses indépendantes
+- ⚡ **Polling adaptatif** : Mise à jour toutes les 60 s pendant une panne, 3 min sinon
+- 📊 **Données post-panne** : Informations conservées après le rétablissement
+- 🔍 **Historique API** : Les 5 derniers changements de données conservés pour le diagnostic
 
 ## Installation
 
@@ -86,7 +87,7 @@ Consultez le guide : [Comment trouver votre lieu de consommation](https://github
 | `sensor.*_duree` | Durée de la panne en secondes |
 | `sensor.*_duree_avant_retablissement` | Temps restant avant le rétablissement estimé |
 | `sensor.*_derniere_maj` | Horodatage de la dernière mise à jour des données |
-| `sensor.*_lieu_conso` | Numéro de lieu de consommation — catégorie Diagnostic |
+| `sensor.*_lieu_conso` | Numéro de lieu de consommation (catégorie Diagnostic) |
 
 ### Binary Sensors
 
@@ -113,10 +114,10 @@ Consultez le guide : [Comment trouver votre lieu de consommation](https://github
 
 Lorsqu'une panne et une intervention planifiée coexistent, l'intégration applique la logique suivante pour déterminer quelle interruption afficher :
 
-1. **Panne active** (non planifiée, courant coupé) — priorité absolue
-2. **Panne terminée** (courant rétabli) — sauf si une interruption planifiée non annulée est également présente
+1. **Panne active** (non planifiée, courant coupé) : priorité absolue
+2. **Panne terminée** (courant rétabli) : sauf si une interruption planifiée non annulée est également présente
 3. **Intervention planifiée** (active, à venir, ou terminée)
-4. **Première interruption de la liste** — dernier recours
+4. **Première interruption de la liste** : dernier recours
 
 ## Fréquence de mise à jour
 
@@ -167,6 +168,11 @@ Pour obtenir les données de diagnostic (utile pour signaler un problème) :
 1. **Paramètres** → **Appareils et services** → **Hydro-Pannes**
 2. Cliquer sur les 3 points → **Télécharger les diagnostics**
 
+Le rapport inclut :
+- L'état actuel des données API
+- L'historique des **5 derniers changements** de payload détectés
+- L'intervalle de polling actuel et l'horodatage de la dernière mise à jour réussie
+
 Le numéro de lieu de consommation est automatiquement masqué dans le rapport.
 
 ## Dépannage
@@ -178,7 +184,7 @@ Vérifiez que le numéro est correct (format numérique, visible sur votre factu
 Le coordinator n'a pas encore reçu de données valides. Vérifiez votre connexion internet et consultez les logs Home Assistant.
 
 **Les sensors restent sur leur ancienne valeur**
-Comportement normal en cas d'erreur réseau transitoire — les données sont conservées jusqu'au prochain cycle réussi.
+Comportement normal en cas d'erreur réseau transitoire. Les données sont conservées jusqu'au prochain cycle réussi.
 
 ## Attribution
 
