@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import logging
-from collections.abc import Callable
+if TYPE_CHECKING:
+    from collections.abc import Callable
+    from homeassistant.core import HomeAssistant
 from dataclasses import dataclass
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
