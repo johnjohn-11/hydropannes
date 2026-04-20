@@ -29,14 +29,49 @@ jobs:
       - name: Generate changelog from commits
         id: changelog
         run: |
+          REPO="${{ github.repository }}"
           PREVIOUS_TAG=$(git tag --sort=-version:refname | grep -v "^${{ github.ref_name }}$" | head -n1)
+
           if [ -z "$PREVIOUS_TAG" ]; then
-            COMMITS=$(git log --pretty=format:"- %s" HEAD)
+            RAW=$(git log --pretty=format:"%s|%H" HEAD)
           else
-            COMMITS=$(git log --pretty=format:"- %s" ${PREVIOUS_TAG}..HEAD)
+            RAW=$(git log --pretty=format:"%s|%H" ${PREVIOUS_TAG}..HEAD)
           fi
-          echo "commits<<EOF" >> $GITHUB_OUTPUT
-          echo "$COMMITS" >> $GITHUB_OUTPUT
+
+          FEATS=""
+          FIXES=""
+          DOCS=""
+          REFACTORS=""
+          CHORES=""
+          OTHERS=""
+
+          while IFS='|' read -r MSG HASH; do
+            LINK="([${MSG}](https://github.com/${REPO}/commit/${HASH}))"
+            if [[ "$MSG" == feat:* ]]; then
+              FEATS="${FEATS}- ${LINK}\n"
+            elif [[ "$MSG" == fix:* ]]; then
+              FIXES="${FIXES}- ${LINK}\n"
+            elif [[ "$MSG" == docs:* ]]; then
+              DOCS="${DOCS}- ${LINK}\n"
+            elif [[ "$MSG" == refactor:* ]]; then
+              REFACTORS="${REFACTORS}- ${LINK}\n"
+            elif [[ "$MSG" == chore:* ]]; then
+              CHORES="${CHORES}- ${LINK}\n"
+            else
+              OTHERS="${OTHERS}- ${LINK}\n"
+            fi
+          done <<< "$RAW"
+
+          BODY=""
+          [ -n "$FEATS" ]     && BODY="${BODY}### 🚀 Nouveautés\n${FEATS}\n"
+          [ -n "$FIXES" ]     && BODY="${BODY}### 🐛 Corrections\n${FIXES}\n"
+          [ -n "$REFACTORS" ] && BODY="${BODY}### ♻️ Refactorisation\n${REFACTORS}\n"
+          [ -n "$DOCS" ]      && BODY="${BODY}### 📝 Documentation\n${DOCS}\n"
+          [ -n "$CHORES" ]    && BODY="${BODY}### 🔧 Maintenance\n${CHORES}\n"
+          [ -n "$OTHERS" ]    && BODY="${BODY}### 📦 Autres\n${OTHERS}\n"
+
+          echo "body<<EOF" >> $GITHUB_OUTPUT
+          printf "%b" "$BODY" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
 
       - name: Install just
@@ -72,4 +107,4 @@ jobs:
         uses: softprops/action-gh-release@v2.2.1
         with:
           files: hydropannes.zip
-          body: ${{ steps.changelog.outputs.commits }}
+          body: ${{ steps.changelog.outputs.body }}
