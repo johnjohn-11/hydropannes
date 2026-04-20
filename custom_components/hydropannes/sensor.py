@@ -411,8 +411,8 @@ class HydroPannesDureeAvantRetablissementSensor(HydroPannesSensorBase):
     def __init__(self, coordinator: HydroPannesDataUpdateCoordinator, entry: ConfigEntry, nom_lieu: str) -> None:
         """Initialize the sensor."""
         super().__init__(coordinator, entry, nom_lieu)
-        self._attr_name = "Durée avant rétablissement"
-        self._attr_unique_id = f"{entry.entry_id}_duree_avant_retablissement"
+        self._attr_name = "Délai avant rétablissement"
+        self._attr_unique_id = f"{entry.entry_id}_delai_avant_retablissement"
         self._attr_native_unit_of_measurement = UnitOfTime.SECONDS
         self._attr_device_class = SensorDeviceClass.DURATION
         self._attr_icon = "mdi:timer-sand"
