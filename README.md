@@ -85,7 +85,7 @@ Consultez le guide : [Comment trouver votre lieu de consommation](https://github
 | `sensor.*_statut_intervention` | Étape de l'intervention (équipe désignée, travaux en cours, etc.) |
 | `sensor.*_cause` | Cause de la panne |
 | `sensor.*_duree` | Durée de la panne en secondes |
-| `sensor.*_duree_avant_retablissement` | Temps restant avant le rétablissement estimé |
+| `sensor.*_delai_avant_retablissement` | Temps restant avant le rétablissement estimé |
 | `sensor.*_derniere_maj` | Horodatage de la dernière mise à jour des données |
 | `sensor.*_lieu_conso` | Numéro de lieu de consommation (catégorie Diagnostic) |
 
@@ -178,7 +178,7 @@ Le numéro de lieu de consommation est automatiquement masqué dans le rapport.
 ## Dépannage
 
 **L'intégration refuse mon numéro de lieu**
-Vérifiez que le numéro est correct (format numérique, visible sur votre facture). L'API Hydro-Québec doit retourner des données pour ce lieu.
+Vérifiez que le numéro est correct. L'API Hydro-Québec doit retourner des données pour ce lieu.
 
 **Les sensors affichent « Indisponible »**
 Le coordinator n'a pas encore reçu de données valides. Vérifiez votre connexion internet et consultez les logs Home Assistant.
