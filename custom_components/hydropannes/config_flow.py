@@ -27,14 +27,14 @@ _LIEU_CONSO_RE = re.compile(r"^\d{10}$")
 STEP_USER_DATA_SCHEMA = vol.Schema(
     {
         vol.Required(CONF_LIEU_CONSO): str,
-        vol.Required(CONF_NOM_LIEU): str,
+        vol.Required(CONF_NOM_LIEU): vol.All(str, vol.Length(min=1)),
     }
 )
 
 
 async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str, Any]:
     """Validate the user-supplied lieu de consommation by querying the API."""
-    lieu_conso = data[CONF_LIEU_CONSO].strip()
+    lieu_conso = data[CONF_LIEU_CONSO]  # already stripped by the caller
 
     if not _LIEU_CONSO_RE.match(lieu_conso):
         raise InvalidFormat
@@ -77,9 +77,12 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         """Handle the user-initiated setup step."""
         errors: dict[str, str] = {}
         if user_input is not None:
+            # Normalise before validation and storage so no trailing spaces
+            # end up in the config entry or API calls.
+            user_input[CONF_LIEU_CONSO] = user_input[CONF_LIEU_CONSO].strip()
             try:
                 info = await validate_input(self.hass, user_input)
-                await self.async_set_unique_id(user_input[CONF_LIEU_CONSO].strip())
+                await self.async_set_unique_id(user_input[CONF_LIEU_CONSO])
                 self._abort_if_unique_id_configured()
                 return self.async_create_entry(title=info["title"], data=user_input)
             except InvalidFormat:
@@ -123,7 +126,7 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
                     vol.Required(
                         CONF_NOM_LIEU,
                         default=self.config_entry.data.get(CONF_NOM_LIEU, ""),
-                    ): str,
+                    ): vol.All(str, vol.Length(min=1)),
                 }
             ),
         )
