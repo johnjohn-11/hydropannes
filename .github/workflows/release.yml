@@ -48,7 +48,7 @@ jobs:
           echo "EOF" >> $GITHUB_OUTPUT
 
       - name: Install just
-        uses: extractions/setup-just@v2.0.0
+        uses: extractions/setup-just@v4.0.0
 
       - name: Bump version in all files
         run: just bump ${{ steps.version.outputs.version }}
