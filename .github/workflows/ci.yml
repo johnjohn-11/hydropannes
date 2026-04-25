@@ -25,10 +25,6 @@ jobs:
           python-version: "3.13"
       - name: Install ruff
         run: pip install ruff
-      - name: Fix imports with ruff
-        run: ruff check --fix --select I custom_components/hydropannes
-      - name: Format with ruff
-        run: ruff format custom_components/hydropannes
       - name: Run ruff check
         run: ruff check custom_components/hydropannes
       - name: Run ruff format check
@@ -45,7 +41,7 @@ jobs:
           python-version: "3.13"
       - name: Install dependencies
         run: |
-          pip install mypy homeassistant
+          pip install mypy homeassistant==2025.4.0
       - name: Run mypy
         run: mypy custom_components/hydropannes --ignore-missing-imports
   validate:
