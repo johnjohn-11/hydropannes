@@ -1,4 +1,10 @@
-"""Config flow for Hydro-Pannes integration."""
+"""Config flow for Hydro-Pannes integration.
+
+Handles the initial user setup (lieu de consommation + friendly name) and
+the options flow for renaming an existing location.  The lieu de consommation
+number is validated against the Hydro-Québec API before the entry is created
+to surface configuration errors early.
+"""
 
 from __future__ import annotations
 
@@ -18,13 +24,10 @@ from .const import API_URL, CONF_LIEU_CONSO, CONF_NOM_LIEU, DOMAIN
 if TYPE_CHECKING:
     from homeassistant.config_entries import ConfigFlowResult
     from homeassistant.core import HomeAssistant
-if TYPE_CHECKING:
-    from homeassistant.config_entries import ConfigFlowResult
-    from homeassistant.core import HomeAssistant
 
 _LOGGER = logging.getLogger(__name__)
 
-# Hydro-Québec lieu de consommation numbers are exactly 10 digits.
+# Hydro-Québec lieu de consommation identifiers are always exactly 10 digits.
 _LIEU_CONSO_RE = re.compile(r"^\d{10}$")
 
 STEP_USER_DATA_SCHEMA = vol.Schema(
@@ -36,7 +39,17 @@ STEP_USER_DATA_SCHEMA = vol.Schema(
 
 
 async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str, Any]:
-    """Validate the user-supplied lieu de consommation by querying the API."""
+    """Validate the lieu de consommation by querying the Hydro-Québec API.
+
+    Raises:
+        InvalidFormat: The number does not match the 10-digit pattern.
+        CannotConnect: A network error prevented the validation request.
+        InvalidLieuConso: The API returned an empty payload for this number.
+
+    Returns:
+        A dict with the ``title`` key set to the user-supplied location name.
+
+    """
     lieu_conso = data[CONF_LIEU_CONSO]  # already stripped by the caller
 
     if not _LIEU_CONSO_RE.match(lieu_conso):
@@ -46,7 +59,9 @@ async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str,
     session = async_get_clientsession(hass)
 
     try:
-        async with session.get(url, timeout=aiohttp.ClientTimeout(total=10)) as response:
+        async with session.get(
+            url, timeout=aiohttp.ClientTimeout(total=10)
+        ) as response:
             if response.status != 200:
                 raise CannotConnect
             json_data = await response.json()
@@ -69,15 +84,20 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     def async_get_options_flow(
         config_entry: config_entries.ConfigEntry,
     ) -> OptionsFlowHandler:
-        """Return the options flow handler."""
+        """Return the options flow handler for renaming the location."""
         return OptionsFlowHandler()
 
-    async def async_step_user(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
-        """Handle the user-initiated setup step."""
+    async def async_step_user(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Handle the user-initiated setup step.
+
+        Strips whitespace from the lieu de consommation number before
+        validation and storage so that accidental leading/trailing spaces
+        never end up in the config entry or in API URLs.
+        """
         errors: dict[str, str] = {}
         if user_input is not None:
-            # Normalise before validation and storage so no trailing spaces
-            # end up in the config entry or API calls.
             user_input[CONF_LIEU_CONSO] = user_input[CONF_LIEU_CONSO].strip()
             try:
                 info = await validate_input(self.hass, user_input)
@@ -100,10 +120,17 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
 
 class OptionsFlowHandler(config_entries.OptionsFlow):
-    """Handle options flow for renaming a configured location."""
+    """Handle options flow for renaming a configured location.
 
-    async def async_step_init(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
-        """Present the options form and apply changes when submitted."""
+    Changes are written back to ``entry.data`` (not ``entry.options``) so that
+    the coordinator and all entities see the updated name immediately via the
+    existing data path, without requiring a coordinator restart.
+    """
+
+    async def async_step_init(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Present the rename form and apply the change when submitted."""
         if user_input is not None:
             new_data = {
                 **self.config_entry.data,
@@ -129,13 +156,18 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
         )
 
 
+# ---------------------------------------------------------------------------
+# Custom exceptions
+# ---------------------------------------------------------------------------
+
+
 class CannotConnect(HomeAssistantError):
-    """Raised when the API is unreachable."""
+    """Raised when the Hydro-Québec API is unreachable."""
 
 
 class InvalidLieuConso(HomeAssistantError):
-    """Raised when the lieu de consommation number returns no data."""
+    """Raised when the API returns an empty payload for the supplied number."""
 
 
 class InvalidFormat(HomeAssistantError):
-    """Raised when the lieu de consommation number does not match the expected format."""
+    """Raised when the lieu de consommation number is not exactly 10 digits."""
