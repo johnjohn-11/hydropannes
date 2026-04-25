@@ -40,8 +40,7 @@ jobs:
         with:
           python-version: "3.13"
       - name: Install dependencies
-        run: |
-          pip install mypy homeassistant==2025.4.0
+        run: pip install -r requirements-ci.txt
       - name: Run mypy
         run: mypy custom_components/hydropannes --ignore-missing-imports
   validate:
