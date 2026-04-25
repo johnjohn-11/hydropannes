@@ -33,42 +33,15 @@ jobs:
           PREVIOUS_TAG=$(git tag --sort=-version:refname | grep -v "^${{ github.ref_name }}$" | head -n1)
 
           if [ -z "$PREVIOUS_TAG" ]; then
-            RAW=$(git log --pretty=format:"%s|%H" HEAD)
+            RANGE="HEAD"
           else
-            RAW=$(git log --pretty=format:"%s|%H" ${PREVIOUS_TAG}..HEAD)
+            RANGE="${PREVIOUS_TAG}..HEAD"
           fi
 
-          FEATS=""
-          FIXES=""
-          DOCS=""
-          REFACTORS=""
-          CHORES=""
-          OTHERS=""
-
-          while IFS='|' read -r MSG HASH; do
-            LINK="([${MSG}](https://github.com/${REPO}/commit/${HASH}))"
-            if [[ "$MSG" == feat:* ]]; then
-              FEATS="${FEATS}- ${LINK}\n"
-            elif [[ "$MSG" == fix:* ]]; then
-              FIXES="${FIXES}- ${LINK}\n"
-            elif [[ "$MSG" == docs:* ]]; then
-              DOCS="${DOCS}- ${LINK}\n"
-            elif [[ "$MSG" == refactor:* ]]; then
-              REFACTORS="${REFACTORS}- ${LINK}\n"
-            elif [[ "$MSG" == chore:* ]]; then
-              CHORES="${CHORES}- ${LINK}\n"
-            else
-              OTHERS="${OTHERS}- ${LINK}\n"
-            fi
-          done <<< "$RAW"
-
           BODY=""
-          [ -n "$FEATS" ]     && BODY="${BODY}### 🚀 Nouveautés\n${FEATS}\n"
-          [ -n "$FIXES" ]     && BODY="${BODY}### 🐛 Corrections\n${FIXES}\n"
-          [ -n "$REFACTORS" ] && BODY="${BODY}### ♻️ Refactorisation\n${REFACTORS}\n"
-          [ -n "$DOCS" ]      && BODY="${BODY}### 📝 Documentation\n${DOCS}\n"
-          [ -n "$CHORES" ]    && BODY="${BODY}### 🔧 Maintenance\n${CHORES}\n"
-          [ -n "$OTHERS" ]    && BODY="${BODY}### 📦 Autres\n${OTHERS}\n"
+          while IFS='|' read -r SHORT_HASH MSG AUTHOR; do
+            BODY="${BODY}* __[${SHORT_HASH}](https://github.com/${REPO}/commit/${SHORT_HASH})__ ${MSG} — _${AUTHOR}_\n"
+          done <<< "$(git log --pretty=format:"%h|%s|%an" ${RANGE})"
 
           echo "body<<EOF" >> $GITHUB_OUTPUT
           printf "%b" "$BODY" >> $GITHUB_OUTPUT
