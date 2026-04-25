@@ -160,7 +160,6 @@ class HydroPannesDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             try:
                 async with asyncio.timeout(10):
                     async with session.get(url) as response:
-
                         # Retry on server-side errors; fail immediately on
                         # client errors (4xx) since retrying would not help.
                         if 500 <= response.status < 600:
@@ -179,9 +178,7 @@ class HydroPannesDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                             )
 
                         if response.status != 200:
-                            return self._handle_failure(
-                                f"API returned status {response.status}"
-                            )
+                            return self._handle_failure(f"API returned status {response.status}")
 
                         data = await response.json()
 
@@ -388,9 +385,7 @@ class HydroPannesDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         entry_line = json.dumps(entry) + "\n"
         log_dir = self.hass.config.path("hydropannes_logs")
 
-        await self.hass.async_add_executor_job(
-            self._write_log_sync, lieu_id, log_dir, entry_line
-        )
+        await self.hass.async_add_executor_job(self._write_log_sync, lieu_id, log_dir, entry_line)
 
     def _write_log_sync(self, lieu_id: str, log_dir: str, entry_line: str) -> None:
         """Write a log entry to disk.
