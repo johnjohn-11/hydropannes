@@ -1,4 +1,15 @@
-"""Support for Hydro-Pannes binary sensors."""
+"""Binary sensors for Hydro-Pannes.
+
+Provides three binary sensors per configured location:
+
+- **État du service** (BinarySensorDeviceClass.PROBLEM): ``True`` when an
+  active unplanned outage or active planned intervention (AIP) is in progress.
+- **Intervention planifiée** (BinarySensorDeviceClass.RUNNING): ``True``
+  when at least one non-terminated planned intervention exists.
+- **Compatibilité API** (EntityCategory.DIAGNOSTIC, BinarySensorDeviceClass.PROBLEM):
+  ``True`` when the Hydro-Québec API response no longer contains the expected
+  root-level fields, indicating a breaking schema change.
+"""
 
 from __future__ import annotations
 
@@ -48,7 +59,11 @@ class HydroPannesBinarySensorBase(
     BinarySensorEntity,
     HydroPannesHelperMixin,
 ):
-    """Base class for all Hydro-Pannes binary sensors."""
+    """Base class shared by all Hydro-Pannes binary sensors.
+
+    Wires up the coordinator, device info, and the availability guard that
+    prevents entities from reporting stale state when no data has been fetched.
+    """
 
     _attr_has_entity_name = True
 
@@ -65,12 +80,12 @@ class HydroPannesBinarySensorBase(
 
     @property
     def available(self) -> bool:
-        """Return True only when the coordinator has successfully fetched data."""
+        """Return True only after a successful data fetch."""
         return super().available and self.coordinator.data is not None
 
     @property
     def device_info(self) -> DeviceInfo:
-        """Return device registry information."""
+        """Return device registry info shared by all entities for this location."""
         return DeviceInfo(
             identifiers={(DOMAIN, self._entry.entry_id)},
             name=f"HydroPannes {self._nom_lieu}",
@@ -80,10 +95,23 @@ class HydroPannesBinarySensorBase(
 
 
 class HydroPannesEtatServiceBinarySensor(HydroPannesBinarySensorBase):
-    """Binary sensor indicating whether there is an active service problem."""
+    """Binary sensor indicating whether there is an active service problem.
+
+    Maps to the BinarySensorDeviceClass.PROBLEM convention:
+    - ``True``  → problem detected (active outage or active AIP).
+    - ``False`` → service is normal (root etat != "N").
+    - ``None``  → state is unknown (no data yet).
+
+    Note: when ``etat == "N"`` but no specific interruption can be matched,
+    the sensor still returns ``True`` because the API confirms power is out,
+    even if the interruption object cannot be resolved.
+    """
 
     def __init__(
-        self, coordinator: HydroPannesDataUpdateCoordinator, entry: ConfigEntry, nom_lieu: str
+        self,
+        coordinator: HydroPannesDataUpdateCoordinator,
+        entry: ConfigEntry,
+        nom_lieu: str,
     ) -> None:
         """Initialize the binary sensor."""
         super().__init__(coordinator, entry, nom_lieu)
@@ -93,18 +121,28 @@ class HydroPannesEtatServiceBinarySensor(HydroPannesBinarySensorBase):
 
     @property
     def is_on(self) -> bool | None:
-        """Return True if there is an active outage, False if normal, None if unknown."""
+        """Return True when power is out or an AIP is actively in progress."""
         if not self.coordinator.data:
             return None
+
         main_etat = self._get_main_etat()
+
+        # Root etat != "N" means the service point is fed normally.
         if main_etat != "N":
             return False
+
+        # Active unplanned outage.
         if self._get_active_outage():
             return True
+
+        # Active planned intervention (AIP currently in progress).
         planned = self._get_planned_intervention()
         if planned and self._is_outage_active(planned):
             return True
-        return None
+
+        # etat is "N" (power out) but no specific interruption matched.
+        # The API confirms there is a problem, even without a resolved outage.
+        return True
 
     @property
     def icon(self) -> str:
@@ -113,17 +151,20 @@ class HydroPannesEtatServiceBinarySensor(HydroPannesBinarySensorBase):
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
-        """Return key fields from the selected interruption."""
+        """Return key fields from the most relevant active interruption."""
         if not self.coordinator.data:
             return {}
         interruptions = self._get_interruptions()
         if not interruptions:
             return {}
+
+        # Select the best interruption in priority order.
         active_interruption = self._get_active_outage()
         if not active_interruption:
             active_interruption = self._get_planned_intervention()
         if not active_interruption:
             active_interruption = interruptions[0]
+
         return {
             "dateDebut": active_interruption.get("dateDebut"),
             "dateFin": active_interruption.get("dateFin"),
@@ -144,10 +185,17 @@ class HydroPannesEtatServiceBinarySensor(HydroPannesBinarySensorBase):
 
 
 class HydroPannesInterventionPlanifieeBinarySensor(HydroPannesBinarySensorBase):
-    """Binary sensor indicating whether a planned intervention is active or upcoming."""
+    """Binary sensor indicating whether a planned intervention (AIP) exists.
+
+    Returns ``True`` when at least one non-terminated planned interruption is
+    present in the API response (active or upcoming).
+    """
 
     def __init__(
-        self, coordinator: HydroPannesDataUpdateCoordinator, entry: ConfigEntry, nom_lieu: str
+        self,
+        coordinator: HydroPannesDataUpdateCoordinator,
+        entry: ConfigEntry,
+        nom_lieu: str,
     ) -> None:
         """Initialize the binary sensor."""
         super().__init__(coordinator, entry, nom_lieu)
@@ -167,17 +215,18 @@ class HydroPannesInterventionPlanifieeBinarySensor(HydroPannesBinarySensorBase):
 
     @property
     def icon(self) -> str:
-        """Return an icon reflecting the planned intervention state."""
+        """Return an icon reflecting whether an AIP is pending or done."""
         return "mdi:calendar-clock" if self.is_on else "mdi:calendar-check"
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
-        """Return key fields from the most relevant planned intervention."""
+        """Return key fields from the most relevant non-terminated AIP."""
         if not self.coordinator.data:
             return {}
         interruptions = self._get_interruptions()
         if not interruptions:
             return {}
+
         planned = next(
             (
                 i
@@ -188,6 +237,7 @@ class HydroPannesInterventionPlanifieeBinarySensor(HydroPannesBinarySensorBase):
         )
         if not planned:
             return {}
+
         return {
             "dateDebut": planned.get("dateDebut"),
             "dateFin": planned.get("dateFin"),
@@ -211,10 +261,21 @@ class HydroPannesInterventionPlanifieeBinarySensor(HydroPannesBinarySensorBase):
 
 
 class HydroPannesAPICompatibilityBinarySensor(HydroPannesBinarySensorBase):
-    """Diagnostic binary sensor to monitor API structure changes."""
+    """Diagnostic sensor monitoring the Hydro-Québec API response structure.
+
+    Returns ``True`` (Problem) when the coordinator has detected that the API
+    response is missing one or more expected root-level fields, which indicates
+    a breaking schema change that requires an integration update.
+
+    This sensor is in the DIAGNOSTIC category and is hidden from the default
+    dashboard view; it is intended for troubleshooting and automations.
+    """
 
     def __init__(
-        self, coordinator: HydroPannesDataUpdateCoordinator, entry: ConfigEntry, nom_lieu: str
+        self,
+        coordinator: HydroPannesDataUpdateCoordinator,
+        entry: ConfigEntry,
+        nom_lieu: str,
     ) -> None:
         """Initialize the diagnostic sensor."""
         super().__init__(coordinator, entry, nom_lieu)
@@ -225,10 +286,10 @@ class HydroPannesAPICompatibilityBinarySensor(HydroPannesBinarySensorBase):
 
     @property
     def is_on(self) -> bool:
-        """Return True (Problem) if the API structure is incompatible."""
+        """Return True (Problem) when the API structure is incompatible."""
         return not self.coordinator.api_compatible
 
     @property
     def icon(self) -> str:
-        """Return the icon based on state."""
+        """Return an icon reflecting the API compatibility state."""
         return "mdi:api-off" if self.is_on else "mdi:api"
