@@ -32,6 +32,18 @@ ACTIVE_OUTAGE_UPDATE_INTERVAL = 60  # seconds — faster polling during an activ
 API_HISTORY_SIZE = 5  # number of distinct API payloads to keep in memory
 JSON_LOG_MAX_SIZE_MB = 5
 
+# Root-level fields that must always be present (Option A).
+EXPECTED_ROOT_FIELDS = {"etat", "interruptions", "idLieuConso"}
+
+# All interruption fields the integration currently uses (Option C).
+# A warning is logged when HQ sends an unknown field, signalling an API evolution.
+KNOWN_INTERRUPTION_FIELDS = {
+    "dateDebut", "dateFin", "etat", "dateFinEstimeeMin", "dateFinEstimeeMax",
+    "dateDebutReport", "dateFinReport", "codeIntervention", "niveauUrgence",
+    "nbClient", "codeCause", "codeMunicipal", "datePublication", "codeRemarque",
+    "dureePrevu", "probabilite", "interruptionPlanifiee", "typeFinPrevue",
+}
+
 
 class HydroPannesDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     """Coordinator managing Hydro-Pannes data fetching and caching."""
@@ -90,14 +102,29 @@ class HydroPannesDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
                         result: dict[str, Any] = data[0]
 
-                        if "etat" not in result:
+                        # Option A: validate root-level fields that are always present.
+                        missing_root = EXPECTED_ROOT_FIELDS - result.keys()
+                        if missing_root:
                             if self.api_compatible:
                                 _LOGGER.error(
-                                    "Structure de l'API Hydro-Québec non reconnue ou modifiée"
+                                    "Structure de l'API Hydro-Québec non reconnue ou modifiée "
+                                    "— champs manquants: %s",
+                                    missing_root,
                                 )
                             self.api_compatible = False
                         else:
                             self.api_compatible = True
+
+                        # Option C: log unknown fields in interruptions when a panne is present.
+                        for intr in result.get("interruptions", []):
+                            unknown = intr.keys() - KNOWN_INTERRUPTION_FIELDS
+                            if unknown:
+                                _LOGGER.warning(
+                                    "Nouveaux champs API détectés dans une interruption "
+                                    "(lieu %s): %s",
+                                    self.lieu_conso,
+                                    unknown,
+                                )
 
                         self._record_if_changed(result)
                         self._adjust_update_interval(result)
