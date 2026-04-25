@@ -1,4 +1,10 @@
-"""Diagnostics support for Hydro-Pannes."""
+"""Diagnostics support for Hydro-Pannes.
+
+Exposes coordinator state and recent API history for the HA diagnostics
+download feature.  All sensitive fields (lieu de consommation ID) are
+masked before being returned so the report is safe to share publicly in
+GitHub issues.
+"""
 
 from __future__ import annotations
 
@@ -17,7 +23,15 @@ if TYPE_CHECKING:
 async def async_get_config_entry_diagnostics(
     hass: HomeAssistant, entry: ConfigEntry
 ) -> dict[str, Any]:
-    """Return diagnostics for a config entry, with sensitive fields redacted."""
+    """Build a diagnostics report for a config entry.
+
+    The report contains:
+    - Config entry metadata (entry_id, version, title).
+    - Coordinator health: last update success, polling interval,
+      API compatibility flag, and last success timestamp if available.
+    - The current API payload (redacted).
+    - The last API_HISTORY_SIZE distinct payloads with timestamps (redacted).
+    """
     coordinator: HydroPannesDataUpdateCoordinator = hass.data[DOMAIN][entry.entry_id]
 
     lieu_conso = coordinator.lieu_conso
@@ -26,6 +40,7 @@ async def async_get_config_entry_diagnostics(
     coordinator_info: dict[str, Any] = {
         "last_update_success": coordinator.last_update_success,
         "update_interval": str(coordinator.update_interval),
+        # Indicates whether the last API response had the expected schema.
         "api_compatible": coordinator.api_compatible,
     }
 
@@ -36,7 +51,8 @@ async def async_get_config_entry_diagnostics(
             else None
         )
 
-    # Redact sensitive fields in each history snapshot.
+    # Deep-copy each history snapshot before redacting so the coordinator's
+    # in-memory data is never mutated by the diagnostics call.
     api_history = [
         {
             "timestamp": snapshot["timestamp"],
@@ -63,7 +79,12 @@ async def async_get_config_entry_diagnostics(
 
 
 def _redact_data(data: dict[str, Any]) -> dict[str, Any]:
-    """Return a deep copy of the API data with the idLieuConso field masked."""
+    """Return a deep copy of an API payload with ``idLieuConso`` masked.
+
+    Uses deepcopy to ensure the original coordinator data is never modified,
+    even if the dict contains nested mutable objects (e.g. the interruptions
+    list).
+    """
     if not data:
         return {}
 
