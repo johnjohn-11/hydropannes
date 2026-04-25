@@ -1,4 +1,18 @@
-"""Data update coordinator for Hydro-Pannes."""
+"""Data update coordinator for Hydro-Pannes.
+
+The coordinator is responsible for:
+- Polling the Hydro-Québec Info-pannes API at a configurable interval.
+- Switching to faster polling (ACTIVE_OUTAGE_UPDATE_INTERVAL) during an
+  active outage and back to the normal interval once it clears.
+- Retrying transient HTTP 5xx errors and timeouts up to MAX_RETRIES times.
+- Returning stale data on failure when a previous successful fetch exists,
+  rather than marking all entities unavailable.
+- Maintaining an in-memory ring buffer (api_history) of the last
+  API_HISTORY_SIZE distinct payloads for diagnostics.
+- Writing a JSONL change log to the HA config directory for troubleshooting.
+- Detecting API structure changes (missing root fields) and flagging unknown
+  interruption fields when Hydro-Québec evolves their schema.
+"""
 
 from __future__ import annotations
 
@@ -26,17 +40,34 @@ if TYPE_CHECKING:
 
 _LOGGER = logging.getLogger(__name__)
 
+# ---------------------------------------------------------------------------
+# Tuning constants
+# ---------------------------------------------------------------------------
+
 MAX_RETRIES = 2
 RETRY_DELAY = 2  # seconds between retry attempts
-ACTIVE_OUTAGE_UPDATE_INTERVAL = 60  # seconds — faster polling during an active outage
-API_HISTORY_SIZE = 5  # number of distinct API payloads to keep in memory
+
+# Faster polling interval used while at least one active outage is detected.
+ACTIVE_OUTAGE_UPDATE_INTERVAL = 60  # seconds
+
+# Maximum number of distinct API payloads retained in the in-memory ring buffer.
+API_HISTORY_SIZE = 5
+
+# Rotate the JSONL log file when it exceeds this size.
 JSON_LOG_MAX_SIZE_MB = 5
 
-# Root-level fields that must always be present (Option A).
+# ---------------------------------------------------------------------------
+# API schema validation
+# ---------------------------------------------------------------------------
+
+# Fields that the Hydro-Québec API must always return at the root level.
+# Their absence indicates a breaking schema change (Option A validation).
 EXPECTED_ROOT_FIELDS = {"etat", "interruptions", "idLieuConso"}
 
-# All interruption fields the integration currently uses (Option C).
-# A warning is logged when HQ sends an unknown field, signalling an API evolution.
+# All interruption-level fields currently consumed by the integration.
+# Any field returned by HQ that is NOT in this set triggers a warning log,
+# signalling that the API has evolved and the integration may need updating
+# (Option C validation — only fires when a panne is active).
 KNOWN_INTERRUPTION_FIELDS = {
     "dateDebut",
     "dateFin",
@@ -60,15 +91,29 @@ KNOWN_INTERRUPTION_FIELDS = {
 
 
 class HydroPannesDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
-    """Coordinator managing Hydro-Pannes data fetching and caching."""
+    """Coordinator managing data fetching, caching, and change logging."""
 
     def __init__(self, hass: HomeAssistant, lieu_conso: str) -> None:
-        """Initialize the coordinator."""
+        """Initialize the coordinator.
+
+        Args:
+            hass: The Home Assistant instance.
+            lieu_conso: The Hydro-Québec lieu de consommation number (10 digits).
+
+        """
         self.lieu_conso = lieu_conso
-        self.api_compatible = True
+
+        # Tracks whether the last successful API response had the expected
+        # root-level schema.  True until proven otherwise.
+        self.api_compatible: bool = True
+
+        # MD5 hash of the last payload per lieu, used for change detection.
         self._last_hashes: dict[str, str] = {}
-        # Ring buffer of the last API_HISTORY_SIZE distinct payloads with timestamps.
+
+        # Ring buffer of the most recent distinct API payloads with timestamps,
+        # exposed to the diagnostics module.
         self.api_history: deque[dict[str, Any]] = deque(maxlen=API_HISTORY_SIZE)
+
         super().__init__(
             hass,
             _LOGGER,
@@ -76,8 +121,18 @@ class HydroPannesDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             update_interval=timedelta(seconds=UPDATE_INTERVAL),
         )
 
+    # -----------------------------------------------------------------------
+    # Core update loop
+    # -----------------------------------------------------------------------
+
     async def _async_update_data(self) -> dict[str, Any]:
-        """Fetch latest data from the Hydro-Québec API."""
+        """Fetch the latest outage data from the Hydro-Québec API.
+
+        Implements an exponential-free retry loop for transient 5xx errors and
+        network timeouts.  On persistent failure, returns the previous payload
+        to keep entities available, or raises UpdateFailed if no previous data
+        exists.
+        """
         url = API_URL.format(self.lieu_conso)
         session = async_get_clientsession(self.hass)
 
@@ -85,6 +140,9 @@ class HydroPannesDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             try:
                 async with asyncio.timeout(10):
                     async with session.get(url) as response:
+
+                        # Retry on server-side errors; fail immediately on
+                        # client errors (4xx) since retrying would not help.
                         if 500 <= response.status < 600:
                             if attempt < MAX_RETRIES:
                                 _LOGGER.debug(
@@ -97,11 +155,14 @@ class HydroPannesDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                                 await asyncio.sleep(RETRY_DELAY)
                                 continue
                             return self._handle_failure(
-                                f"API returned {response.status} after {MAX_RETRIES + 1} attempts"
+                                f"API returned {response.status} "
+                                f"after {MAX_RETRIES + 1} attempts"
                             )
 
                         if response.status != 200:
-                            return self._handle_failure(f"API returned status {response.status}")
+                            return self._handle_failure(
+                                f"API returned status {response.status}"
+                            )
 
                         data = await response.json()
 
@@ -113,31 +174,35 @@ class HydroPannesDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
                         result: dict[str, Any] = data[0]
 
-                        # Option A: validate root-level fields that are always present.
+                        # --- Option A: validate required root-level fields ---
                         missing_root = EXPECTED_ROOT_FIELDS - result.keys()
                         if missing_root:
                             if self.api_compatible:
+                                # Log once per transition to avoid log spam.
                                 _LOGGER.error(
-                                    "Structure de l'API Hydro-Québec non reconnue ou modifiée "
-                                    "— champs manquants: %s",
+                                    "Structure de l'API Hydro-Québec non reconnue ou "
+                                    "modifiée — champs manquants: %s",
                                     missing_root,
                                 )
                             self.api_compatible = False
                         else:
                             self.api_compatible = True
 
-                        # Option C: log unknown fields in interruptions when a panne is present.
+                        # --- Option C: warn on unknown interruption fields ---
+                        # Only fires during an active panne (interruptions list
+                        # is empty otherwise, so no false positives).
                         for intr in result.get("interruptions", []):
                             unknown = intr.keys() - KNOWN_INTERRUPTION_FIELDS
                             if unknown:
                                 _LOGGER.warning(
                                     "Nouveaux champs API détectés dans une interruption "
-                                    "(lieu %s): %s",
+                                    "(lieu %s): %s — le schéma HQ a peut-être évolué.",
                                     self.lieu_conso,
                                     unknown,
                                 )
 
-                        # Compute hash once; both history and disk log use the same value.
+                        # Compute hash once; reused for both the in-memory
+                        # history check and the disk log write.
                         current_hash = hashlib.md5(
                             json.dumps(result, sort_keys=True).encode()
                         ).hexdigest()
@@ -184,8 +249,18 @@ class HydroPannesDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         return self._handle_failure("Unknown error")
 
+    # -----------------------------------------------------------------------
+    # Failure handling
+    # -----------------------------------------------------------------------
+
     def _handle_failure(self, error_msg: str) -> dict[str, Any]:
-        """Return stale data on transient failure, or raise UpdateFailed if none exists."""
+        """Return stale data on transient failure, or raise UpdateFailed.
+
+        Returning stale data keeps all entities in their last-known state
+        rather than going unavailable on a brief API hiccup.  If no previous
+        data exists (first fetch), UpdateFailed is raised so HA can schedule
+        a retry via ConfigEntryNotReady.
+        """
         if self.data is not None:
             _LOGGER.warning(
                 "%s for lieu %s — keeping previous data",
@@ -201,8 +276,16 @@ class HydroPannesDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         )
         raise UpdateFailed(f"Error communicating with API: {error_msg}")
 
+    # -----------------------------------------------------------------------
+    # History and polling management
+    # -----------------------------------------------------------------------
+
     def _append_history(self, data: dict[str, Any]) -> None:
-        """Append a timestamped snapshot to api_history. Caller guarantees data has changed."""
+        """Append a timestamped snapshot to the in-memory history ring buffer.
+
+        Called only when the payload has changed (caller guarantees this).
+        The deque automatically evicts the oldest entry when full.
+        """
         snapshot = {
             "timestamp": dt_util.utcnow().isoformat(),
             "data": data,
@@ -216,7 +299,12 @@ class HydroPannesDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         )
 
     def _adjust_update_interval(self, data: dict[str, Any]) -> None:
-        """Switch between fast and normal polling based on outage state."""
+        """Switch between fast and normal polling intervals.
+
+        Uses ACTIVE_OUTAGE_UPDATE_INTERVAL (60 s) during an active outage for
+        more responsive end-of-panne detection, and falls back to the normal
+        UPDATE_INTERVAL (180 s) otherwise.
+        """
         target_seconds = (
             ACTIVE_OUTAGE_UPDATE_INTERVAL
             if self._is_active_outage_in_data(data)
@@ -232,24 +320,39 @@ class HydroPannesDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             )
 
     def _is_active_outage_in_data(self, data: dict[str, Any]) -> bool:
-        """Return True if data contains at least one active (non-terminated) outage."""
+        """Return True if the payload contains at least one active outage.
+
+        An outage is considered active when:
+        - The root-level ``etat`` is ``"N"`` (non-alimenté), AND
+        - At least one interruption has no ``dateFin`` or a ``dateFin`` in
+          the future.
+
+        This is intentionally separate from the helper mixin used by sensors,
+        because it operates on a raw dict rather than through coordinator.data.
+        """
         if data.get("etat") != "N":
             return False
         now = dt_util.now()
         for intr in data.get("interruptions", []):
             date_fin_str = intr.get("dateFin")
             if not date_fin_str:
-                return True  # no end date means the outage is still ongoing
+                # No end date → outage is still ongoing.
+                return True
             dt = dt_util.parse_datetime(date_fin_str)
             if dt and dt_util.as_local(dt) > now:
                 return True
         return False
 
-    async def _write_log(self, lieu_id: str, data: dict[str, Any]) -> None:
-        """Append a JSONL log entry. Caller guarantees data has changed.
+    # -----------------------------------------------------------------------
+    # JSONL change log (disk I/O runs in an executor thread)
+    # -----------------------------------------------------------------------
 
-        File I/O is dispatched to a thread pool via async_add_executor_job to avoid
-        blocking the Home Assistant event loop.
+    async def _write_log(self, lieu_id: str, data: dict[str, Any]) -> None:
+        """Asynchronously append a JSONL entry to the change log.
+
+        File I/O is dispatched to a thread-pool executor via
+        async_add_executor_job so it does not block the HA event loop.
+        Called only when the payload has changed.
         """
         entry = {
             "timestamp": dt_util.utcnow().isoformat(),
@@ -258,10 +361,16 @@ class HydroPannesDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         entry_line = json.dumps(entry) + "\n"
         log_dir = self.hass.config.path("hydropannes_logs")
 
-        await self.hass.async_add_executor_job(self._write_log_sync, lieu_id, log_dir, entry_line)
+        await self.hass.async_add_executor_job(
+            self._write_log_sync, lieu_id, log_dir, entry_line
+        )
 
     def _write_log_sync(self, lieu_id: str, log_dir: str, entry_line: str) -> None:
-        """Write a log entry to disk. Runs in an executor thread, not the event loop."""
+        """Write a log entry to disk.
+
+        Runs in an executor thread (not the event loop).  Rotates the file
+        when it exceeds JSON_LOG_MAX_SIZE_MB to prevent unbounded growth.
+        """
         try:
             os.makedirs(log_dir, exist_ok=True)
             log_file = os.path.join(log_dir, f"{lieu_id}.jsonl")
@@ -280,9 +389,10 @@ class HydroPannesDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             _LOGGER.exception("Failed to write log for lieu %s", lieu_id)
 
     def _rotate_log(self, log_file: str) -> None:
-        """Trim the log file to its most recent half when it exceeds the size limit.
+        """Trim the log file to its most recent half.
 
         Called from _write_log_sync; already running in an executor thread.
+        Discards the oldest 50 % of entries to balance retention with disk use.
         """
         try:
             with open(log_file, encoding="utf-8") as f:
