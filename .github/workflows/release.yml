@@ -39,9 +39,19 @@ jobs:
           fi
 
           BODY=""
-          while IFS='|' read -r SHORT_HASH MSG AUTHOR; do
-            BODY="${BODY}* __[${SHORT_HASH}](https://github.com/${REPO}/commit/${SHORT_HASH})__ ${MSG} — _${AUTHOR}_\n"
-          done <<< "$(git log --pretty=format:"%h|%s|%an" ${RANGE})"
+          while IFS='|' read -r SHORT_HASH MSG AUTHOR EMAIL; do
+            # Extract GitHub username from noreply email formats:
+            # - username@users.noreply.github.com
+            # - 12345678+username@users.noreply.github.com
+            if [[ "$EMAIL" =~ ^[0-9]+\+(.+)@users\.noreply\.github\.com$ ]]; then
+              AUTHOR_LINK="[@${BASH_REMATCH[1]}](https://github.com/${BASH_REMATCH[1]})"
+            elif [[ "$EMAIL" =~ ^(.+)@users\.noreply\.github\.com$ ]]; then
+              AUTHOR_LINK="[@${BASH_REMATCH[1]}](https://github.com/${BASH_REMATCH[1]})"
+            else
+              AUTHOR_LINK="_${AUTHOR}_"
+            fi
+            BODY="${BODY}* __[${SHORT_HASH}](https://github.com/${REPO}/commit/${SHORT_HASH})__ ${MSG} — ${AUTHOR_LINK}\n"
+          done <<< "$(git log --pretty=format:"%h|%s|%an|%ae" ${RANGE})"
 
           echo "body<<EOF" >> $GITHUB_OUTPUT
           printf "%b" "$BODY" >> $GITHUB_OUTPUT
