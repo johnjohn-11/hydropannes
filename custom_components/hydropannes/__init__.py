@@ -6,14 +6,16 @@ import asyncio
 import logging
 from typing import TYPE_CHECKING
 
-import voluptuous as vol
 from homeassistant.const import Platform
 from homeassistant.helpers import config_validation as cv
+import voluptuous as vol
 
 from .const import CONF_LIEU_CONSO, DOMAIN
 from .coordinator import HydroPannesDataUpdateCoordinator
 
 if TYPE_CHECKING:
+    from homeassistant.config_entries import ConfigEntry
+    from homeassistant.core import HomeAssistant, ServiceCall
     from homeassistant.config_entries import ConfigEntry
     from homeassistant.core import HomeAssistant, ServiceCall
 
