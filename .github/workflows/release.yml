@@ -72,9 +72,7 @@ jobs:
           git push origin HEAD:${{ github.event.repository.default_branch }}
 
       - name: Create release zip
-        run: |
-          cd custom_components/hydropannes
-          zip -r ../../hydropannes.zip *
+        run: zip -r hydropannes.zip custom_components/hydropannes/
 
       - name: Upload release asset
         uses: softprops/action-gh-release@v3.0.0
