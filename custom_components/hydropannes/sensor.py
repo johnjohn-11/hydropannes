@@ -33,10 +33,6 @@ if TYPE_CHECKING:
     from homeassistant.config_entries import ConfigEntry
     from homeassistant.core import HomeAssistant
     from homeassistant.helpers.entity_platform import AddEntitiesCallback
-if TYPE_CHECKING:
-    from homeassistant.config_entries import ConfigEntry
-    from homeassistant.core import HomeAssistant
-    from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -50,21 +46,19 @@ async def async_setup_entry(
     coordinator: HydroPannesDataUpdateCoordinator = hass.data[DOMAIN][entry.entry_id]
     nom_lieu = entry.title
 
-    async_add_entities(
-        [
-            HydroPannesInfoPannesSensor(coordinator, entry, nom_lieu),
-            HydroPannesNiveauUrgenceSensor(coordinator, entry, nom_lieu),
-            HydroPannesNombreClientSensor(coordinator, entry, nom_lieu),
-            HydroPannesDebutSensor(coordinator, entry, nom_lieu),
-            HydroPannesFinEstimeeSensor(coordinator, entry, nom_lieu),
-            HydroPannesStatutInterventionSensor(coordinator, entry, nom_lieu),
-            HydroPannesCauseSensor(coordinator, entry, nom_lieu),
-            HydroPannesDureeSensor(coordinator, entry, nom_lieu),
-            HydroPannesDureeAvantRetablissementSensor(coordinator, entry, nom_lieu),
-            HydroPannesDerniereMAJSensor(coordinator, entry, nom_lieu),
-            HydroPannesLieuConsoSensor(coordinator, entry, nom_lieu),
-        ]
-    )
+    async_add_entities([
+        HydroPannesInfoPannesSensor(coordinator, entry, nom_lieu),
+        HydroPannesNiveauUrgenceSensor(coordinator, entry, nom_lieu),
+        HydroPannesNombreClientSensor(coordinator, entry, nom_lieu),
+        HydroPannesDebutSensor(coordinator, entry, nom_lieu),
+        HydroPannesFinEstimeeSensor(coordinator, entry, nom_lieu),
+        HydroPannesStatutInterventionSensor(coordinator, entry, nom_lieu),
+        HydroPannesCauseSensor(coordinator, entry, nom_lieu),
+        HydroPannesDureeSensor(coordinator, entry, nom_lieu),
+        HydroPannesDureeAvantRetablissementSensor(coordinator, entry, nom_lieu),
+        HydroPannesDerniereMAJSensor(coordinator, entry, nom_lieu),
+        HydroPannesLieuConsoSensor(coordinator, entry, nom_lieu),
+    ])
 
 
 class HydroPannesSensorBase(
@@ -106,9 +100,7 @@ class HydroPannesSensorBase(
 class HydroPannesInfoPannesSensor(HydroPannesSensorBase):
     """Sensor reporting the overall service status."""
 
-    def __init__(
-        self, coordinator: HydroPannesDataUpdateCoordinator, entry: ConfigEntry, nom_lieu: str
-    ) -> None:
+    def __init__(self, coordinator: HydroPannesDataUpdateCoordinator, entry: ConfigEntry, nom_lieu: str) -> None:
         """Initialize the sensor."""
         super().__init__(coordinator, entry, nom_lieu)
         self._attr_name = "Info-pannes"
@@ -174,11 +166,7 @@ class HydroPannesInfoPannesSensor(HydroPannesSensorBase):
             return "mdi:check-circle"
         if state in (INFO_PANNES_STATES["service_retabli"], INFO_PANNES_STATES["aip_terminee"]):
             return "mdi:check-circle-outline"
-        if state in (
-            INFO_PANNES_STATES["aip_a_venir"],
-            INFO_PANNES_STATES["aip_en_cours"],
-            INFO_PANNES_STATES["aip_annulee"],
-        ):
+        if state in (INFO_PANNES_STATES["aip_a_venir"], INFO_PANNES_STATES["aip_en_cours"], INFO_PANNES_STATES["aip_annulee"]):
             return "mdi:calendar-clock"
         if state == INFO_PANNES_STATES["panne_majeure"]:
             return "mdi:alert-octagon"
@@ -201,24 +189,10 @@ class HydroPannesInfoPannesSensor(HydroPannesSensorBase):
             return {"attribution": ATTRIBUTION}
         attrs: dict[str, Any] = {}
         for key in (
-            "dateDebut",
-            "dateFin",
-            "etat",
-            "dateFinEstimeeMin",
-            "dateFinEstimeeMax",
-            "dateDebutReport",
-            "dateFinReport",
-            "codeIntervention",
-            "niveauUrgence",
-            "nbClient",
-            "codeCause",
-            "codeMunicipal",
-            "datePublication",
-            "codeRemarque",
-            "dureePrevu",
-            "probabilite",
-            "interruptionPlanifiee",
-            "typeFinPrevue",
+            "dateDebut", "dateFin", "etat", "dateFinEstimeeMin", "dateFinEstimeeMax",
+            "dateDebutReport", "dateFinReport", "codeIntervention", "niveauUrgence",
+            "nbClient", "codeCause", "codeMunicipal", "datePublication", "codeRemarque",
+            "dureePrevu", "probabilite", "interruptionPlanifiee", "typeFinPrevue",
         ):
             val = inter.get(key)
             if key.startswith("date") and val:
@@ -226,9 +200,7 @@ class HydroPannesInfoPannesSensor(HydroPannesSensorBase):
                 attrs[key] = parsed.isoformat() if parsed else val
             elif val is not None:
                 attrs[key] = val
-        attrs["repriseGraduellePossible"] = self.coordinator.data.get(
-            "repriseGraduellePossible", False
-        )
+        attrs["repriseGraduellePossible"] = self.coordinator.data.get("repriseGraduellePossible", False)
         attrs["attribution"] = ATTRIBUTION
         return attrs
 
@@ -236,9 +208,7 @@ class HydroPannesInfoPannesSensor(HydroPannesSensorBase):
 class HydroPannesNiveauUrgenceSensor(HydroPannesSensorBase):
     """Sensor reporting the urgency level."""
 
-    def __init__(
-        self, coordinator: HydroPannesDataUpdateCoordinator, entry: ConfigEntry, nom_lieu: str
-    ) -> None:
+    def __init__(self, coordinator: HydroPannesDataUpdateCoordinator, entry: ConfigEntry, nom_lieu: str) -> None:
         """Initialize the sensor."""
         super().__init__(coordinator, entry, nom_lieu)
         self._attr_name = "Niveau urgence"
@@ -258,9 +228,7 @@ class HydroPannesNiveauUrgenceSensor(HydroPannesSensorBase):
 class HydroPannesNombreClientSensor(HydroPannesSensorBase):
     """Sensor reporting the number of affected addresses."""
 
-    def __init__(
-        self, coordinator: HydroPannesDataUpdateCoordinator, entry: ConfigEntry, nom_lieu: str
-    ) -> None:
+    def __init__(self, coordinator: HydroPannesDataUpdateCoordinator, entry: ConfigEntry, nom_lieu: str) -> None:
         """Initialize the sensor."""
         super().__init__(coordinator, entry, nom_lieu)
         self._attr_name = "Adresses touchées"
@@ -281,9 +249,7 @@ class HydroPannesNombreClientSensor(HydroPannesSensorBase):
 class HydroPannesDebutSensor(HydroPannesSensorBase):
     """Sensor reporting the effective start time."""
 
-    def __init__(
-        self, coordinator: HydroPannesDataUpdateCoordinator, entry: ConfigEntry, nom_lieu: str
-    ) -> None:
+    def __init__(self, coordinator: HydroPannesDataUpdateCoordinator, entry: ConfigEntry, nom_lieu: str) -> None:
         """Initialize the sensor."""
         super().__init__(coordinator, entry, nom_lieu)
         self._attr_name = "Date début"
@@ -304,9 +270,7 @@ class HydroPannesDebutSensor(HydroPannesSensorBase):
 class HydroPannesFinEstimeeSensor(HydroPannesSensorBase):
     """Sensor reporting the effective end time."""
 
-    def __init__(
-        self, coordinator: HydroPannesDataUpdateCoordinator, entry: ConfigEntry, nom_lieu: str
-    ) -> None:
+    def __init__(self, coordinator: HydroPannesDataUpdateCoordinator, entry: ConfigEntry, nom_lieu: str) -> None:
         """Initialize the sensor."""
         super().__init__(coordinator, entry, nom_lieu)
         self._attr_name = "Date fin"
@@ -352,9 +316,7 @@ class HydroPannesFinEstimeeSensor(HydroPannesSensorBase):
 class HydroPannesStatutInterventionSensor(HydroPannesSensorBase):
     """Sensor reporting the current intervention step."""
 
-    def __init__(
-        self, coordinator: HydroPannesDataUpdateCoordinator, entry: ConfigEntry, nom_lieu: str
-    ) -> None:
+    def __init__(self, coordinator: HydroPannesDataUpdateCoordinator, entry: ConfigEntry, nom_lieu: str) -> None:
         """Initialize the sensor."""
         super().__init__(coordinator, entry, nom_lieu)
         self._attr_name = "Statut intervention"
@@ -388,9 +350,7 @@ class HydroPannesStatutInterventionSensor(HydroPannesSensorBase):
 class HydroPannesCauseSensor(HydroPannesSensorBase):
     """Sensor reporting the cause of the interruption."""
 
-    def __init__(
-        self, coordinator: HydroPannesDataUpdateCoordinator, entry: ConfigEntry, nom_lieu: str
-    ) -> None:
+    def __init__(self, coordinator: HydroPannesDataUpdateCoordinator, entry: ConfigEntry, nom_lieu: str) -> None:
         """Initialize the sensor."""
         super().__init__(coordinator, entry, nom_lieu)
         self._attr_name = "Cause"
@@ -414,9 +374,7 @@ class HydroPannesCauseSensor(HydroPannesSensorBase):
 class HydroPannesDureeSensor(HydroPannesSensorBase):
     """Sensor reporting the interruption duration in seconds."""
 
-    def __init__(
-        self, coordinator: HydroPannesDataUpdateCoordinator, entry: ConfigEntry, nom_lieu: str
-    ) -> None:
+    def __init__(self, coordinator: HydroPannesDataUpdateCoordinator, entry: ConfigEntry, nom_lieu: str) -> None:
         """Initialize the sensor."""
         super().__init__(coordinator, entry, nom_lieu)
         self._attr_name = "Durée"
@@ -450,9 +408,7 @@ class HydroPannesDureeSensor(HydroPannesSensorBase):
 class HydroPannesDureeAvantRetablissementSensor(HydroPannesSensorBase):
     """Sensor reporting time remaining until restoration in seconds."""
 
-    def __init__(
-        self, coordinator: HydroPannesDataUpdateCoordinator, entry: ConfigEntry, nom_lieu: str
-    ) -> None:
+    def __init__(self, coordinator: HydroPannesDataUpdateCoordinator, entry: ConfigEntry, nom_lieu: str) -> None:
         """Initialize the sensor."""
         super().__init__(coordinator, entry, nom_lieu)
         self._attr_name = "Délai avant rétablissement"
@@ -478,9 +434,7 @@ class HydroPannesDureeAvantRetablissementSensor(HydroPannesSensorBase):
 class HydroPannesDerniereMAJSensor(HydroPannesSensorBase):
     """Sensor reporting the last update time."""
 
-    def __init__(
-        self, coordinator: HydroPannesDataUpdateCoordinator, entry: ConfigEntry, nom_lieu: str
-    ) -> None:
+    def __init__(self, coordinator: HydroPannesDataUpdateCoordinator, entry: ConfigEntry, nom_lieu: str) -> None:
         """Initialize the sensor."""
         super().__init__(coordinator, entry, nom_lieu)
         self._attr_name = "Dernière MAJ"
@@ -512,9 +466,7 @@ class HydroPannesDerniereMAJSensor(HydroPannesSensorBase):
 class HydroPannesLieuConsoSensor(HydroPannesSensorBase):
     """Diagnostic sensor reporting the consumption location ID."""
 
-    def __init__(
-        self, coordinator: HydroPannesDataUpdateCoordinator, entry: ConfigEntry, nom_lieu: str
-    ) -> None:
+    def __init__(self, coordinator: HydroPannesDataUpdateCoordinator, entry: ConfigEntry, nom_lieu: str) -> None:
         """Initialize the sensor."""
         super().__init__(coordinator, entry, nom_lieu)
         self._attr_name = "Lieu consommation"
