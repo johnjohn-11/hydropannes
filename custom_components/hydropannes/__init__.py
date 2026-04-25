@@ -73,9 +73,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 if coord := hass.data[DOMAIN].get(entry_id):
                     await coord.async_request_refresh()
                 else:
-                    _LOGGER.warning(
-                        "Refresh service called with unknown entry_id: %s", entry_id
-                    )
+                    _LOGGER.warning("Refresh service called with unknown entry_id: %s", entry_id)
             else:
                 await asyncio.gather(
                     *[

@@ -59,9 +59,7 @@ async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str,
     session = async_get_clientsession(hass)
 
     try:
-        async with session.get(
-            url, timeout=aiohttp.ClientTimeout(total=10)
-        ) as response:
+        async with session.get(url, timeout=aiohttp.ClientTimeout(total=10)) as response:
             if response.status != 200:
                 raise CannotConnect
             json_data = await response.json()
@@ -87,9 +85,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         """Return the options flow handler for renaming the location."""
         return OptionsFlowHandler()
 
-    async def async_step_user(
-        self, user_input: dict[str, Any] | None = None
-    ) -> ConfigFlowResult:
+    async def async_step_user(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         """Handle the user-initiated setup step.
 
         Strips whitespace from the lieu de consommation number before
@@ -127,9 +123,7 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
     existing data path, without requiring a coordinator restart.
     """
 
-    async def async_step_init(
-        self, user_input: dict[str, Any] | None = None
-    ) -> ConfigFlowResult:
+    async def async_step_init(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         """Present the rename form and apply the change when submitted."""
         if user_input is not None:
             new_data = {
