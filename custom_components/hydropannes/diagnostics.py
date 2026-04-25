@@ -28,7 +28,8 @@ async def async_get_config_entry_diagnostics(
     The report contains:
     - Config entry metadata (entry_id, version, title).
     - Coordinator health: last update success, polling interval,
-      API compatibility flag, and last success timestamp if available.
+      API compatibility flag, last success timestamp if available,
+      and lifetime poll/change/error counters with the last error details.
     - The current API payload (redacted).
     - The last API_HISTORY_SIZE distinct payloads with timestamps (redacted).
     """
@@ -42,6 +43,12 @@ async def async_get_config_entry_diagnostics(
         "update_interval": str(coordinator.update_interval),
         # Indicates whether the last API response had the expected schema.
         "api_compatible": coordinator.api_compatible,
+        # Lifetime counters (reset on each HA restart).
+        "total_polls": coordinator.total_polls,
+        "total_changes": coordinator.total_changes,
+        "total_errors": coordinator.total_errors,
+        # None if no error has occurred since the last HA restart.
+        "last_error": coordinator.last_error,
     }
 
     if hasattr(coordinator, "last_update_success_time"):
