@@ -34,11 +34,13 @@ async def async_setup_entry(
     coordinator: HydroPannesDataUpdateCoordinator = hass.data[DOMAIN][entry.entry_id]
     nom_lieu = entry.title
 
-    async_add_entities([
-        HydroPannesEtatServiceBinarySensor(coordinator, entry, nom_lieu),
-        HydroPannesInterventionPlanifieeBinarySensor(coordinator, entry, nom_lieu),
-        HydroPannesAPICompatibilityBinarySensor(coordinator, entry, nom_lieu),
-    ])
+    async_add_entities(
+        [
+            HydroPannesEtatServiceBinarySensor(coordinator, entry, nom_lieu),
+            HydroPannesInterventionPlanifieeBinarySensor(coordinator, entry, nom_lieu),
+            HydroPannesAPICompatibilityBinarySensor(coordinator, entry, nom_lieu),
+        ]
+    )
 
 
 class HydroPannesBinarySensorBase(
@@ -80,7 +82,9 @@ class HydroPannesBinarySensorBase(
 class HydroPannesEtatServiceBinarySensor(HydroPannesBinarySensorBase):
     """Binary sensor indicating whether there is an active service problem."""
 
-    def __init__(self, coordinator: HydroPannesDataUpdateCoordinator, entry: ConfigEntry, nom_lieu: str) -> None:
+    def __init__(
+        self, coordinator: HydroPannesDataUpdateCoordinator, entry: ConfigEntry, nom_lieu: str
+    ) -> None:
         """Initialize the binary sensor."""
         super().__init__(coordinator, entry, nom_lieu)
         self._attr_name = "État du service"
@@ -142,7 +146,9 @@ class HydroPannesEtatServiceBinarySensor(HydroPannesBinarySensorBase):
 class HydroPannesInterventionPlanifieeBinarySensor(HydroPannesBinarySensorBase):
     """Binary sensor indicating whether a planned intervention is active or upcoming."""
 
-    def __init__(self, coordinator: HydroPannesDataUpdateCoordinator, entry: ConfigEntry, nom_lieu: str) -> None:
+    def __init__(
+        self, coordinator: HydroPannesDataUpdateCoordinator, entry: ConfigEntry, nom_lieu: str
+    ) -> None:
         """Initialize the binary sensor."""
         super().__init__(coordinator, entry, nom_lieu)
         self._attr_name = "Intervention planifiée"
@@ -173,8 +179,11 @@ class HydroPannesInterventionPlanifieeBinarySensor(HydroPannesBinarySensorBase):
         if not interruptions:
             return {}
         planned = next(
-            (i for i in interruptions
-             if self._is_planned_intervention(i) and not self._is_outage_terminated(i)),
+            (
+                i
+                for i in interruptions
+                if self._is_planned_intervention(i) and not self._is_outage_terminated(i)
+            ),
             None,
         )
         if not planned:
@@ -204,7 +213,9 @@ class HydroPannesInterventionPlanifieeBinarySensor(HydroPannesBinarySensorBase):
 class HydroPannesAPICompatibilityBinarySensor(HydroPannesBinarySensorBase):
     """Diagnostic binary sensor to monitor API structure changes."""
 
-    def __init__(self, coordinator: HydroPannesDataUpdateCoordinator, entry: ConfigEntry, nom_lieu: str) -> None:
+    def __init__(
+        self, coordinator: HydroPannesDataUpdateCoordinator, entry: ConfigEntry, nom_lieu: str
+    ) -> None:
         """Initialize the diagnostic sensor."""
         super().__init__(coordinator, entry, nom_lieu)
         self._attr_name = "Compatibilité API"

@@ -46,9 +46,7 @@ async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str,
     session = async_get_clientsession(hass)
 
     try:
-        async with session.get(
-            url, timeout=aiohttp.ClientTimeout(total=10)
-        ) as response:
+        async with session.get(url, timeout=aiohttp.ClientTimeout(total=10)) as response:
             if response.status != 200:
                 raise CannotConnect
             json_data = await response.json()
@@ -74,9 +72,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         """Return the options flow handler."""
         return OptionsFlowHandler()
 
-    async def async_step_user(
-        self, user_input: dict[str, Any] | None = None
-    ) -> ConfigFlowResult:
+    async def async_step_user(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         """Handle the user-initiated setup step."""
         errors: dict[str, str] = {}
         if user_input is not None:
@@ -106,9 +102,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 class OptionsFlowHandler(config_entries.OptionsFlow):
     """Handle options flow for renaming a configured location."""
 
-    async def async_step_init(
-        self, user_input: dict[str, Any] | None = None
-    ) -> ConfigFlowResult:
+    async def async_step_init(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         """Present the options form and apply changes when submitted."""
         if user_input is not None:
             new_data = {

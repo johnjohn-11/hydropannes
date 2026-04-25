@@ -22,9 +22,11 @@ _LOGGER = logging.getLogger(__name__)
 PLATFORMS: list[Platform] = [Platform.SENSOR, Platform.BINARY_SENSOR]
 
 SERVICE_REFRESH = "refresh"
-SERVICE_REFRESH_SCHEMA = vol.Schema({
-    vol.Optional("entry_id"): cv.string,
-})
+SERVICE_REFRESH_SCHEMA = vol.Schema(
+    {
+        vol.Optional("entry_id"): cv.string,
+    }
+)
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -53,15 +55,15 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 if coord := hass.data[DOMAIN].get(entry_id):
                     await coord.async_request_refresh()
                 else:
-                    _LOGGER.warning(
-                        "Refresh service called with unknown entry_id: %s", entry_id
-                    )
+                    _LOGGER.warning("Refresh service called with unknown entry_id: %s", entry_id)
             else:
-                await asyncio.gather(*[
-                    coord.async_request_refresh()
-                    for coord in hass.data[DOMAIN].values()
-                    if isinstance(coord, HydroPannesDataUpdateCoordinator)
-                ])
+                await asyncio.gather(
+                    *[
+                        coord.async_request_refresh()
+                        for coord in hass.data[DOMAIN].values()
+                        if isinstance(coord, HydroPannesDataUpdateCoordinator)
+                    ]
+                )
 
         hass.services.async_register(
             DOMAIN,

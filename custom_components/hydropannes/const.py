@@ -5,10 +5,7 @@ DOMAIN = "hydropannes"
 CONF_LIEU_CONSO = "lieu_consommation"
 CONF_NOM_LIEU = "nom_lieu"
 
-API_URL = (
-    "https://services-bs.solutions.hydroquebec.com/"
-    "pan/web/api/v1/lieux-conso/etats/{}"
-)
+API_URL = "https://services-bs.solutions.hydroquebec.com/pan/web/api/v1/lieux-conso/etats/{}"
 
 UPDATE_INTERVAL = 180  # seconds — default polling interval (no active outage)
 
@@ -73,11 +70,11 @@ NIVEAU_URGENCE_CODES = {
 # F, E, X: observed empirically; labels are provisional.
 TYPE_FIN_PREVUE_CODES = {
     "U": "Heure de rétablissement en cours d'évaluation",  # no estimated date
-    "D": "Rétablissement prévu",                           # reliable date
-    "P": "Rétablissement prévu",                           # major outage, delays not guaranteed
-    "F": "Fin non déterminée",                             # major outage, no dateFinEstimeeMax
-    "E": "Rétablissement prévu",                           # major outage, dateFinEstimeeMax present (estimated)
-    "X": "Rétablissement prévu",                           # observed near end of major outage; exact meaning unconfirmed
+    "D": "Rétablissement prévu",  # reliable date
+    "P": "Rétablissement prévu",  # major outage, delays not guaranteed
+    "F": "Fin non déterminée",  # major outage, no dateFinEstimeeMax
+    "E": "Rétablissement prévu",  # major outage, dateFinEstimeeMax present (estimated)
+    "X": "Rétablissement prévu",  # observed near end of major outage; exact meaning unconfirmed
 }
 
 # codeRemarque → meaning observed empirically.

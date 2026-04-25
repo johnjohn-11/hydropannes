@@ -125,9 +125,7 @@ class HydroPannesHelperMixin:
     # Date helpers for planned interventions
     # ==========================================================================
 
-    def _get_effective_dates(
-        self, intr: dict[str, Any]
-    ) -> tuple[datetime | None, datetime | None]:
+    def _get_effective_dates(self, intr: dict[str, Any]) -> tuple[datetime | None, datetime | None]:
         """Return the effective start and end dates for an interruption.
 
         For postponed interventions (etat = "R"), uses dateDebutReport/dateFinReport.
@@ -180,16 +178,15 @@ class HydroPannesHelperMixin:
         several terminated interruptions. Returns the one with the latest dateFin.
         """
         candidates = [
-            intr for intr in self._get_interruptions()
-            if not self._is_planned_intervention(intr)
-            and self._is_outage_terminated(intr)
+            intr
+            for intr in self._get_interruptions()
+            if not self._is_planned_intervention(intr) and self._is_outage_terminated(intr)
         ]
         if not candidates:
             return None
         return max(
             candidates,
-            key=lambda i: self._parse_dt(i.get("dateFin"))
-            or dt_util.utc_from_timestamp(0),
+            key=lambda i: self._parse_dt(i.get("dateFin")) or dt_util.utc_from_timestamp(0),
         )
 
     def _get_planned_intervention(self) -> dict[str, Any] | None:
