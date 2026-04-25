@@ -70,6 +70,10 @@ jobs:
           git add custom_components/hydropannes/manifest.json pyproject.toml
           git diff --staged --quiet || git commit -m "chore: bump version to ${{ steps.version.outputs.version }}"
           git push origin HEAD:${{ github.event.repository.default_branch }}
+          # Move the tag to the bump commit so HACS and HA install the correct
+          # manifest.json version instead of the pre-bump one.
+          git tag -f ${{ github.ref_name }}
+          git push origin -f ${{ github.ref_name }}
 
       - name: Create release zip
         run: |
@@ -81,3 +85,5 @@ jobs:
         with:
           files: hydropannes.zip
           body: ${{ steps.changelog.outputs.body }}
+          # hydropannes.zip is kept as a manual install option.
+          # HACS installs directly from the repository source tree.
