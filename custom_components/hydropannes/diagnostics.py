@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 from typing import TYPE_CHECKING, Any
 
 from .const import DOMAIN
@@ -25,6 +26,7 @@ async def async_get_config_entry_diagnostics(
     coordinator_info: dict[str, Any] = {
         "last_update_success": coordinator.last_update_success,
         "update_interval": str(coordinator.update_interval),
+        "api_compatible": coordinator.api_compatible,
     }
 
     if hasattr(coordinator, "last_update_success_time"):
@@ -61,11 +63,11 @@ async def async_get_config_entry_diagnostics(
 
 
 def _redact_data(data: dict[str, Any]) -> dict[str, Any]:
-    """Return a copy of the API data with the idLieuConso field masked."""
+    """Return a deep copy of the API data with the idLieuConso field masked."""
     if not data:
         return {}
 
-    redacted = dict(data)
+    redacted = copy.deepcopy(data)
 
     if "idLieuConso" in redacted:
         lieu = redacted["idLieuConso"]
