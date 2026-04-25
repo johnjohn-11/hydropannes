@@ -9,6 +9,9 @@ on:
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
 
+permissions:
+  contents: write
+
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -19,12 +22,25 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v6.0.2
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          ref: ${{ github.head_ref || github.ref_name }}
       - name: Set up Python
         uses: actions/setup-python@v6.2.0
         with:
           python-version: "3.13"
       - name: Install ruff
         run: pip install ruff
+      - name: Fix imports and format
+        run: |
+          ruff check --fix --select I custom_components/hydropannes
+          ruff format custom_components/hydropannes
+      - name: Commit formatting fixes if needed
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git diff --quiet && echo "✅ Already formatted" || \
+            (git commit -am "style: auto-format with ruff [skip ci]" && git push)
       - name: Run ruff check
         run: ruff check custom_components/hydropannes
       - name: Run ruff format check
