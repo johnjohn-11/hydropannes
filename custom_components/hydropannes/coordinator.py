@@ -12,6 +12,7 @@ The coordinator is responsible for:
 - Writing a JSONL change log to the HA config directory for troubleshooting.
 - Detecting API structure changes (missing root fields) and flagging unknown
   interruption fields when Hydro-Québec evolves their schema.
+- Tracking poll/error/change statistics exposed via the diagnostics report.
 """
 
 from __future__ import annotations
@@ -114,6 +115,23 @@ class HydroPannesDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         # exposed to the diagnostics module.
         self.api_history: deque[dict[str, Any]] = deque(maxlen=API_HISTORY_SIZE)
 
+        # ---------------------------------------------------------------------------
+        # Diagnostic counters — reset on each HA restart (in-memory only).
+        # ---------------------------------------------------------------------------
+
+        # Total number of API calls attempted (including retries).
+        self.total_polls: int = 0
+
+        # Number of calls that resulted in a payload change.
+        self.total_changes: int = 0
+
+        # Number of calls that ended in a non-recoverable error
+        # (after all retries were exhausted).
+        self.total_errors: int = 0
+
+        # Details of the most recent error, or None if no error has occurred.
+        self.last_error: dict[str, str] | None = None
+
         super().__init__(
             hass,
             _LOGGER,
@@ -133,6 +151,8 @@ class HydroPannesDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         to keep entities available, or raises UpdateFailed if no previous data
         exists.
         """
+        self.total_polls += 1
+
         url = API_URL.format(self.lieu_conso)
         session = async_get_clientsession(self.hass)
 
@@ -140,6 +160,7 @@ class HydroPannesDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             try:
                 async with asyncio.timeout(10):
                     async with session.get(url) as response:
+
                         # Retry on server-side errors; fail immediately on
                         # client errors (4xx) since retrying would not help.
                         if 500 <= response.status < 600:
@@ -158,7 +179,9 @@ class HydroPannesDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                             )
 
                         if response.status != 200:
-                            return self._handle_failure(f"API returned status {response.status}")
+                            return self._handle_failure(
+                                f"API returned status {response.status}"
+                            )
 
                         data = await response.json()
 
@@ -205,6 +228,7 @@ class HydroPannesDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                         changed = self._last_hashes.get(self.lieu_conso) != current_hash
                         if changed:
                             self._last_hashes[self.lieu_conso] = current_hash
+                            self.total_changes += 1
                             self._append_history(result)
 
                         self._adjust_update_interval(result)
@@ -252,11 +276,18 @@ class HydroPannesDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     def _handle_failure(self, error_msg: str) -> dict[str, Any]:
         """Return stale data on transient failure, or raise UpdateFailed.
 
-        Returning stale data keeps all entities in their last-known state
-        rather than going unavailable on a brief API hiccup.  If no previous
-        data exists (first fetch), UpdateFailed is raised so HA can schedule
-        a retry via ConfigEntryNotReady.
+        Increments the error counter and records the error details for the
+        diagnostics report.  Returning stale data keeps all entities in their
+        last-known state rather than going unavailable on a brief API hiccup.
+        If no previous data exists (first fetch), UpdateFailed is raised so HA
+        can schedule a retry via ConfigEntryNotReady.
         """
+        self.total_errors += 1
+        self.last_error = {
+            "timestamp": dt_util.utcnow().isoformat(),
+            "message": error_msg,
+        }
+
         if self.data is not None:
             _LOGGER.warning(
                 "%s for lieu %s — keeping previous data",
@@ -357,7 +388,9 @@ class HydroPannesDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         entry_line = json.dumps(entry) + "\n"
         log_dir = self.hass.config.path("hydropannes_logs")
 
-        await self.hass.async_add_executor_job(self._write_log_sync, lieu_id, log_dir, entry_line)
+        await self.hass.async_add_executor_job(
+            self._write_log_sync, lieu_id, log_dir, entry_line
+        )
 
     def _write_log_sync(self, lieu_id: str, log_dir: str, entry_line: str) -> None:
         """Write a log entry to disk.
