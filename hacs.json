@@ -1,6 +1,7 @@
 {
   "name": "Hydro-Pannes",
   "country": ["CA"],
+  "content_in_root": true,
+  "filename": "hydropannes.zip",
   "render_readme": true,
-  "homeassistant": "2024.1.0"
-}
+  "homeassistant": "2024.1.0",
