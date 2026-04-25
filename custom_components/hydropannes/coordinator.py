@@ -3,12 +3,12 @@
 from __future__ import annotations
 
 import asyncio
+from collections import deque
+from datetime import timedelta
 import hashlib
 import json
 import logging
 import os
-from collections import deque
-from datetime import timedelta
 from typing import TYPE_CHECKING, Any
 
 import aiohttp
@@ -20,6 +20,9 @@ from homeassistant.helpers.update_coordinator import (
 from homeassistant.util import dt as dt_util
 
 from .const import API_URL, DOMAIN, UPDATE_INTERVAL
+
+if TYPE_CHECKING:
+    from homeassistant.core import HomeAssistant
 
 if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
