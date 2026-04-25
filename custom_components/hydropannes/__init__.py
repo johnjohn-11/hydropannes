@@ -1,4 +1,10 @@
-"""The Hydro-Pannes integration."""
+"""The Hydro-Pannes integration.
+
+This module handles the lifecycle of config entries: setup, platform
+forwarding, and teardown.  It also registers the ``hydropannes.refresh``
+service, which lets users trigger an immediate data pull from the
+Hydro-Québec API for one or all configured locations.
+"""
 
 from __future__ import annotations
 
@@ -24,13 +30,19 @@ PLATFORMS: list[Platform] = [Platform.SENSOR, Platform.BINARY_SENSOR]
 SERVICE_REFRESH = "refresh"
 SERVICE_REFRESH_SCHEMA = vol.Schema(
     {
+        # When omitted, all configured locations are refreshed simultaneously.
         vol.Optional("entry_id"): cv.string,
     }
 )
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    """Set up Hydro-Pannes from a config entry."""
+    """Set up Hydro-Pannes from a config entry.
+
+    Creates a coordinator for the configured lieu de consommation, performs
+    the first data fetch, forwards setup to all platforms, and registers the
+    refresh service on the first call.
+    """
     hass.data.setdefault(DOMAIN, {})
 
     coordinator = HydroPannesDataUpdateCoordinator(
@@ -38,24 +50,32 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         entry.data[CONF_LIEU_CONSO],
     )
 
+    # Raises ConfigEntryNotReady on failure, which HA will retry automatically.
     await coordinator.async_config_entry_first_refresh()
 
     hass.data[DOMAIN][entry.entry_id] = coordinator
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
-    # Register the refresh service only once, on the first config entry setup.
+    # Register the service only once regardless of how many locations are configured.
     if not hass.services.has_service(DOMAIN, SERVICE_REFRESH):
 
         async def _handle_refresh(call: ServiceCall) -> None:
-            """Force an immediate data refresh for one or all locations."""
+            """Force an immediate data refresh for one or all locations.
+
+            If ``entry_id`` is provided, only that coordinator is refreshed.
+            Otherwise all coordinators are refreshed concurrently via
+            asyncio.gather to avoid blocking the event loop sequentially.
+            """
             entry_id: str | None = call.data.get("entry_id")
 
             if entry_id:
                 if coord := hass.data[DOMAIN].get(entry_id):
                     await coord.async_request_refresh()
                 else:
-                    _LOGGER.warning("Refresh service called with unknown entry_id: %s", entry_id)
+                    _LOGGER.warning(
+                        "Refresh service called with unknown entry_id: %s", entry_id
+                    )
             else:
                 await asyncio.gather(
                     *[
@@ -76,11 +96,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    """Unload a config entry."""
+    """Unload a config entry.
+
+    Unloads all platforms and removes the coordinator from the shared store.
+    The refresh service is removed when no more locations remain configured.
+    """
     if unload_ok := await hass.config_entries.async_unload_platforms(entry, PLATFORMS):
         hass.data[DOMAIN].pop(entry.entry_id)
 
-        # Remove the service when there are no more configured locations.
         if not hass.data[DOMAIN]:
             hass.services.async_remove(DOMAIN, SERVICE_REFRESH)
 
