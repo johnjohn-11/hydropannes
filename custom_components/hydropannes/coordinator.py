@@ -126,9 +126,20 @@ class HydroPannesDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                                     unknown,
                                 )
 
-                        self._record_if_changed(result)
+                        # Compute hash once; both history and disk log use the same value.
+                        current_hash = hashlib.md5(
+                            json.dumps(result, sort_keys=True).encode()
+                        ).hexdigest()
+                        changed = self._last_hashes.get(self.lieu_conso) != current_hash
+                        if changed:
+                            self._last_hashes[self.lieu_conso] = current_hash
+                            self._append_history(result)
+
                         self._adjust_update_interval(result)
-                        await self._save_json_if_changed(self.lieu_conso, result)
+
+                        if changed:
+                            await self._write_log(self.lieu_conso, result)
+
                         return result
 
             except TimeoutError:
@@ -179,11 +190,8 @@ class HydroPannesDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         )
         raise UpdateFailed(f"Error communicating with API: {error_msg}")
 
-    def _record_if_changed(self, data: dict[str, Any]) -> None:
-        """Append a timestamped snapshot to api_history when the payload has changed."""
-        if self.api_history and self.api_history[-1]["data"] == data:
-            return
-
+    def _append_history(self, data: dict[str, Any]) -> None:
+        """Append a timestamped snapshot to api_history. Caller guarantees data has changed."""
         snapshot = {
             "timestamp": dt_util.utcnow().isoformat(),
             "data": data,
@@ -226,21 +234,12 @@ class HydroPannesDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 return True
         return False
 
-    async def _save_json_if_changed(self, lieu_id: str, data: dict[str, Any]) -> None:
-        """Append a JSONL log entry only when data has changed since the last write.
+    async def _write_log(self, lieu_id: str, data: dict[str, Any]) -> None:
+        """Append a JSONL log entry. Caller guarantees data has changed.
 
         File I/O is dispatched to a thread pool via async_add_executor_job to avoid
         blocking the Home Assistant event loop.
         """
-        current_hash = hashlib.md5(
-            json.dumps(data, sort_keys=True).encode()
-        ).hexdigest()
-
-        if self._last_hashes.get(lieu_id) == current_hash:
-            return
-
-        self._last_hashes[lieu_id] = current_hash
-
         entry = {
             "timestamp": dt_util.utcnow().isoformat(),
             "data": data,
