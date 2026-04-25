@@ -38,10 +38,24 @@ EXPECTED_ROOT_FIELDS = {"etat", "interruptions", "idLieuConso"}
 # All interruption fields the integration currently uses (Option C).
 # A warning is logged when HQ sends an unknown field, signalling an API evolution.
 KNOWN_INTERRUPTION_FIELDS = {
-    "dateDebut", "dateFin", "etat", "dateFinEstimeeMin", "dateFinEstimeeMax",
-    "dateDebutReport", "dateFinReport", "codeIntervention", "niveauUrgence",
-    "nbClient", "codeCause", "codeMunicipal", "datePublication", "codeRemarque",
-    "dureePrevu", "probabilite", "interruptionPlanifiee", "typeFinPrevue",
+    "dateDebut",
+    "dateFin",
+    "etat",
+    "dateFinEstimeeMin",
+    "dateFinEstimeeMax",
+    "dateDebutReport",
+    "dateFinReport",
+    "codeIntervention",
+    "niveauUrgence",
+    "nbClient",
+    "codeCause",
+    "codeMunicipal",
+    "datePublication",
+    "codeRemarque",
+    "dureePrevu",
+    "probabilite",
+    "interruptionPlanifiee",
+    "typeFinPrevue",
 }
 
 
@@ -83,14 +97,11 @@ class HydroPannesDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                                 await asyncio.sleep(RETRY_DELAY)
                                 continue
                             return self._handle_failure(
-                                f"API returned {response.status} "
-                                f"after {MAX_RETRIES + 1} attempts"
+                                f"API returned {response.status} after {MAX_RETRIES + 1} attempts"
                             )
 
                         if response.status != 200:
-                            return self._handle_failure(
-                                f"API returned status {response.status}"
-                            )
+                            return self._handle_failure(f"API returned status {response.status}")
 
                         data = await response.json()
 
@@ -247,9 +258,7 @@ class HydroPannesDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         entry_line = json.dumps(entry) + "\n"
         log_dir = self.hass.config.path("hydropannes_logs")
 
-        await self.hass.async_add_executor_job(
-            self._write_log_sync, lieu_id, log_dir, entry_line
-        )
+        await self.hass.async_add_executor_job(self._write_log_sync, lieu_id, log_dir, entry_line)
 
     def _write_log_sync(self, lieu_id: str, log_dir: str, entry_line: str) -> None:
         """Write a log entry to disk. Runs in an executor thread, not the event loop."""
@@ -279,7 +288,7 @@ class HydroPannesDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             with open(log_file, encoding="utf-8") as f:
                 lines = f.readlines()
 
-            keep = lines[len(lines) // 2:]
+            keep = lines[len(lines) // 2 :]
 
             with open(log_file, "w", encoding="utf-8") as f:
                 f.writelines(keep)
