@@ -190,9 +190,7 @@ class HydroPannesDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
                         if not data or not isinstance(data, list):
                             self.api_compatible = False
-                            self._raise_failure(
-                                "API returned invalid data format (expected list)"
-                            )
+                            self._raise_failure("API returned invalid data format (expected list)")
 
                         result: dict[str, Any] = data[0]
 
