@@ -2,49 +2,100 @@
   "config": {
     "step": {
       "user": {
+        "title": "Configurer Hydro-Pannes",
+        "description": "Entrez les informations de votre lieu de consommation",
         "data": {
-          "lieu_conso": "Lieu de consommation (10 chiffres)",
-          "name": "Nom de l'installation"
-        },
-        "description": "Entrez votre numéro de lieu de consommation Hydro-Québec pour suivre les pannes."
+          "lieu_consommation": "Numéro de lieu de consommation",
+          "nom_lieu": "Nom du lieu (ex. : Maison, Chalet)"
+        }
       }
     },
     "error": {
       "cannot_connect": "Échec de connexion à l'API Hydro-Québec",
-      "invalid_auth": "Lieu de consommation invalide",
+      "invalid_format": "Le numéro de lieu de consommation doit comporter exactement 10 chiffres",
+      "invalid_lieu": "Numéro de lieu de consommation invalide",
       "unknown": "Erreur inattendue"
     },
     "abort": {
-      "already_configured": "Ce lieu de consommation est déjà configuré."
+      "already_configured": "Ce lieu de consommation est déjà configuré"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Modifier le lieu",
+        "data": {
+          "nom_lieu": "Nom du lieu",
+          "json_log": "Journaliser les changements API dans un fichier JSONL"
+        },
+        "data_description": {
+          "json_log": "Lorsque activé, chaque changement de payload API est ajouté à config/hydropannes_logs/<lieu>.jsonl à des fins de dépannage."
+        }
+      }
     }
   },
   "entity": {
-    "binary_sensor": {
-      "service_status": {
-        "name": "État du service"
-      },
-      "planned_intervention": {
-        "name": "Intervention planifiée"
-      },
-      "api_compatibility": {
-        "name": "Compatibilité API"
-      }
-    },
     "sensor": {
-      "outage_info": {
+      "info_pannes": {
         "name": "Info-pannes"
       },
-      "outage_duration": {
-        "name": "Durée de la panne"
+      "niveau_urgence": {
+        "name": "Niveau urgence"
       },
-      "time_until_restoration": {
+      "adresses_touchees": {
+        "name": "Adresses touchées"
+      },
+      "date_debut": {
+        "name": "Date début"
+      },
+      "date_fin": {
+        "name": "Date fin"
+      },
+      "statut_intervention": {
+        "name": "Statut intervention"
+      },
+      "cause": {
+        "name": "Cause"
+      },
+      "duree": {
+        "name": "Durée"
+      },
+      "delai_avant_retablissement": {
         "name": "Délai avant rétablissement"
       },
-      "intervention_status": {
-        "name": "Statut de l'intervention"
+      "derniere_maj": {
+        "name": "Dernière MAJ"
       },
-      "affected_customers": {
-        "name": "Clients affectés"
+      "lieu_consommation": {
+        "name": "Lieu consommation"
+      }
+    },
+    "binary_sensor": {
+      "etat_service": {
+        "name": "État du service"
+      },
+      "intervention_planifiee": {
+        "name": "Intervention planifiée"
+      },
+      "api_compatibilite": {
+        "name": "Compatibilité API"
+      }
+    }
+  },
+  "exceptions": {
+    "entry_not_found": {
+      "message": "Aucune configuration Hydro-Pannes chargée avec l'identifiant « {entry_id} »."
+    }
+  },
+  "services": {
+    "refresh": {
+      "name": "Rafraîchir les données",
+      "description": "Force un rafraîchissement immédiat des données depuis l'API Hydro-Québec.",
+      "fields": {
+        "entry_id": {
+          "name": "Entrée de configuration",
+          "description": "L'entrée de configuration à rafraîchir. Laisser vide pour rafraîchir tous les lieux."
+        }
       }
     }
   }
