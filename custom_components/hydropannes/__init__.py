@@ -12,20 +12,26 @@ import asyncio
 import logging
 from typing import TYPE_CHECKING
 
+from homeassistant.config_entries import ConfigEntry, ConfigEntryState
 from homeassistant.const import Platform
+from homeassistant.exceptions import ServiceValidationError
 from homeassistant.helpers import config_validation as cv
 import voluptuous as vol
 
-from .const import CONF_LIEU_CONSO, DOMAIN
+from .const import DOMAIN
 from .coordinator import HydroPannesDataUpdateCoordinator
 
 if TYPE_CHECKING:
-    from homeassistant.config_entries import ConfigEntry
     from homeassistant.core import HomeAssistant, ServiceCall
+    from homeassistant.helpers.typing import ConfigType
 
 _LOGGER = logging.getLogger(__name__)
 
 PLATFORMS: list[Platform] = [Platform.SENSOR, Platform.BINARY_SENSOR]
+
+type HydroPannesConfigEntry = ConfigEntry[HydroPannesDataUpdateCoordinator]
+
+CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 
 SERVICE_REFRESH = "refresh"
 SERVICE_REFRESH_SCHEMA = vol.Schema(
@@ -36,73 +42,78 @@ SERVICE_REFRESH_SCHEMA = vol.Schema(
 )
 
 
-async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    """Set up Hydro-Pannes from a config entry.
+async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
+    """Set up the Hydro-Pannes integration (register services once).
 
-    Creates a coordinator for the configured lieu de consommation, performs
-    the first data fetch, forwards setup to all platforms, and registers the
-    refresh service on the first call.
+    Registering the service here — rather than in async_setup_entry — means
+    it exists exactly once regardless of how many locations are configured,
+    and no manual removal is needed when entries are unloaded.
     """
-    hass.data.setdefault(DOMAIN, {})
 
-    coordinator = HydroPannesDataUpdateCoordinator(
-        hass,
-        entry.data[CONF_LIEU_CONSO],
-    )
+    async def _handle_refresh(call: ServiceCall) -> None:
+        """Force an immediate data refresh for one or all locations."""
+        entry_id: str | None = call.data.get("entry_id")
 
-    # Raises ConfigEntryNotReady on failure, which HA will retry automatically.
-    await coordinator.async_config_entry_first_refresh()
-
-    hass.data[DOMAIN][entry.entry_id] = coordinator
-
-    await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
-
-    # Register the service only once regardless of how many locations are configured.
-    if not hass.services.has_service(DOMAIN, SERVICE_REFRESH):
-
-        async def _handle_refresh(call: ServiceCall) -> None:
-            """Force an immediate data refresh for one or all locations.
-
-            If ``entry_id`` is provided, only that coordinator is refreshed.
-            Otherwise all coordinators are refreshed concurrently via
-            asyncio.gather to avoid blocking the event loop sequentially.
-            """
-            entry_id: str | None = call.data.get("entry_id")
-
-            if entry_id:
-                if coord := hass.data[DOMAIN].get(entry_id):
-                    await coord.async_request_refresh()
-                else:
-                    _LOGGER.warning("Refresh service called with unknown entry_id: %s", entry_id)
-            else:
-                await asyncio.gather(
-                    *[
-                        coord.async_request_refresh()
-                        for coord in hass.data[DOMAIN].values()
-                        if isinstance(coord, HydroPannesDataUpdateCoordinator)
-                    ]
+        if entry_id:
+            entry = hass.config_entries.async_get_entry(entry_id)
+            if (
+                entry is None
+                or entry.domain != DOMAIN
+                or entry.state is not ConfigEntryState.LOADED
+            ):
+                raise ServiceValidationError(
+                    translation_domain=DOMAIN,
+                    translation_key="entry_not_found",
+                    translation_placeholders={"entry_id": entry_id},
                 )
+            await entry.runtime_data.async_request_refresh()
+            return
 
-        hass.services.async_register(
-            DOMAIN,
-            SERVICE_REFRESH,
-            _handle_refresh,
-            schema=SERVICE_REFRESH_SCHEMA,
+        await asyncio.gather(
+            *(
+                entry.runtime_data.async_request_refresh()
+                for entry in hass.config_entries.async_loaded_entries(DOMAIN)
+            )
         )
+
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_REFRESH,
+        _handle_refresh,
+        schema=SERVICE_REFRESH_SCHEMA,
+    )
 
     return True
 
 
-async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    """Unload a config entry.
+async def async_setup_entry(hass: HomeAssistant, entry: HydroPannesConfigEntry) -> bool:
+    """Set up Hydro-Pannes from a config entry.
 
-    Unloads all platforms and removes the coordinator from the shared store.
-    The refresh service is removed when no more locations remain configured.
+    Creates a coordinator for the configured lieu de consommation, performs
+    the first data fetch, stores the coordinator in ``entry.runtime_data``,
+    and forwards setup to all platforms.
     """
-    if unload_ok := await hass.config_entries.async_unload_platforms(entry, PLATFORMS):
-        hass.data[DOMAIN].pop(entry.entry_id)
+    coordinator = HydroPannesDataUpdateCoordinator(hass, entry)
 
-        if not hass.data[DOMAIN]:
-            hass.services.async_remove(DOMAIN, SERVICE_REFRESH)
+    # Raises ConfigEntryNotReady on failure, which HA will retry automatically.
+    await coordinator.async_config_entry_first_refresh()
 
-    return unload_ok
+    entry.runtime_data = coordinator
+
+    # Reload the entry when data/options change (rename, JSONL logging toggle)
+    # so the new title and options take effect immediately.
+    entry.async_on_unload(entry.add_update_listener(_async_update_listener))
+
+    await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+
+    return True
+
+
+async def _async_update_listener(hass: HomeAssistant, entry: HydroPannesConfigEntry) -> None:
+    """Reload the config entry when its data or options are updated."""
+    await hass.config_entries.async_reload(entry.entry_id)
+
+
+async def async_unload_entry(hass: HomeAssistant, entry: HydroPannesConfigEntry) -> bool:
+    """Unload a config entry."""
+    return await hass.config_entries.async_unload_platforms(entry, PLATFORMS)

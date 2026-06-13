@@ -29,20 +29,24 @@ from .coordinator import HydroPannesDataUpdateCoordinator
 from .helpers import HydroPannesHelperMixin
 
 if TYPE_CHECKING:
-    from homeassistant.config_entries import ConfigEntry
     from homeassistant.core import HomeAssistant
     from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
+    from . import HydroPannesConfigEntry
+
 _LOGGER = logging.getLogger(__name__)
+
+# Entities are updated by the coordinator; no parallel polling needed.
+PARALLEL_UPDATES = 0
 
 
 async def async_setup_entry(
     hass: HomeAssistant,
-    entry: ConfigEntry,
+    entry: HydroPannesConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up Hydro-Pannes binary sensors for a config entry."""
-    coordinator: HydroPannesDataUpdateCoordinator = hass.data[DOMAIN][entry.entry_id]
+    coordinator = entry.runtime_data
     nom_lieu = entry.title
 
     async_add_entities(
@@ -55,9 +59,9 @@ async def async_setup_entry(
 
 
 class HydroPannesBinarySensorBase(
+    HydroPannesHelperMixin,
     CoordinatorEntity[HydroPannesDataUpdateCoordinator],
     BinarySensorEntity,
-    HydroPannesHelperMixin,
 ):
     """Base class shared by all Hydro-Pannes binary sensors.
 
@@ -66,11 +70,12 @@ class HydroPannesBinarySensorBase(
     """
 
     _attr_has_entity_name = True
+    _attr_attribution = ATTRIBUTION
 
     def __init__(
         self,
         coordinator: HydroPannesDataUpdateCoordinator,
-        entry: ConfigEntry,
+        entry: HydroPannesConfigEntry,
         nom_lieu: str,
     ) -> None:
         """Initialize the binary sensor."""
@@ -107,17 +112,18 @@ class HydroPannesEtatServiceBinarySensor(HydroPannesBinarySensorBase):
     even if the interruption object cannot be resolved.
     """
 
+    _attr_translation_key = "etat_service"
+    _attr_device_class = BinarySensorDeviceClass.PROBLEM
+
     def __init__(
         self,
         coordinator: HydroPannesDataUpdateCoordinator,
-        entry: ConfigEntry,
+        entry: HydroPannesConfigEntry,
         nom_lieu: str,
     ) -> None:
         """Initialize the binary sensor."""
         super().__init__(coordinator, entry, nom_lieu)
-        self._attr_name = "État du service"
         self._attr_unique_id = f"{entry.entry_id}_etat_service"
-        self._attr_device_class = BinarySensorDeviceClass.PROBLEM
 
     @property
     def is_on(self) -> bool | None:
@@ -180,7 +186,6 @@ class HydroPannesEtatServiceBinarySensor(HydroPannesBinarySensorBase):
             "codeMunicipal": active_interruption.get("codeMunicipal"),
             "dureePrevu": active_interruption.get("dureePrevu"),
             "typeFinPrevue": active_interruption.get("typeFinPrevue"),
-            "attribution": ATTRIBUTION,
         }
 
 
@@ -191,17 +196,18 @@ class HydroPannesInterventionPlanifieeBinarySensor(HydroPannesBinarySensorBase):
     present in the API response (active or upcoming).
     """
 
+    _attr_translation_key = "intervention_planifiee"
+    _attr_device_class = BinarySensorDeviceClass.RUNNING
+
     def __init__(
         self,
         coordinator: HydroPannesDataUpdateCoordinator,
-        entry: ConfigEntry,
+        entry: HydroPannesConfigEntry,
         nom_lieu: str,
     ) -> None:
         """Initialize the binary sensor."""
         super().__init__(coordinator, entry, nom_lieu)
-        self._attr_name = "Intervention planifiée"
         self._attr_unique_id = f"{entry.entry_id}_intervention_planifiee"
-        self._attr_device_class = BinarySensorDeviceClass.RUNNING
 
     @property
     def is_on(self) -> bool | None:
@@ -256,7 +262,6 @@ class HydroPannesInterventionPlanifieeBinarySensor(HydroPannesBinarySensorBase):
             "datePublication": planned.get("datePublication"),
             "codeRemarque": planned.get("codeRemarque"),
             "probabilite": planned.get("probabilite"),
-            "attribution": ATTRIBUTION,
         }
 
 
@@ -271,18 +276,19 @@ class HydroPannesAPICompatibilityBinarySensor(HydroPannesBinarySensorBase):
     dashboard view; it is intended for troubleshooting and automations.
     """
 
+    _attr_translation_key = "api_compatibilite"
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_device_class = BinarySensorDeviceClass.PROBLEM
+
     def __init__(
         self,
         coordinator: HydroPannesDataUpdateCoordinator,
-        entry: ConfigEntry,
+        entry: HydroPannesConfigEntry,
         nom_lieu: str,
     ) -> None:
         """Initialize the diagnostic sensor."""
         super().__init__(coordinator, entry, nom_lieu)
-        self._attr_name = "Compatibilité API"
         self._attr_unique_id = f"{entry.entry_id}_api_compatibility"
-        self._attr_entity_category = EntityCategory.DIAGNOSTIC
-        self._attr_device_class = BinarySensorDeviceClass.PROBLEM
 
     @property
     def is_on(self) -> bool:

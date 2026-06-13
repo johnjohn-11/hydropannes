@@ -5,11 +5,12 @@ The coordinator is responsible for:
 - Switching to faster polling (ACTIVE_OUTAGE_UPDATE_INTERVAL) during an
   active outage and back to the normal interval once it clears.
 - Retrying transient HTTP 5xx errors and timeouts up to MAX_RETRIES times.
-- Returning stale data on failure when a previous successful fetch exists,
-  rather than marking all entities unavailable.
+- Raising UpdateFailed once retries are exhausted, so entities become
+  unavailable and the failure is visible (standard HA behaviour).
 - Maintaining an in-memory ring buffer (api_history) of the last
   API_HISTORY_SIZE distinct payloads for diagnostics.
-- Writing a JSONL change log to the HA config directory for troubleshooting.
+- Optionally writing a JSONL change log to the HA config directory for
+  troubleshooting (opt-in via the integration options).
 - Detecting API structure changes (missing root fields) and flagging unknown
   interruption fields when Hydro-Québec evolves their schema.
 - Tracking poll/error/change statistics exposed via the diagnostics report.
@@ -24,7 +25,7 @@ import hashlib
 import json
 import logging
 import os
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, NoReturn
 
 import aiohttp
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
@@ -34,9 +35,10 @@ from homeassistant.helpers.update_coordinator import (
 )
 from homeassistant.util import dt as dt_util
 
-from .const import API_URL, DOMAIN, UPDATE_INTERVAL
+from .const import API_URL, CONF_JSON_LOG, CONF_LIEU_CONSO, DOMAIN, UPDATE_INTERVAL
 
 if TYPE_CHECKING:
+    from homeassistant.config_entries import ConfigEntry
     from homeassistant.core import HomeAssistant
 
 _LOGGER = logging.getLogger(__name__)
@@ -94,22 +96,26 @@ KNOWN_INTERRUPTION_FIELDS = {
 class HydroPannesDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     """Coordinator managing data fetching, caching, and change logging."""
 
-    def __init__(self, hass: HomeAssistant, lieu_conso: str) -> None:
+    def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
         """Initialize the coordinator.
 
         Args:
             hass: The Home Assistant instance.
-            lieu_conso: The Hydro-Québec lieu de consommation number (10 digits).
+            entry: The config entry for this lieu de consommation.
 
         """
-        self.lieu_conso = lieu_conso
+        self.lieu_conso: str = entry.data[CONF_LIEU_CONSO]
+
+        # JSONL change log is opt-in (integration options).  Read once here;
+        # the update listener reloads the entry when options change.
+        self.json_log_enabled: bool = entry.options.get(CONF_JSON_LOG, False)
 
         # Tracks whether the last successful API response had the expected
         # root-level schema.  True until proven otherwise.
         self.api_compatible: bool = True
 
-        # MD5 hash of the last payload per lieu, used for change detection.
-        self._last_hashes: dict[str, str] = {}
+        # Hash of the last payload, used for change detection.
+        self._last_hash: str | None = None
 
         # Ring buffer of the most recent distinct API payloads with timestamps,
         # exposed to the diagnostics module.
@@ -136,6 +142,7 @@ class HydroPannesDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             hass,
             _LOGGER,
             name=DOMAIN,
+            config_entry=entry,
             update_interval=timedelta(seconds=UPDATE_INTERVAL),
         )
 
@@ -146,10 +153,9 @@ class HydroPannesDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     async def _async_update_data(self) -> dict[str, Any]:
         """Fetch the latest outage data from the Hydro-Québec API.
 
-        Implements an exponential-free retry loop for transient 5xx errors and
-        network timeouts.  On persistent failure, returns the previous payload
-        to keep entities available, or raises UpdateFailed if no previous data
-        exists.
+        Implements a retry loop for transient 5xx errors and network
+        timeouts.  On persistent failure, raises UpdateFailed; HA then marks
+        entities unavailable and keeps retrying on the normal schedule.
         """
         self.total_polls += 1
 
@@ -173,18 +179,18 @@ class HydroPannesDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                                 )
                                 await asyncio.sleep(RETRY_DELAY)
                                 continue
-                            return self._handle_failure(
+                            self._raise_failure(
                                 f"API returned {response.status} after {MAX_RETRIES + 1} attempts"
                             )
 
                         if response.status != 200:
-                            return self._handle_failure(f"API returned status {response.status}")
+                            self._raise_failure(f"API returned status {response.status}")
 
                         data = await response.json()
 
                         if not data or not isinstance(data, list):
                             self.api_compatible = False
-                            return self._handle_failure(
+                            self._raise_failure(
                                 "API returned invalid data format (expected list)"
                             )
 
@@ -220,20 +226,25 @@ class HydroPannesDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                         # Compute hash once; reused for both the in-memory
                         # history check and the disk log write.
                         current_hash = hashlib.md5(
-                            json.dumps(result, sort_keys=True).encode()
+                            json.dumps(result, sort_keys=True).encode(),
+                            usedforsecurity=False,
                         ).hexdigest()
-                        changed = self._last_hashes.get(self.lieu_conso) != current_hash
+                        changed = self._last_hash != current_hash
                         if changed:
-                            self._last_hashes[self.lieu_conso] = current_hash
+                            self._last_hash = current_hash
                             self.total_changes += 1
                             self._append_history(result)
 
                         self._adjust_update_interval(result)
 
-                        if changed:
+                        if changed and self.json_log_enabled:
                             await self._write_log(self.lieu_conso, result)
 
                         return result
+
+            except UpdateFailed:
+                # Raised by _raise_failure inside the try block; never retry.
+                raise
 
             except TimeoutError:
                 if attempt < MAX_RETRIES:
@@ -245,7 +256,7 @@ class HydroPannesDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     )
                     await asyncio.sleep(RETRY_DELAY)
                     continue
-                return self._handle_failure("Timeout after retries")
+                self._raise_failure("Timeout after retries")
 
             except aiohttp.ClientError as err:
                 if attempt < MAX_RETRIES:
@@ -258,46 +269,32 @@ class HydroPannesDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     )
                     await asyncio.sleep(RETRY_DELAY)
                     continue
-                return self._handle_failure(f"Connection error: {err}")
+                self._raise_failure(f"Connection error: {err}")
 
             except Exception as err:
                 _LOGGER.exception("Unexpected error for lieu %s", self.lieu_conso)
-                return self._handle_failure(f"Unexpected error: {err}")
+                self._raise_failure(f"Unexpected error: {err}")
 
-        return self._handle_failure("Unknown error")
+        self._raise_failure("Unknown error")
 
     # -----------------------------------------------------------------------
     # Failure handling
     # -----------------------------------------------------------------------
 
-    def _handle_failure(self, error_msg: str) -> dict[str, Any]:
-        """Return stale data on transient failure, or raise UpdateFailed.
+    def _raise_failure(self, error_msg: str) -> NoReturn:
+        """Record error details for diagnostics and raise UpdateFailed.
 
-        Increments the error counter and records the error details for the
-        diagnostics report.  Returning stale data keeps all entities in their
-        last-known state rather than going unavailable on a brief API hiccup.
-        If no previous data exists (first fetch), UpdateFailed is raised so HA
-        can schedule a retry via ConfigEntryNotReady.
+        Raising UpdateFailed is the standard HA pattern: the coordinator
+        keeps its previous ``data`` in memory, ``last_update_success``
+        becomes False, entities go unavailable, and the next scheduled
+        refresh retries automatically.  Transient hiccups are already
+        absorbed by the in-loop retry logic (MAX_RETRIES).
         """
         self.total_errors += 1
         self.last_error = {
             "timestamp": dt_util.utcnow().isoformat(),
             "message": error_msg,
         }
-
-        if self.data is not None:
-            _LOGGER.warning(
-                "%s for lieu %s — keeping previous data",
-                error_msg,
-                self.lieu_conso,
-            )
-            return dict(self.data)
-
-        _LOGGER.warning(
-            "%s for lieu %s — no previous data available",
-            error_msg,
-            self.lieu_conso,
-        )
         raise UpdateFailed(f"Error communicating with API: {error_msg}")
 
     # -----------------------------------------------------------------------
@@ -368,12 +365,13 @@ class HydroPannesDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         return False
 
     # -----------------------------------------------------------------------
-    # JSONL change log (disk I/O runs in an executor thread)
+    # JSONL change log — opt-in (disk I/O runs in an executor thread)
     # -----------------------------------------------------------------------
 
     async def _write_log(self, lieu_id: str, data: dict[str, Any]) -> None:
         """Asynchronously append a JSONL entry to the change log.
 
+        Only called when ``json_log_enabled`` is True (integration options).
         File I/O is dispatched to a thread-pool executor via
         async_add_executor_job so it does not block the HA event loop.
         Called only when the payload has changed.

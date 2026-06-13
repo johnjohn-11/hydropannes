@@ -4,6 +4,10 @@ Exposes coordinator state and recent API history for the HA diagnostics
 download feature.  All sensitive fields (lieu de consommation ID) are
 masked before being returned so the report is safe to share publicly in
 GitHub issues.
+
+Note: a custom partial-masking helper is used instead of the standard
+``async_redact_data`` so that the last 4 digits remain visible — this keeps
+multi-location reports diagnosable while still hiding the identifier.
 """
 
 from __future__ import annotations
@@ -11,17 +15,14 @@ from __future__ import annotations
 import copy
 from typing import TYPE_CHECKING, Any
 
-from .const import DOMAIN
-
 if TYPE_CHECKING:
-    from homeassistant.config_entries import ConfigEntry
     from homeassistant.core import HomeAssistant
 
-    from .coordinator import HydroPannesDataUpdateCoordinator
+    from . import HydroPannesConfigEntry
 
 
 async def async_get_config_entry_diagnostics(
-    hass: HomeAssistant, entry: ConfigEntry
+    hass: HomeAssistant, entry: HydroPannesConfigEntry
 ) -> dict[str, Any]:
     """Build a diagnostics report for a config entry.
 
@@ -33,7 +34,7 @@ async def async_get_config_entry_diagnostics(
     - The current API payload (redacted).
     - The last API_HISTORY_SIZE distinct payloads with timestamps (redacted).
     """
-    coordinator: HydroPannesDataUpdateCoordinator = hass.data[DOMAIN][entry.entry_id]
+    coordinator = entry.runtime_data
 
     lieu_conso = coordinator.lieu_conso
     masked_lieu = f"****{lieu_conso[-4:]}" if len(lieu_conso) > 4 else "****"
@@ -43,6 +44,8 @@ async def async_get_config_entry_diagnostics(
         "update_interval": str(coordinator.update_interval),
         # Indicates whether the last API response had the expected schema.
         "api_compatible": coordinator.api_compatible,
+        # Whether the opt-in JSONL change log is enabled.
+        "json_log_enabled": coordinator.json_log_enabled,
         # Lifetime counters (reset on each HA restart).
         "total_polls": coordinator.total_polls,
         "total_changes": coordinator.total_changes,
@@ -78,6 +81,7 @@ async def async_get_config_entry_diagnostics(
                 "lieu_consommation": masked_lieu,
                 "nom_lieu": entry.data.get("nom_lieu"),
             },
+            "options": dict(entry.options),
         },
         "coordinator": coordinator_info,
         "current_data": _redact_data(coordinator.data) if coordinator.data else None,

@@ -1,9 +1,9 @@
 """Config flow for Hydro-Pannes integration.
 
 Handles the initial user setup (lieu de consommation + friendly name) and
-the options flow for renaming an existing location.  The lieu de consommation
-number is validated against the Hydro-Québec API before the entry is created
-to surface configuration errors early.
+the options flow (rename + JSONL change-log opt-in).  The lieu de
+consommation number is validated against the Hydro-Québec API before the
+entry is created to surface configuration errors early.
 """
 
 from __future__ import annotations
@@ -19,7 +19,7 @@ from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 import voluptuous as vol
 
-from .const import API_URL, CONF_LIEU_CONSO, CONF_NOM_LIEU, DOMAIN
+from .const import API_URL, CONF_JSON_LOG, CONF_LIEU_CONSO, CONF_NOM_LIEU, DOMAIN
 
 if TYPE_CHECKING:
     from homeassistant.config_entries import ConfigFlowResult
@@ -43,7 +43,7 @@ async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str,
 
     Raises:
         InvalidFormat: The number does not match the 10-digit pattern.
-        CannotConnect: A network error prevented the validation request.
+        CannotConnect: A network error or timeout prevented the validation request.
         InvalidLieuConso: The API returned an empty payload for this number.
 
     Returns:
@@ -65,7 +65,9 @@ async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str,
             json_data = await response.json()
             if not json_data:
                 raise InvalidLieuConso
-    except aiohttp.ClientError as err:
+    except (TimeoutError, aiohttp.ClientError) as err:
+        # aiohttp total timeouts raise asyncio.TimeoutError, which is NOT a
+        # ClientError subclass — both must be mapped to "cannot_connect".
         _LOGGER.debug("HydroPannes config_flow network error: %s", err)
         raise CannotConnect from err
 
@@ -82,7 +84,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     def async_get_options_flow(
         config_entry: config_entries.ConfigEntry,
     ) -> OptionsFlowHandler:
-        """Return the options flow handler for renaming the location."""
+        """Return the options flow handler."""
         return OptionsFlowHandler()
 
     async def async_step_user(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
@@ -116,26 +118,35 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
 
 class OptionsFlowHandler(config_entries.OptionsFlow):
-    """Handle options flow for renaming a configured location.
+    """Handle options flow: rename the location and toggle the JSONL log.
 
-    Changes are written back to ``entry.data`` (not ``entry.options``) so that
-    the coordinator and all entities see the updated name immediately via the
-    existing data path, without requiring a coordinator restart.
+    The name is written back to ``entry.data`` and the entry title; the
+    JSONL toggle is stored in ``entry.options``.  Everything is applied in a
+    single ``async_update_entry`` call so the update listener (which reloads
+    the entry) fires only once.
     """
 
     async def async_step_init(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
-        """Present the rename form and apply the change when submitted."""
+        """Present the options form and apply the changes when submitted."""
         if user_input is not None:
             new_data = {
                 **self.config_entry.data,
                 CONF_NOM_LIEU: user_input[CONF_NOM_LIEU],
             }
+            new_options = {
+                **self.config_entry.options,
+                CONF_JSON_LOG: user_input[CONF_JSON_LOG],
+            }
+            # Apply data, title, and options in one shot → one reload.
             self.hass.config_entries.async_update_entry(
                 self.config_entry,
                 data=new_data,
                 title=user_input[CONF_NOM_LIEU],
+                options=new_options,
             )
-            return self.async_create_entry(title="", data={})
+            # data is identical to entry.options at this point, so this does
+            # not trigger a second update event.
+            return self.async_create_entry(title="", data=new_options)
 
         return self.async_show_form(
             step_id="init",
@@ -145,6 +156,10 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
                         CONF_NOM_LIEU,
                         default=self.config_entry.data.get(CONF_NOM_LIEU, ""),
                     ): vol.All(str, vol.Length(min=1)),
+                    vol.Required(
+                        CONF_JSON_LOG,
+                        default=self.config_entry.options.get(CONF_JSON_LOG, False),
+                    ): bool,
                 }
             ),
         )
