@@ -1,99 +1,82 @@
 name: Release
 
 on:
-  release:
-    types:
-      - published
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version à publier (ex. 1.2.0 — sans le préfixe v)"
+        required: true
+        type: string
 
 permissions:
   contents: write
 
+concurrency:
+  group: release
+  cancel-in-progress: false
+
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+  VERSION: ${{ inputs.version }}
 
 jobs:
   release:
-    name: Prepare release
+    name: Bump, tag & publish
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
+      - name: Checkout default branch
         uses: actions/checkout@v6.0.2
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+          ref: ${{ github.event.repository.default_branch }}
           fetch-depth: 0
 
-      - name: Get version from tag
-        id: version
-        run: echo "version=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
-
-      - name: Generate changelog from commits
-        id: changelog
+      - name: Validate version
         run: |
-          REPO="${{ github.repository }}"
-          PREVIOUS_TAG=$(git tag --sort=-version:refname | grep -v "^${{ github.ref_name }}$" | head -n1)
-
-          if [ -z "$PREVIOUS_TAG" ]; then
-            RANGE="HEAD"
-          else
-            RANGE="${PREVIOUS_TAG}..HEAD"
+          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "❌ Format de version invalide: '$VERSION' (attendu: X.Y.Z)"
+            exit 1
           fi
-
-          BODY=""
-          while IFS='|' read -r SHORT_HASH MSG AUTHOR EMAIL; do
-            # Extract GitHub username from noreply email formats:
-            # - username@users.noreply.github.com
-            # - 12345678+username@users.noreply.github.com
-            if [[ "$EMAIL" =~ ^[0-9]+\+(.+)@users\.noreply\.github\.com$ ]]; then
-              AUTHOR_LINK="[@${BASH_REMATCH[1]}](https://github.com/${BASH_REMATCH[1]})"
-            elif [[ "$EMAIL" =~ ^(.+)@users\.noreply\.github\.com$ ]]; then
-              AUTHOR_LINK="[@${BASH_REMATCH[1]}](https://github.com/${BASH_REMATCH[1]})"
-            else
-              AUTHOR_LINK="_${AUTHOR}_"
-            fi
-            BODY="${BODY}* __[${SHORT_HASH}](https://github.com/${REPO}/commit/${SHORT_HASH})__ ${MSG} — ${AUTHOR_LINK}\n"
-          done <<< "$(git log --pretty=format:"%h|%s|%an|%ae" ${RANGE})"
-
-          echo "body<<EOF" >> $GITHUB_OUTPUT
-          printf "%b" "$BODY" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
-
-      - name: Install just
-        uses: extractions/setup-just@v4.0.0
+          if git rev-parse "v$VERSION" >/dev/null 2>&1; then
+            echo "❌ Le tag v$VERSION existe déjà"
+            exit 1
+          fi
+          echo "✅ Version $VERSION valide"
 
       - name: Bump version in all files
-        run: just bump ${{ steps.version.outputs.version }}
+        run: |
+          sed -i "s/\"version\": \"[^\"]*\"/\"version\": \"$VERSION\"/" custom_components/hydropannes/manifest.json
+          sed -i "s/^version = \"[^\"]*\"/version = \"$VERSION\"/" pyproject.toml
 
       - name: Verify versions are in sync
         run: |
-          MANIFEST=$(python -c "import json; print(json.load(open('custom_components/hydropannes/manifest.json'))['version'])")
-          TAG="${{ steps.version.outputs.version }}"
-          if [[ "$MANIFEST" != "$TAG" ]]; then
-            echo "❌ Version mismatch after bump: manifest.json ($MANIFEST) != tag ($TAG)"
+          MANIFEST=$(python3 -c "import json; print(json.load(open('custom_components/hydropannes/manifest.json'))['version'])")
+          PYPROJECT=$(python3 -c "import tomllib; print(tomllib.load(open('pyproject.toml','rb'))['project']['version'])")
+          if [[ "$MANIFEST" != "$VERSION" || "$PYPROJECT" != "$VERSION" ]]; then
+            echo "❌ Version mismatch après bump: manifest=$MANIFEST pyproject=$PYPROJECT attendu=$VERSION"
             exit 1
           fi
-          echo "✅ Version $TAG applied successfully"
+          echo "✅ Version $VERSION appliquée"
 
-      - name: Commit version bump
+      - name: Commit bump and create tag
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add custom_components/hydropannes/manifest.json pyproject.toml
-          git diff --staged --quiet || git commit -m "chore: bump version to ${{ steps.version.outputs.version }}"
-          git push origin HEAD:${{ github.event.repository.default_branch }}
-          # Move the tag to the bump commit so HACS and HA install the correct
-          # manifest.json version instead of the pre-bump one.
-          git tag -f ${{ github.ref_name }}
-          git push origin -f ${{ github.ref_name }}
+          # Si la version était déjà à jour (re-run), ne pas créer de commit vide.
+          git diff --staged --quiet || git commit -m "chore: bump version to $VERSION"
+          git tag "v$VERSION"
+          git push origin HEAD "v$VERSION"
 
       - name: Create release zip
         run: |
           cd custom_components/hydropannes
           zip -r ../../hydropannes.zip .
 
-      - name: Upload release asset
+      - name: Publish GitHub release
         uses: softprops/action-gh-release@v3.0.0
         with:
+          tag_name: v${{ inputs.version }}
+          name: v${{ inputs.version }}
+
+          generate_release_notes: true
           files: hydropannes.zip
-          body: ${{ steps.changelog.outputs.body }}
-          # hydropannes.zip is kept as a manual install option.
-          # HACS installs directly from the repository source tree.
