@@ -29,7 +29,7 @@
           "json_log": "Journaliser les changements API dans un fichier JSONL"
         },
         "data_description": {
-          "json_log": "Lorsque activé, chaque changement de payload API est ajouté à config/hydropannes_logs/<lieu>.jsonl à des fins de dépannage."
+          "json_log": "Lorsque activé, chaque changement de payload API est ajouté à config/hydropannes_logs/[lieu].jsonl à des fins de dépannage."
         }
       }
     }
