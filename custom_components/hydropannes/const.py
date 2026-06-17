@@ -49,6 +49,7 @@ CAUSE_CODES = {
     "63": "Amélioration ou entretien du réseau",
     "68": "Travaux planifiés - Renforcement de réseau",
     "71": "Amélioration ou entretien du réseau",
+    "77": "Travaux sur la végétation ou élagage",
 }
 
 INTERVENTION_CODES = {
