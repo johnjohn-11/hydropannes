@@ -82,11 +82,14 @@ TYPE_FIN_PREVUE_CODES = {
 }
 
 # codeRemarque → meaning observed empirically.
-# Used in _is_aip_annulee() to detect cancelled planned interventions.
 CODE_REMARQUE_CODES: dict[str, str] = {
+    "91": "Changement à la demande d'un tiers",
     "92": "Annulation d'une AIP",
-    "93": "Report d'une AIP",
+    "93": "Report d'une AIP",  # kept as fallback; "91" confirmed in production
 }
+
+# Codes that indicate a rescheduled AIP (original slot cancelled, new date assigned).
+AIP_REPORT_CODES = {"91", "93"}
 
 ETAT_INTERRUPTION_CODES = {
     "C": "En cours d'évaluation",
@@ -108,4 +111,5 @@ INFO_PANNES_STATES = {
     "aip_a_venir": "Interruption planifiée à venir",
     "aip_terminee": "Interruption planifiée terminée",
     "aip_annulee": "Interruption planifiée annulée",
+    "aip_reportee": "Interruption planifiée reportée",
 }

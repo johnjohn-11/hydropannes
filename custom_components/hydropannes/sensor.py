@@ -19,6 +19,7 @@ from homeassistant.util import dt as dt_util
 from .const import (
     ATTRIBUTION,
     CAUSE_CODES,
+    CODE_REMARQUE_CODES,
     DOMAIN,
     INFO_PANNES_STATES,
     INTERVENTION_CODES,
@@ -156,6 +157,8 @@ class HydroPannesInfoPannesSensor(HydroPannesSensorBase):
 
         planned = self._get_planned_intervention()
         if planned:
+            if self._is_aip_reportee(planned):
+                return INFO_PANNES_STATES["aip_reportee"]
             if self._is_aip_annulee(planned):
                 return INFO_PANNES_STATES["aip_annulee"]
             if self._is_outage_terminated(planned):
@@ -182,6 +185,7 @@ class HydroPannesInfoPannesSensor(HydroPannesSensorBase):
             INFO_PANNES_STATES["aip_a_venir"],
             INFO_PANNES_STATES["aip_en_cours"],
             INFO_PANNES_STATES["aip_annulee"],
+            INFO_PANNES_STATES["aip_reportee"],
         ):
             return "mdi:calendar-clock"
         if state == INFO_PANNES_STATES["panne_majeure"]:
@@ -230,6 +234,12 @@ class HydroPannesInfoPannesSensor(HydroPannesSensorBase):
                 attrs[key] = parsed.isoformat() if parsed else val
             elif val is not None:
                 attrs[key] = val
+        code_remarque = str(inter.get("codeRemarque", ""))
+        if code_remarque:
+            raison = CODE_REMARQUE_CODES.get(code_remarque)
+            attrs["raisonRemarque"] = (
+                f"{raison} ({code_remarque})" if raison else f"Indéterminé ({code_remarque})"
+            )
         attrs["repriseGraduellePossible"] = self.coordinator.data.get(
             "repriseGraduellePossible", False
         )
@@ -337,10 +347,12 @@ class HydroPannesFinEstimeeSensor(HydroPannesSensorBase):
         outage = self._get_current_interruption()
         if not outage:
             return None, False, False
-        if outage.get("etat") == "R":
+        if outage.get("etat") == "R" or self._is_aip_reportee(outage):
             _, fin_report = self._get_effective_dates(outage)
             if fin_report:
                 return fin_report, False, True
+            # dateFinReport absent — don't fall through to the cancelled dateFin
+            return None, False, True
         date_fin = self._parse_dt(outage.get("dateFin"))
         if date_fin:
             return date_fin, True, False
@@ -392,6 +404,8 @@ class HydroPannesStatutInterventionSensor(HydroPannesSensorBase):
             return None
         if self._is_outage_terminated(outage):
             return INFO_PANNES_STATES["service_retabli"]
+        if self._is_aip_reportee(outage):
+            return INFO_PANNES_STATES["aip_reportee"]
         if outage.get("etat") == "R":
             return INFO_PANNES_STATES["aip_a_venir"]
         if self.coordinator.data and self.coordinator.data.get("repriseGraduellePossible"):

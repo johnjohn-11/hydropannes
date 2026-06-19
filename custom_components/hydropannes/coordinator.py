@@ -90,6 +90,9 @@ KNOWN_INTERRUPTION_FIELDS = {
     "probabilite",
     "interruptionPlanifiee",
     "typeFinPrevue",
+    "idInterruption",
+    "nbClientsInclusDansAutrePanne",
+    "repriseGraduellePossible",
 }
 
 
