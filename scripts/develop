@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+set -e
+
+cd "$(dirname "$0")/.."
+
+first_run=0
+# Create the config dir + a minimal HA config the first time.
+if [[ ! -d "${PWD}/config" ]]; then
+    mkdir -p "${PWD}/config"
+    hass --config "${PWD}/config" --script ensure_config
+    first_run=1
+fi
+
+# Make the custom integration visible to Home Assistant.
+mkdir -p "${PWD}/config/custom_components"
+ln -sfn "${PWD}/custom_components/hydropannes" "${PWD}/config/custom_components/hydropannes"
+
+# Enable debug logging for this integration.
+if ! grep -q "custom_components.hydropannes" "${PWD}/config/configuration.yaml"; then
+    cat >> "${PWD}/config/configuration.yaml" <<'EOF'
+
+logger:
+  default: info
+  logs:
+    custom_components.hydropannes: debug
+EOF
+fi
+
+# First run: pre-install all integration dependencies in a separate process.
+# Otherwise Home Assistant downloads them mid-boot but cannot import them until
+# the next start, and the first launch comes up in recovery mode (blank UI).
+if [[ "${first_run}" == "1" ]]; then
+    echo "First run: installing Home Assistant dependencies (a few minutes)..."
+    hass --config "${PWD}/config" --script check_config || true
+fi
+
+# Start Home Assistant (listens on 8123 in the container -> host port 9123).
+hass --config "${PWD}/config" --debug
