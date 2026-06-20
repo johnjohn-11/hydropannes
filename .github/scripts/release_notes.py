@@ -3,13 +3,13 @@
 
 GitHub (`generate_release_notes`) ne liste que les pull requests : les commits
 poussés directement sur la branche par défaut n'apparaissent jamais. Ce script
-parcourt tous les commits depuis le tag précédent, regroupe ceux issus d'une PR
-et liste séparément les commits directs (titre + lien + auteur cliquable).
+parcourt tous les commits depuis le tag précédent et produit une seule liste
+chronologique : chaque entrée est soit la PR d'origine du commit (dédupliquée),
+soit, à défaut, le commit direct (titre + lien + auteur cliquable).
 """
 import json
 import os
 import subprocess
-from collections import OrderedDict
 
 REPO = os.environ["GITHUB_REPOSITORY"]          # owner/repo
 VERSION = os.environ["VERSION"]
@@ -46,43 +46,34 @@ def user_link(login, fallback):
 
 def main():
     prev = previous_tag()
-    prs = OrderedDict()   # numéro -> (titre, login auteur)
-    commits = []          # (short, titre, url, login, name)
+    lines = ["## Quoi de neuf", ""]
+    seen_prs = set()
 
     for sha in commit_shas(prev):
         commit = gh_api(f"repos/{REPO}/commits/{sha}")
         title = commit["commit"]["message"].splitlines()[0]
         if title.startswith("chore: bump version to"):
             continue  # commit de bump automatique
-        author_login = (commit.get("author") or {}).get("login")
-        author_name = commit["commit"]["author"]["name"]
 
         pulls = gh_api(f"repos/{REPO}/commits/{sha}/pulls") or []
         if pulls:
             for pr in pulls:
-                if pr["number"] not in prs:
-                    prs[pr["number"]] = (pr["title"], (pr.get("user") or {}).get("login"))
+                if pr["number"] in seen_prs:
+                    continue
+                seen_prs.add(pr["number"])
+                author = (pr.get("user") or {}).get("login")
+                by = f" par {user_link(author, None)}" if author else ""
+                lines.append(f"* {pr['title']}{by} dans #{pr['number']}")
         else:
-            commits.append((sha[:7], title, commit["html_url"], author_login, author_name))
+            login = (commit.get("author") or {}).get("login")
+            name = commit["commit"]["author"]["name"]
+            lines.append(
+                f"* {title} ([`{sha[:7]}`]({commit['html_url']})) par {user_link(login, name)}"
+            )
 
-    lines = ["## Quoi de neuf", ""]
-
-    if prs:
-        lines.append("### 🔀 Pull requests")
-        for number, (title, author) in prs.items():
-            by = f" par {user_link(author, None)}" if author else ""
-            lines.append(f"* {title}{by} dans #{number}")
-        lines.append("")
-
-    if commits:
-        lines.append("### 📝 Commits directs")
-        for short, title, url, login, name in commits:
-            lines.append(f"* {title} ([`{short}`]({url})) par {user_link(login, name)}")
-        lines.append("")
-
-    if not prs and not commits:
+    if len(lines) == 2:
         lines.append("_Aucun changement notable._")
-        lines.append("")
+    lines.append("")
 
     if prev:
         lines.append(f"**Changelog complet** : {SERVER}/{REPO}/compare/{prev}...{TAG}")
