@@ -3,5 +3,36 @@ set -e
 
 cd "$(dirname "$0")/.."
 
-python3 -m pip install --upgrade pip
-python3 -m pip install --requirement requirements.txt
+# --- Fast package manager (uv) -------------------------------------------
+if ! command -v uv >/dev/null 2>&1; then
+    python3 -m pip install --user uv
+fi
+export PATH="${HOME}/.local/bin:${PATH}"
+
+# --- Isolated virtual environment for Home Assistant ---------------------
+VENV="${HOME}/.local/ha-venv"
+if [[ ! -d "${VENV}" ]]; then
+    uv venv "${VENV}"
+fi
+# Make the venv the default in every terminal so hass/ruff/mypy/just resolve.
+if ! grep -q "ha-venv/bin" "${HOME}/.bashrc" 2>/dev/null; then
+    echo 'export PATH="${HOME}/.local/ha-venv/bin:${PATH}"' >> "${HOME}/.bashrc"
+fi
+# shellcheck disable=SC1091
+source "${VENV}/bin/activate"
+
+# --- Home Assistant + dev tools ------------------------------------------
+uv pip install --requirement requirements.txt
+
+# --- Pre-install component dependencies ----------------------------------
+# Generate a default config (includes default_config) and let Home Assistant
+# resolve + install every integration requirement now, at build time. This is
+# the targeted equivalent of hilo's requirements_all.txt: it installs exactly
+# what THIS config needs (via uv, used internally by HA), so the first
+# `scripts/develop` boots cleanly instead of downloading deps mid-boot and
+# coming up in recovery mode with a blank UI.
+if [[ ! -d "${PWD}/config" ]]; then
+    hass --config "${PWD}/config" --script ensure_config
+fi
+echo "Pre-installing Home Assistant component requirements (a few minutes)..."
+hass --config "${PWD}/config" --script check_config || true

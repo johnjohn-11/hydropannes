@@ -3,12 +3,14 @@ set -e
 
 cd "$(dirname "$0")/.."
 
-first_run=0
-# Create the config dir + a minimal HA config the first time.
+# Use the Home Assistant virtual environment created by scripts/setup.
+# shellcheck disable=SC1091
+source "${HOME}/.local/ha-venv/bin/activate"
+
+# Create the config dir the first time (normally already done by scripts/setup).
 if [[ ! -d "${PWD}/config" ]]; then
     mkdir -p "${PWD}/config"
     hass --config "${PWD}/config" --script ensure_config
-    first_run=1
 fi
 
 # Make the custom integration visible to Home Assistant.
@@ -24,14 +26,6 @@ logger:
   logs:
     custom_components.hydropannes: debug
 EOF
-fi
-
-# First run: pre-install all integration dependencies in a separate process.
-# Otherwise Home Assistant downloads them mid-boot but cannot import them until
-# the next start, and the first launch comes up in recovery mode (blank UI).
-if [[ "${first_run}" == "1" ]]; then
-    echo "First run: installing Home Assistant dependencies (a few minutes)..."
-    hass --config "${PWD}/config" --script check_config || true
 fi
 
 # Start Home Assistant (listens on 8123 in the container -> host port 9123).
