@@ -1,142 +1,184 @@
-"""Support for Hydro-Pannes binary sensors."""
+"""Binary sensors for Hydro-Pannes.
+
+Provides three binary sensors per configured location:
+
+- **État du service** (BinarySensorDeviceClass.PROBLEM): ``True`` when an
+  active unplanned outage or active planned intervention (AIP) is in progress.
+- **Intervention planifiée** (BinarySensorDeviceClass.RUNNING): ``True``
+  when at least one non-terminated planned intervention exists.
+- **Compatibilité API** (EntityCategory.DIAGNOSTIC, BinarySensorDeviceClass.PROBLEM):
+  ``True`` when the Hydro-Québec API response no longer contains the expected
+  root-level fields, indicating a breaking schema change.
+"""
+
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict
+from typing import TYPE_CHECKING, Any
 
 from homeassistant.components.binary_sensor import (
-    BinarySensorEntity,
     BinarySensorDeviceClass,
+    BinarySensorEntity,
 )
-from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant
-from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.const import EntityCategory
+from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
-from homeassistant.util import dt as dt_util
 
-from .const import DOMAIN, CONF_NOM_LIEU
+from .const import ATTRIBUTION, DOMAIN
+from .coordinator import HydroPannesDataUpdateCoordinator
+from .helpers import HydroPannesHelperMixin
+
+if TYPE_CHECKING:
+    from homeassistant.core import HomeAssistant
+    from homeassistant.helpers.entity_platform import AddEntitiesCallback
+
+    from . import HydroPannesConfigEntry
 
 _LOGGER = logging.getLogger(__name__)
+
+# Entities are updated by the coordinator; no parallel polling needed.
+PARALLEL_UPDATES = 0
 
 
 async def async_setup_entry(
     hass: HomeAssistant,
-    entry: ConfigEntry,
+    entry: HydroPannesConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
-    """Set up the Hydro-Pannes binary sensors."""
-    coordinator = hass.data[DOMAIN][entry.entry_id]
-    nom_lieu = entry.data[CONF_NOM_LIEU]
+    """Set up Hydro-Pannes binary sensors for a config entry."""
+    coordinator = entry.runtime_data
+    nom_lieu = entry.title
 
-    binary_sensors = [
-        HydroPannesEtatServiceBinarySensor(coordinator, entry, nom_lieu),
-        HydroPannesInterventionPlanifieeBinarySensor(coordinator, entry, nom_lieu),
-    ]
+    async_add_entities(
+        [
+            HydroPannesEtatServiceBinarySensor(coordinator, entry, nom_lieu),
+            HydroPannesInterventionPlanifieeBinarySensor(coordinator, entry, nom_lieu),
+            HydroPannesAPICompatibilityBinarySensor(coordinator, entry, nom_lieu),
+        ]
+    )
 
-    async_add_entities(binary_sensors)
 
+class HydroPannesBinarySensorBase(
+    HydroPannesHelperMixin,
+    CoordinatorEntity[HydroPannesDataUpdateCoordinator],
+    BinarySensorEntity,
+):
+    """Base class shared by all Hydro-Pannes binary sensors.
 
-class HydroPannesEtatServiceBinarySensor(CoordinatorEntity, BinarySensorEntity):
-    """Binary sensor for Hydro-Pannes service status."""
+    Wires up the coordinator, device info, and the availability guard that
+    prevents entities from reporting stale state when no data has been fetched.
+    """
 
-    def __init__(self, coordinator, entry: ConfigEntry, nom_lieu: str) -> None:
+    _attr_has_entity_name = True
+    _attr_attribution = ATTRIBUTION
+
+    def __init__(
+        self,
+        coordinator: HydroPannesDataUpdateCoordinator,
+        entry: HydroPannesConfigEntry,
+        nom_lieu: str,
+    ) -> None:
         """Initialize the binary sensor."""
         super().__init__(coordinator)
         self._entry = entry
         self._nom_lieu = nom_lieu
-        self._attr_name = "État du Service"
+
+    @property
+    def available(self) -> bool:
+        """Return True only after a successful data fetch."""
+        return super().available and self.coordinator.data is not None
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        """Return device registry info shared by all entities for this location."""
+        return DeviceInfo(
+            identifiers={(DOMAIN, self._entry.entry_id)},
+            name=f"HydroPannes {self._nom_lieu}",
+            manufacturer="Hydro-Québec",
+            model="Info-pannes",
+        )
+
+
+class HydroPannesEtatServiceBinarySensor(HydroPannesBinarySensorBase):
+    """Binary sensor indicating whether there is an active service problem.
+
+    Maps to the BinarySensorDeviceClass.PROBLEM convention:
+    - ``True``  → problem detected (active outage or active AIP).
+    - ``False`` → service is normal (root etat != "N").
+    - ``None``  → state is unknown (no data yet).
+
+    Note: when ``etat == "N"`` but no specific interruption can be matched,
+    the sensor still returns ``True`` because the API confirms power is out,
+    even if the interruption object cannot be resolved.
+    """
+
+    _attr_translation_key = "etat_service"
+    _attr_device_class = BinarySensorDeviceClass.PROBLEM
+
+    def __init__(
+        self,
+        coordinator: HydroPannesDataUpdateCoordinator,
+        entry: HydroPannesConfigEntry,
+        nom_lieu: str,
+    ) -> None:
+        """Initialize the binary sensor."""
+        super().__init__(coordinator, entry, nom_lieu)
         self._attr_unique_id = f"{entry.entry_id}_etat_service"
-        self._attr_device_class = BinarySensorDeviceClass.PROBLEM
-        self._attr_has_entity_name = True
 
     @property
-    def device_info(self):
-        """Return device information."""
-        return {
-            "identifiers": {(DOMAIN, self._entry.entry_id)},
-            "name": f"HydroPannes {self._nom_lieu}",
-            "manufacturer": "HQ",
-            "model": "Info-pannes",
-        }
-
-    def _is_interruption_terminated(self, intr: dict[str, Any]) -> bool:
-        if not intr:
-            return False
-        if intr.get("dateFin"):
-            return True
-        if intr.get("etat") in ("C", "T"):
-            return True
-        return False
-
-    @property
-    def is_on(self) -> bool:
-        """Return true if there's an outage (service problem)."""
+    def is_on(self) -> bool | None:
+        """Return True when power is out or an AIP is actively in progress."""
         if not self.coordinator.data:
+            return None
+
+        main_etat = self._get_main_etat()
+
+        # Root etat != "N" means the service point is fed normally.
+        if main_etat != "N":
             return False
 
-        etat = self.coordinator.data.get("etat")
-        # Quick test: if main state not 'N', there is no outage
-        if etat != "N":
-            return False
-
-        interruptions = self.coordinator.data.get("interruptions", [])
-        if not interruptions:
-            return False
-
-        # find a non-planned interruption that is not terminated
-        for intr in interruptions:
-            if intr.get("interruptionPlanifiee", False):
-                continue
-            if self._is_interruption_terminated(intr):
-                continue
-            # active non-planned outage found
+        # Active unplanned outage.
+        if self._get_active_outage():
             return True
 
-        return False
+        # Active planned intervention (AIP currently in progress).
+        planned = self._get_planned_intervention()
+        if planned and self._is_outage_active(planned):
+            return True
+
+        # etat is "N" (power out) but no specific interruption matched.
+        # The API confirms there is a problem, even without a resolved outage.
+        return True
 
     @property
-    def icon(self):
-        """Return the icon."""
-        if self.is_on:
-            return "mdi:power-plug-off"
-        return "mdi:power-plug"
+    def icon(self) -> str:
+        """Return an icon reflecting the current service state."""
+        return "mdi:power-plug-off" if self.is_on else "mdi:power-plug"
 
     @property
-    def extra_state_attributes(self):
-        """Return extra attributes."""
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return key fields from the most relevant active interruption."""
         if not self.coordinator.data:
             return {}
-
-        interruptions = self.coordinator.data.get("interruptions", [])
+        interruptions = self._get_interruptions()
         if not interruptions:
             return {}
 
-        # Priority: active non-planned outage first, otherwise planned, otherwise first record
-        active = None
-        planned = None
-        for intr in interruptions:
-            if intr.get("interruptionPlanifiee", False):
-                if planned is None:
-                    planned = intr
-            else:
-                # pick first non-planned that is not terminated
-                if not self._is_interruption_terminated(intr) and active is None:
-                    active = intr
-                # if none active, keep the first non-planned as fallback
-                if active is None and planned is None and intr is not None:
-                    # nothing to do here; keep scanning
-                    pass
-
-        active_interruption = active if active else planned
+        # Select the best interruption in priority order.
+        active_interruption = self._get_active_outage()
+        if not active_interruption:
+            active_interruption = self._get_planned_intervention()
         if not active_interruption:
             active_interruption = interruptions[0]
 
         return {
             "dateDebut": active_interruption.get("dateDebut"),
             "dateFin": active_interruption.get("dateFin"),
+            "dateDebutReport": active_interruption.get("dateDebutReport"),
+            "dateFinReport": active_interruption.get("dateFinReport"),
             "dateFinEstimeeMax": active_interruption.get("dateFinEstimeeMax"),
             "etat": active_interruption.get("etat"),
-            "planifie": active_interruption.get("interruptionPlanifiee"),
+            "interruptionPlanifiee": active_interruption.get("interruptionPlanifiee"),
             "codeIntervention": active_interruption.get("codeIntervention"),
             "niveauUrgence": active_interruption.get("niveauUrgence"),
             "nbClient": active_interruption.get("nbClient"),
@@ -144,79 +186,72 @@ class HydroPannesEtatServiceBinarySensor(CoordinatorEntity, BinarySensorEntity):
             "codeMunicipal": active_interruption.get("codeMunicipal"),
             "dureePrevu": active_interruption.get("dureePrevu"),
             "typeFinPrevue": active_interruption.get("typeFinPrevue"),
-            "attribution": "Données fournies par Hydro-Québec",
         }
 
 
-class HydroPannesInterventionPlanifieeBinarySensor(CoordinatorEntity, BinarySensorEntity):
-    """Binary sensor for planned intervention status."""
+class HydroPannesInterventionPlanifieeBinarySensor(HydroPannesBinarySensorBase):
+    """Binary sensor indicating whether a planned intervention (AIP) exists.
 
-    def __init__(self, coordinator, entry: ConfigEntry, nom_lieu: str) -> None:
+    Returns ``True`` when at least one non-terminated planned interruption is
+    present in the API response (active or upcoming).
+    """
+
+    _attr_translation_key = "intervention_planifiee"
+    _attr_device_class = BinarySensorDeviceClass.RUNNING
+
+    def __init__(
+        self,
+        coordinator: HydroPannesDataUpdateCoordinator,
+        entry: HydroPannesConfigEntry,
+        nom_lieu: str,
+    ) -> None:
         """Initialize the binary sensor."""
-        super().__init__(coordinator)
-        self._entry = entry
-        self._nom_lieu = nom_lieu
-        self._attr_name = "Intervention Planifiée"
+        super().__init__(coordinator, entry, nom_lieu)
         self._attr_unique_id = f"{entry.entry_id}_intervention_planifiee"
-        self._attr_has_entity_name = True
 
     @property
-    def device_info(self):
-        """Return device information."""
-        return {
-            "identifiers": {(DOMAIN, self._entry.entry_id)},
-            "name": f"HydroPannes {self._nom_lieu}",
-            "manufacturer": "HQ",
-            "model": "Info-pannes",
-        }
-
-    @property
-    def is_on(self) -> bool:
-        """Return true if there's a planned intervention."""
+    def is_on(self) -> bool | None:
+        """Return True if a non-terminated planned intervention exists."""
         if not self.coordinator.data:
-            return False
-
-        interruptions = self.coordinator.data.get("interruptions", [])
-        for intr in interruptions:
-            if intr.get("interruptionPlanifiee", False):
+            return None
+        for intr in self._get_interruptions():
+            if self._is_planned_intervention(intr) and not self._is_outage_terminated(intr):
                 return True
         return False
 
     @property
-    def icon(self):
-        """Return the icon."""
-        if self.is_on:
-            return "mdi:calendar-clock"
-        return "mdi:calendar-check"
+    def icon(self) -> str:
+        """Return an icon reflecting whether an AIP is pending or done."""
+        return "mdi:calendar-clock" if self.is_on else "mdi:calendar-check"
 
     @property
-    def extra_state_attributes(self):
-        """Return extra attributes (from the planned interruption even if a non-planned outage exists)."""
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return key fields from the most relevant non-terminated AIP."""
         if not self.coordinator.data:
             return {}
-
-        interruptions = self.coordinator.data.get("interruptions", [])
+        interruptions = self._get_interruptions()
         if not interruptions:
             return {}
 
-        # find the planned interruption (first active planned otherwise most relevant planned)
-        planned = None
-        for intr in interruptions:
-            if intr.get("interruptionPlanifiee", False):
-                planned = intr
-                # prefer active planned (no dateFin and not etat C/T)
-                if not intr.get("dateFin") and intr.get("etat") != "C" and intr.get("etat") != "T":
-                    break
-
+        planned = next(
+            (
+                i
+                for i in interruptions
+                if self._is_planned_intervention(i) and not self._is_outage_terminated(i)
+            ),
+            None,
+        )
         if not planned:
             return {}
 
         return {
             "dateDebut": planned.get("dateDebut"),
             "dateFin": planned.get("dateFin"),
+            "dateDebutReport": planned.get("dateDebutReport"),
+            "dateFinReport": planned.get("dateFinReport"),
             "dateFinEstimeeMax": planned.get("dateFinEstimeeMax"),
             "etat": planned.get("etat"),
-            "planifie": planned.get("interruptionPlanifiee"),
+            "interruptionPlanifiee": planned.get("interruptionPlanifiee"),
             "codeIntervention": planned.get("codeIntervention"),
             "niveauUrgence": planned.get("niveauUrgence"),
             "nbClient": planned.get("nbClient"),
@@ -227,5 +262,40 @@ class HydroPannesInterventionPlanifieeBinarySensor(CoordinatorEntity, BinarySens
             "datePublication": planned.get("datePublication"),
             "codeRemarque": planned.get("codeRemarque"),
             "probabilite": planned.get("probabilite"),
-            "attribution": "Données fournies par Hydro-Québec",
         }
+
+
+class HydroPannesAPICompatibilityBinarySensor(HydroPannesBinarySensorBase):
+    """Diagnostic sensor monitoring the Hydro-Québec API response structure.
+
+    Returns ``True`` (Problem) when the coordinator has detected that the API
+    response is missing one or more expected root-level fields, which indicates
+    a breaking schema change that requires an integration update.
+
+    This sensor is in the DIAGNOSTIC category and is hidden from the default
+    dashboard view; it is intended for troubleshooting and automations.
+    """
+
+    _attr_translation_key = "api_compatibilite"
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_device_class = BinarySensorDeviceClass.PROBLEM
+
+    def __init__(
+        self,
+        coordinator: HydroPannesDataUpdateCoordinator,
+        entry: HydroPannesConfigEntry,
+        nom_lieu: str,
+    ) -> None:
+        """Initialize the diagnostic sensor."""
+        super().__init__(coordinator, entry, nom_lieu)
+        self._attr_unique_id = f"{entry.entry_id}_api_compatibility"
+
+    @property
+    def is_on(self) -> bool:
+        """Return True (Problem) when the API structure is incompatible."""
+        return not self.coordinator.api_compatible
+
+    @property
+    def icon(self) -> str:
+        """Return an icon reflecting the API compatibility state."""
+        return "mdi:api-off" if self.is_on else "mdi:api"

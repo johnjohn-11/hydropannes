@@ -1,0 +1,174 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  schedule:
+    - cron: "0 6 * * *"
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    name: Lint & Format
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6.0.3
+
+      - name: Set up Python
+        uses: actions/setup-python@v6.2.0
+        with:
+          python-version: "3.13"
+
+      - name: Install ruff
+        run: pip install ruff
+
+      - name: Run ruff check
+        run: ruff check custom_components/hydropannes
+
+      - name: Run ruff format check
+        run: ruff format --check custom_components/hydropannes
+
+  type-check:
+    name: Type Check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6.0.3
+
+      - name: Set up Python
+        uses: actions/setup-python@v6.2.0
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: requirements-ci.txt
+
+      - name: Install dependencies
+        run: pip install -r requirements-ci.txt
+
+      - name: Run mypy
+        run: mypy custom_components/hydropannes
+
+  validate:
+    name: Validate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6.0.3
+
+      - name: Validate JSON files
+        run: |
+          for f in \
+            custom_components/hydropannes/manifest.json \
+            custom_components/hydropannes/strings.json \
+            custom_components/hydropannes/translations/en.json \
+            custom_components/hydropannes/translations/fr.json \
+            hacs.json
+          do
+            python3 -m json.tool "$f" > /dev/null
+            echo "✅ $f is valid"
+          done
+
+      - name: Check version sync
+        run: |
+          MANIFEST=$(python3 -c "import json; print(json.load(open('custom_components/hydropannes/manifest.json'))['version'])")
+          PYPROJECT=$(python3 -c "import tomllib; print(tomllib.load(open('pyproject.toml','rb'))['project']['version'])")
+          if [[ "$MANIFEST" != "$PYPROJECT" ]]; then
+            echo "❌ Version mismatch: manifest.json ($MANIFEST) != pyproject.toml ($PYPROJECT)"
+            echo "Run: just bump <version>"
+            exit 1
+          fi
+          echo "✅ Versions are in sync: $MANIFEST"
+
+      - name: Check required files
+        run: |
+          files=(
+            "custom_components/hydropannes/__init__.py"
+            "custom_components/hydropannes/manifest.json"
+            "custom_components/hydropannes/const.py"
+            "custom_components/hydropannes/coordinator.py"
+            "custom_components/hydropannes/helpers.py"
+            "custom_components/hydropannes/sensor.py"
+            "custom_components/hydropannes/binary_sensor.py"
+            "custom_components/hydropannes/config_flow.py"
+            "custom_components/hydropannes/diagnostics.py"
+            "custom_components/hydropannes/services.yaml"
+            "custom_components/hydropannes/strings.json"
+            "custom_components/hydropannes/translations/en.json"
+            "custom_components/hydropannes/translations/fr.json"
+          )
+          for file in "${files[@]}"; do
+            if [[ -f "$file" ]]; then
+              echo "✅ $file exists"
+            else
+              echo "❌ $file is missing"
+              exit 1
+            fi
+          done
+
+      - name: Check translations are in sync with strings.json
+        run: |
+          python3 - << 'EOF'
+          import json
+          import sys
+
+          def keys(d, prefix=""):
+              out = set()
+              for k, v in d.items():
+                  out.add(prefix + k)
+                  if isinstance(v, dict):
+                      out |= keys(v, prefix + k + ".")
+              return out
+
+          base = keys(json.load(open("custom_components/hydropannes/strings.json")))
+          ok = True
+          for lang in ("en", "fr"):
+              path = f"custom_components/hydropannes/translations/{lang}.json"
+              trans = keys(json.load(open(path)))
+              missing = base - trans
+              extra = trans - base
+              if missing or extra:
+                  ok = False
+                  if missing:
+                      print(f"❌ {lang}.json — clés manquantes: {sorted(missing)}")
+                  if extra:
+                      print(f"❌ {lang}.json — clés en trop: {sorted(extra)}")
+              else:
+                  print(f"✅ {lang}.json est synchronisé avec strings.json")
+          sys.exit(0 if ok else 1)
+          EOF
+
+  hassfest:
+    name: Hassfest
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6.0.3
+
+      - name: Hassfest validation
+        uses: home-assistant/actions/hassfest@master
+
+  hacs:
+    name: HACS validation
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6.0.3
+
+      - name: HACS validation
+        uses: hacs/action@main
+        with:
+          category: integration

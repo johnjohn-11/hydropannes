@@ -1,0 +1,82 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version à publier (ex. 1.2.0 — sans le préfixe v)"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+  VERSION: ${{ inputs.version }}
+
+jobs:
+  release:
+    name: Bump, tag & publish
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout default branch
+        uses: actions/checkout@v6.0.3
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          fetch-depth: 0
+
+      - name: Validate version
+        run: |
+          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "❌ Format de version invalide: '$VERSION' (attendu: X.Y.Z)"
+            exit 1
+          fi
+          if git rev-parse "v$VERSION" >/dev/null 2>&1; then
+            echo "❌ Le tag v$VERSION existe déjà"
+            exit 1
+          fi
+          echo "✅ Version $VERSION valide"
+
+      - name: Bump version in all files
+        run: |
+          sed -i "s/\"version\": \"[^\"]*\"/\"version\": \"$VERSION\"/" custom_components/hydropannes/manifest.json
+          sed -i "s/^version = \"[^\"]*\"/version = \"$VERSION\"/" pyproject.toml
+
+      - name: Verify versions are in sync
+        run: |
+          MANIFEST=$(python3 -c "import json; print(json.load(open('custom_components/hydropannes/manifest.json'))['version'])")
+          PYPROJECT=$(python3 -c "import tomllib; print(tomllib.load(open('pyproject.toml','rb'))['project']['version'])")
+          if [[ "$MANIFEST" != "$VERSION" || "$PYPROJECT" != "$VERSION" ]]; then
+            echo "❌ Version mismatch après bump: manifest=$MANIFEST pyproject=$PYPROJECT attendu=$VERSION"
+            exit 1
+          fi
+          echo "✅ Version $VERSION appliquée"
+
+      - name: Commit bump and create tag
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add custom_components/hydropannes/manifest.json pyproject.toml
+          # Si la version était déjà à jour (re-run), ne pas créer de commit vide.
+          git diff --staged --quiet || git commit -m "chore: bump version to $VERSION"
+          git tag "v$VERSION"
+          git push origin HEAD "v$VERSION"
+
+      - name: Create release zip
+        run: |
+          cd custom_components/hydropannes
+          zip -r ../../hydropannes.zip .
+
+      - name: Publish GitHub release
+        uses: softprops/action-gh-release@v3.0.0
+        with:
+          tag_name: v${{ inputs.version }}
+          name: v${{ inputs.version }}
+
+          generate_release_notes: true
+          files: hydropannes.zip

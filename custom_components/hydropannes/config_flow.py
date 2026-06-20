@@ -1,66 +1,109 @@
-"""Config flow for Hydro-Pannes integration."""
+"""Config flow for Hydro-Pannes integration.
+
+Handles the initial user setup (lieu de consommation + friendly name) and
+the options flow (rename + JSONL change-log opt-in).  The lieu de
+consommation number is validated against the Hydro-Québec API before the
+entry is created to surface configuration errors early.
+"""
 
 from __future__ import annotations
 
 import logging
-from typing import Any
+import re
+from typing import TYPE_CHECKING, Any
 
-import voluptuous as vol
 import aiohttp
-
 from homeassistant import config_entries
-from homeassistant.core import HomeAssistant
-from homeassistant.data_entry_flow import FlowResult
+from homeassistant.core import callback
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
+import voluptuous as vol
 
-from .const import DOMAIN, CONF_LIEU_CONSO, CONF_NOM_LIEU, API_URL
+from .const import API_URL, CONF_JSON_LOG, CONF_LIEU_CONSO, CONF_NOM_LIEU, DOMAIN
+
+if TYPE_CHECKING:
+    from homeassistant.config_entries import ConfigFlowResult
+    from homeassistant.core import HomeAssistant
 
 _LOGGER = logging.getLogger(__name__)
+
+# Hydro-Québec lieu de consommation identifiers are always exactly 10 digits.
+_LIEU_CONSO_RE = re.compile(r"^\d{10}$")
 
 STEP_USER_DATA_SCHEMA = vol.Schema(
     {
         vol.Required(CONF_LIEU_CONSO): str,
-        vol.Required(CONF_NOM_LIEU): str,
+        vol.Required(CONF_NOM_LIEU): vol.All(str, vol.Length(min=1)),
     }
 )
 
 
 async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str, Any]:
-    """Validate the user input allows us to connect."""
-    lieu_conso = data[CONF_LIEU_CONSO]
+    """Validate the lieu de consommation by querying the Hydro-Québec API.
+
+    Raises:
+        InvalidFormat: The number does not match the 10-digit pattern.
+        CannotConnect: A network error or timeout prevented the validation request.
+        InvalidLieuConso: The API returned an empty payload for this number.
+
+    Returns:
+        A dict with the ``title`` key set to the user-supplied location name.
+
+    """
+    lieu_conso = data[CONF_LIEU_CONSO]  # already stripped by the caller
+
+    if not _LIEU_CONSO_RE.match(lieu_conso):
+        raise InvalidFormat
+
     url = API_URL.format(lieu_conso)
     session = async_get_clientsession(hass)
 
     try:
-        async with session.get(url, timeout=10) as response:
+        async with session.get(url, timeout=aiohttp.ClientTimeout(total=10)) as response:
             if response.status != 200:
                 raise CannotConnect
             json_data = await response.json()
-            if not json_data or len(json_data) == 0:
+            if not json_data:
                 raise InvalidLieuConso
-    except aiohttp.ClientError as err:
+    except (TimeoutError, aiohttp.ClientError) as err:
+        # aiohttp total timeouts raise asyncio.TimeoutError, which is NOT a
+        # ClientError subclass — both must be mapped to "cannot_connect".
         _LOGGER.debug("HydroPannes config_flow network error: %s", err)
-        raise CannotConnect
+        raise CannotConnect from err
 
     return {"title": data[CONF_NOM_LIEU]}
 
 
 class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
-    """Handle a config flow for Hydro-Pannes."""
+    """Handle the initial configuration flow for Hydro-Pannes."""
 
     VERSION = 1
 
-    async def async_step_user(
-        self, user_input: dict[str, Any] | None = None
-    ) -> FlowResult:
+    @staticmethod
+    @callback
+    def async_get_options_flow(
+        config_entry: config_entries.ConfigEntry,
+    ) -> OptionsFlowHandler:
+        """Return the options flow handler."""
+        return OptionsFlowHandler()
+
+    async def async_step_user(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
+        """Handle the user-initiated setup step.
+
+        Strips whitespace from the lieu de consommation number before
+        validation and storage so that accidental leading/trailing spaces
+        never end up in the config entry or in API URLs.
+        """
         errors: dict[str, str] = {}
         if user_input is not None:
+            user_input[CONF_LIEU_CONSO] = user_input[CONF_LIEU_CONSO].strip()
             try:
                 info = await validate_input(self.hass, user_input)
                 await self.async_set_unique_id(user_input[CONF_LIEU_CONSO])
                 self._abort_if_unique_id_configured()
                 return self.async_create_entry(title=info["title"], data=user_input)
+            except InvalidFormat:
+                errors[CONF_LIEU_CONSO] = "invalid_format"
             except CannotConnect:
                 errors["base"] = "cannot_connect"
             except InvalidLieuConso:
@@ -69,12 +112,71 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 _LOGGER.exception("Unexpected exception in config flow")
                 errors["base"] = "unknown"
 
-        return self.async_show_form(step_id="user", data_schema=STEP_USER_DATA_SCHEMA, errors=errors)
+        return self.async_show_form(
+            step_id="user", data_schema=STEP_USER_DATA_SCHEMA, errors=errors
+        )
+
+
+class OptionsFlowHandler(config_entries.OptionsFlow):
+    """Handle options flow: rename the location and toggle the JSONL log.
+
+    The name is written back to ``entry.data`` and the entry title; the
+    JSONL toggle is stored in ``entry.options``.  Everything is applied in a
+    single ``async_update_entry`` call so the update listener (which reloads
+    the entry) fires only once.
+    """
+
+    async def async_step_init(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
+        """Present the options form and apply the changes when submitted."""
+        if user_input is not None:
+            new_data = {
+                **self.config_entry.data,
+                CONF_NOM_LIEU: user_input[CONF_NOM_LIEU],
+            }
+            new_options = {
+                **self.config_entry.options,
+                CONF_JSON_LOG: user_input[CONF_JSON_LOG],
+            }
+            # Apply data, title, and options in one shot → one reload.
+            self.hass.config_entries.async_update_entry(
+                self.config_entry,
+                data=new_data,
+                title=user_input[CONF_NOM_LIEU],
+                options=new_options,
+            )
+            # data is identical to entry.options at this point, so this does
+            # not trigger a second update event.
+            return self.async_create_entry(title="", data=new_options)
+
+        return self.async_show_form(
+            step_id="init",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(
+                        CONF_NOM_LIEU,
+                        default=self.config_entry.data.get(CONF_NOM_LIEU, ""),
+                    ): vol.All(str, vol.Length(min=1)),
+                    vol.Required(
+                        CONF_JSON_LOG,
+                        default=self.config_entry.options.get(CONF_JSON_LOG, False),
+                    ): bool,
+                }
+            ),
+        )
+
+
+# ---------------------------------------------------------------------------
+# Custom exceptions
+# ---------------------------------------------------------------------------
 
 
 class CannotConnect(HomeAssistantError):
-    """Error to indicate we cannot connect."""
+    """Raised when the Hydro-Québec API is unreachable."""
 
 
 class InvalidLieuConso(HomeAssistantError):
-    """Error to indicate the provided lieu de consommation is invalid."""
+    """Raised when the API returns an empty payload for the supplied number."""
+
+
+class InvalidFormat(HomeAssistantError):
+    """Raised when the lieu de consommation number is not exactly 10 digits."""

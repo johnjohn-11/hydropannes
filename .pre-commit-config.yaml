@@ -1,0 +1,28 @@
+# Formatage et lint automatiques à chaque `git commit`, en local.
+# Remplace l'auto-commit de formatage qui était dans la CI.
+#
+# Installation (une seule fois) :
+#   pip install pre-commit
+#   pre-commit install
+#
+# Mise à jour des versions des hooks :
+#   pre-commit autoupdate
+
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    # Lancer `pre-commit autoupdate` pour épingler la dernière version.
+    rev: v0.8.6
+    hooks:
+      - id: ruff
+        args: [--fix]
+        files: ^custom_components/hydropannes/
+      - id: ruff-format
+        files: ^custom_components/hydropannes/
+
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: check-json
+      - id: check-yaml
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
