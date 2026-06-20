@@ -72,11 +72,16 @@ jobs:
           cd custom_components/hydropannes
           zip -r ../../hydropannes.zip .
 
+      - name: Generate release notes (PR + commits directs)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 .github/scripts/release_notes.py
+
       - name: Publish GitHub release
         uses: softprops/action-gh-release@v3.0.0
         with:
           tag_name: v${{ inputs.version }}
           name: v${{ inputs.version }}
 
-          generate_release_notes: true
+          body_path: RELEASE_NOTES.md
           files: hydropannes.zip
