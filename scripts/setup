@@ -25,14 +25,10 @@ source "${VENV}/bin/activate"
 uv pip install --requirement requirements.txt
 
 # --- Pre-install component dependencies ----------------------------------
-# Generate a default config (includes default_config) and let Home Assistant
-# resolve + install every integration requirement now, at build time. This is
-# the targeted equivalent of hilo's requirements_all.txt: it installs exactly
-# what THIS config needs (via uv, used internally by HA), so the first
-# `scripts/develop` boots cleanly instead of downloading deps mid-boot and
-# coming up in recovery mode with a blank UI.
-if [[ ! -d "${PWD}/config" ]]; then
-    hass --config "${PWD}/config" --script ensure_config
-fi
+# Generate the minimal dev config, then let Home Assistant resolve + install
+# every integration requirement it references now, at build time (via uv, used
+# internally by HA). This way the first `scripts/develop` boots cleanly instead
+# of downloading deps mid-boot and coming up in recovery mode with a blank UI.
+bash scripts/_config.sh "${PWD}/config"
 echo "Pre-installing Home Assistant component requirements (a few minutes)..."
 hass --config "${PWD}/config" --script check_config || true

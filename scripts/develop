@@ -7,26 +7,13 @@ cd "$(dirname "$0")/.."
 # shellcheck disable=SC1091
 source "${HOME}/.local/ha-venv/bin/activate"
 
-# Create the config dir the first time (normally already done by scripts/setup).
-if [[ ! -d "${PWD}/config" ]]; then
-    mkdir -p "${PWD}/config"
-    hass --config "${PWD}/config" --script ensure_config
-fi
+# Ensure the minimal dev config exists (no default_config -> no camera/stream/
+# go2rtc/ffmpeg/dhcp components that need missing system binaries).
+bash scripts/_config.sh "${PWD}/config"
 
 # Make the custom integration visible to Home Assistant.
 mkdir -p "${PWD}/config/custom_components"
 ln -sfn "${PWD}/custom_components/hydropannes" "${PWD}/config/custom_components/hydropannes"
-
-# Enable debug logging for this integration.
-if ! grep -q "custom_components.hydropannes" "${PWD}/config/configuration.yaml"; then
-    cat >> "${PWD}/config/configuration.yaml" <<'EOF'
-
-logger:
-  default: info
-  logs:
-    custom_components.hydropannes: debug
-EOF
-fi
 
 # Start Home Assistant (listens on 8123 in the container -> host port 9123).
 hass --config "${PWD}/config" --debug
