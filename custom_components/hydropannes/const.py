@@ -55,7 +55,7 @@ CAUSE_CODES = {
 INTERVENTION_CODES = {
     "N": "Évaluation des travaux requis",
     "A": "Équipe désignée",
-    "R": "Équipe désignée",
+    "R": "Équipe en route",
     "L": "Travaux en cours sur le réseau électrique",
 }
 
