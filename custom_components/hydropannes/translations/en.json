@@ -1,0 +1,102 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Configure Hydro-Pannes",
+        "description": "Enter your consumption location information",
+        "data": {
+          "lieu_consommation": "Consumption location number",
+          "nom_lieu": "Location name (e.g., Home, Cottage)"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Unable to connect to Hydro-Québec API",
+      "invalid_format": "The consumption location number must be exactly 10 digits",
+      "invalid_lieu": "Invalid consumption location number",
+      "unknown": "Unexpected error"
+    },
+    "abort": {
+      "already_configured": "This consumption location is already configured"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Modify location",
+        "data": {
+          "nom_lieu": "Location name",
+          "json_log": "Write API changes to a JSONL log file"
+        },
+        "data_description": {
+          "json_log": "When enabled, every API payload change is appended to config/hydropannes_logs/[location].jsonl for troubleshooting."
+        }
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "info_pannes": {
+        "name": "Outage info"
+      },
+      "niveau_urgence": {
+        "name": "Urgency level"
+      },
+      "adresses_touchees": {
+        "name": "Affected addresses"
+      },
+      "date_debut": {
+        "name": "Start date"
+      },
+      "date_fin": {
+        "name": "End date"
+      },
+      "statut_intervention": {
+        "name": "Intervention status"
+      },
+      "cause": {
+        "name": "Cause"
+      },
+      "duree": {
+        "name": "Duration"
+      },
+      "delai_avant_retablissement": {
+        "name": "Time until restoration"
+      },
+      "derniere_maj": {
+        "name": "Last update"
+      },
+      "lieu_consommation": {
+        "name": "Consumption location"
+      }
+    },
+    "binary_sensor": {
+      "etat_service": {
+        "name": "Service status"
+      },
+      "intervention_planifiee": {
+        "name": "Planned intervention"
+      },
+      "api_compatibilite": {
+        "name": "API compatibility"
+      }
+    }
+  },
+  "exceptions": {
+    "entry_not_found": {
+      "message": "No loaded Hydro-Pannes configuration found with entry ID \"{entry_id}\"."
+    }
+  },
+  "services": {
+    "refresh": {
+      "name": "Refresh data",
+      "description": "Force an immediate data refresh from the Hydro-Québec API.",
+      "fields": {
+        "entry_id": {
+          "name": "Config entry",
+          "description": "The configuration entry to refresh. Leave empty to refresh all locations."
+        }
+      }
+    }
+  }
+}

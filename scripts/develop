@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+set -e
+
+cd "$(dirname "$0")/.."
+
+# Use the Home Assistant virtual environment created by scripts/setup.
+# shellcheck disable=SC1091
+source "${HOME}/.local/ha-venv/bin/activate"
+
+# Ensure the minimal dev config exists (no default_config -> no camera/stream/
+# go2rtc/ffmpeg/dhcp components that need missing system binaries).
+bash scripts/_config.sh "${PWD}/config"
+
+# Make the custom integration visible to Home Assistant.
+mkdir -p "${PWD}/config/custom_components"
+ln -sfn "${PWD}/custom_components/hydropannes" "${PWD}/config/custom_components/hydropannes"
+
+# Start Home Assistant (listens on 8123 in the container -> host port 9123).
+hass --config "${PWD}/config" --debug

@@ -1,0 +1,5 @@
+# Pinned to match requirements-ci.txt so local dev == CI.
+homeassistant==2026.2.3
+colorlog
+ruff
+mypy
