@@ -1,0 +1,14 @@
+{
+  "domain": "hydropannes",
+  "name": "Hydro-Pannes",
+  "codeowners": ["@johnjohn-11"],
+  "config_flow": true,
+  "dependencies": [],
+  "documentation": "https://github.com/johnjohn-11/hydropannes",
+  "integration_type": "service",
+  "iot_class": "cloud_polling",
+  "issue_tracker": "https://github.com/johnjohn-11/hydropannes/issues",
+  "loggers": ["custom_components.hydropannes"],
+  "requirements": [],
+  "version": "1.0.3"
+}
