@@ -94,6 +94,7 @@ jobs:
           for f in \
             custom_components/hydropannes/manifest.json \
             custom_components/hydropannes/strings.json \
+            custom_components/hydropannes/icons.json \
             custom_components/hydropannes/translations/en.json \
             custom_components/hydropannes/translations/fr.json \
             hacs.json
@@ -127,6 +128,7 @@ jobs:
             "custom_components/hydropannes/diagnostics.py"
             "custom_components/hydropannes/services.yaml"
             "custom_components/hydropannes/strings.json"
+            "custom_components/hydropannes/icons.json"
             "custom_components/hydropannes/translations/en.json"
             "custom_components/hydropannes/translations/fr.json"
           )
