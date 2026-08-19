@@ -473,20 +473,24 @@ class HydroPannesDureeSensor(HydroPannesSensorBase):
 
     @property
     def native_value(self) -> int | None:
-        """Return the interruption duration in seconds."""
+        """Return the interruption duration in seconds.
+
+        Uses the effective start/end dates so postponed or rescheduled AIPs
+        are measured against their real (rescheduled) window rather than the
+        cancelled original slot. Returns None when the interruption has not
+        started yet (e.g. an upcoming planned intervention), which avoids
+        reporting a negative duration. When the interruption is ongoing (no
+        effective end date), the elapsed time up to now is returned.
+        """
         outage = self._get_current_interruption()
-        if not outage or "dateDebut" not in outage:
+        if not outage:
             return None
         try:
-            date_debut = self._parse_dt(outage["dateDebut"])
-            if not date_debut:
+            effective_debut, effective_fin = self._get_effective_dates(outage)
+            if not effective_debut or self._is_date_in_future(effective_debut):
                 return None
-            if outage.get("dateFin"):
-                date_fin = self._parse_dt(outage["dateFin"])
-                if not date_fin:
-                    return None
-                return round((date_fin - date_debut).total_seconds())
-            return round((dt_util.now() - date_debut).total_seconds())
+            end = effective_fin or dt_util.now()
+            return max(round((end - effective_debut).total_seconds()), 0)
         except (ValueError, TypeError):
             _LOGGER.exception("Error calculating interruption duration")
             return None
