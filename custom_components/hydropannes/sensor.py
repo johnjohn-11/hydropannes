@@ -492,10 +492,6 @@ class HydroPannesDerniereMAJSensor(HydroPannesSensorBase):
             parsed = self._parse_dt(interruption.get("datePublication"))
             if parsed:
                 return parsed
-        if self.coordinator.data and "date" in self.coordinator.data:
-            parsed = self._parse_dt(self.coordinator.data.get("date"))
-            if parsed:
-                return parsed
         if (
             hasattr(self.coordinator, "last_update_success_time")
             and self.coordinator.last_update_success_time
