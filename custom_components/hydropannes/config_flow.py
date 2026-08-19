@@ -37,6 +37,14 @@ STEP_USER_DATA_SCHEMA = vol.Schema(
     }
 )
 
+# Reconfigure only changes the consumption location number; the friendly name
+# is edited through the options flow.
+STEP_RECONFIGURE_DATA_SCHEMA = vol.Schema(
+    {
+        vol.Required(CONF_LIEU_CONSO): str,
+    }
+)
+
 
 async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str, Any]:
     """Validate the lieu de consommation by querying the Hydro-Québec API.
@@ -114,6 +122,59 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         return self.async_show_form(
             step_id="user", data_schema=STEP_USER_DATA_SCHEMA, errors=errors
+        )
+
+    async def async_step_reconfigure(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Handle reconfiguration of an existing location's number.
+
+        Lets the user correct the lieu de consommation number in place —
+        keeping the entry, its device and entity IDs, and its history — instead
+        of deleting and re-adding. The number is the entry's unique ID, so it
+        is re-validated and the unique ID is updated; adopting a number already
+        used by another entry is blocked.
+        """
+        reconfigure_entry = self._get_reconfigure_entry()
+        errors: dict[str, str] = {}
+        if user_input is not None:
+            lieu = user_input[CONF_LIEU_CONSO].strip()
+            # validate_input needs a name for its return value; reuse the
+            # existing one since reconfigure does not change it.
+            validate_data = {
+                CONF_LIEU_CONSO: lieu,
+                CONF_NOM_LIEU: reconfigure_entry.data[CONF_NOM_LIEU],
+            }
+            try:
+                await validate_input(self.hass, validate_data)
+            except InvalidFormat:
+                errors[CONF_LIEU_CONSO] = "invalid_format"
+            except CannotConnect:
+                errors["base"] = "cannot_connect"
+            except InvalidLieuConso:
+                errors["base"] = "invalid_lieu"
+            except Exception:
+                _LOGGER.exception("Unexpected exception in reconfigure flow")
+                errors["base"] = "unknown"
+            else:
+                await self.async_set_unique_id(lieu)
+                # Block adopting a number already configured on a different entry.
+                for entry in self.hass.config_entries.async_entries(DOMAIN):
+                    if entry.entry_id != reconfigure_entry.entry_id and entry.unique_id == lieu:
+                        return self.async_abort(reason="already_configured")
+                return self.async_update_reload_and_abort(
+                    reconfigure_entry,
+                    unique_id=lieu,
+                    data_updates={CONF_LIEU_CONSO: lieu},
+                )
+
+        return self.async_show_form(
+            step_id="reconfigure",
+            data_schema=self.add_suggested_values_to_schema(
+                STEP_RECONFIGURE_DATA_SCHEMA,
+                {CONF_LIEU_CONSO: reconfigure_entry.data[CONF_LIEU_CONSO]},
+            ),
+            errors=errors,
         )
 
 

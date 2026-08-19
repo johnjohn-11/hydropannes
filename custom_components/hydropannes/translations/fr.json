@@ -8,6 +8,13 @@
           "lieu_consommation": "Numéro de lieu de consommation",
           "nom_lieu": "Nom du lieu (ex. : Maison, Chalet)"
         }
+      },
+      "reconfigure": {
+        "title": "Modifier le numéro de lieu de consommation",
+        "description": "Mettez à jour le numéro de lieu de consommation pour ce lieu.",
+        "data": {
+          "lieu_consommation": "Numéro de lieu de consommation"
+        }
       }
     },
     "error": {
@@ -17,7 +24,8 @@
       "unknown": "Erreur inattendue"
     },
     "abort": {
-      "already_configured": "Ce lieu de consommation est déjà configuré"
+      "already_configured": "Ce lieu de consommation est déjà configuré",
+      "reconfigure_successful": "Numéro de lieu de consommation mis à jour"
     }
   },
   "options": {
