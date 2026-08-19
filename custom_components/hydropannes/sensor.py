@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 import logging
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from homeassistant.components.sensor import (
     SensorDeviceClass,
@@ -19,7 +19,6 @@ from homeassistant.util import dt as dt_util
 from .const import (
     ATTRIBUTION,
     CAUSE_CODES,
-    CODE_REMARQUE_CODES,
     DOMAIN,
     INFO_PANNES_STATES,
     INTERVENTION_CODES,
@@ -40,29 +39,6 @@ _LOGGER = logging.getLogger(__name__)
 
 # Entities are updated by the coordinator; no parallel polling needed.
 PARALLEL_UPDATES = 0
-
-# Interruption fields surfaced as extra state attributes by the info-pannes
-# sensor. Date fields are formatted consistently by _interruption_attributes.
-INTERRUPTION_ATTRIBUTE_KEYS = (
-    "dateDebut",
-    "dateFin",
-    "etat",
-    "dateFinEstimeeMin",
-    "dateFinEstimeeMax",
-    "dateDebutReport",
-    "dateFinReport",
-    "codeIntervention",
-    "niveauUrgence",
-    "nbClient",
-    "codeCause",
-    "codeMunicipal",
-    "datePublication",
-    "codeRemarque",
-    "dureePrevu",
-    "probabilite",
-    "interruptionPlanifiee",
-    "typeFinPrevue",
-)
 
 
 async def async_setup_entry(
@@ -212,29 +188,6 @@ class HydroPannesInfoPannesSensor(HydroPannesSensorBase):
         if state == INFO_PANNES_STATES["panne_en_cours"]:
             return "mdi:alert-circle"
         return "mdi:help-circle"
-
-    @property
-    def extra_state_attributes(self) -> dict[str, Any]:
-        """Return key fields from the selected interruption."""
-        if not self.coordinator.data:
-            return {}
-        interruptions = self._get_interruptions()
-        if not interruptions:
-            return {}
-        inter = self._get_current_interruption()
-        if not inter:
-            return {}
-        attrs = self._interruption_attributes(inter, INTERRUPTION_ATTRIBUTE_KEYS)
-        code_remarque = str(inter.get("codeRemarque", ""))
-        if code_remarque:
-            raison = CODE_REMARQUE_CODES.get(code_remarque)
-            attrs["raisonRemarque"] = (
-                f"{raison} ({code_remarque})" if raison else f"Indéterminé ({code_remarque})"
-            )
-        attrs["repriseGraduellePossible"] = self.coordinator.data.get(
-            "repriseGraduellePossible", False
-        )
-        return attrs
 
 
 class HydroPannesNiveauUrgenceSensor(HydroPannesSensorBase):
