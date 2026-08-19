@@ -178,11 +178,6 @@ class HydroPannesEtatServiceBinarySensor(HydroPannesBinarySensorBase):
         return True
 
     @property
-    def icon(self) -> str:
-        """Return an icon reflecting the current service state."""
-        return "mdi:power-plug-off" if self.is_on else "mdi:power-plug"
-
-    @property
     def extra_state_attributes(self) -> dict[str, Any]:
         """Return key fields from the most relevant active interruption."""
         if not self.coordinator.data:
@@ -230,11 +225,6 @@ class HydroPannesInterventionPlanifieeBinarySensor(HydroPannesBinarySensorBase):
             if self._is_planned_intervention(intr) and not self._is_outage_terminated(intr):
                 return True
         return False
-
-    @property
-    def icon(self) -> str:
-        """Return an icon reflecting whether an AIP is pending or done."""
-        return "mdi:calendar-clock" if self.is_on else "mdi:calendar-check"
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
@@ -288,8 +278,3 @@ class HydroPannesAPICompatibilityBinarySensor(HydroPannesBinarySensorBase):
     def is_on(self) -> bool:
         """Return True (Problem) when the API structure is incompatible."""
         return not self.coordinator.api_compatible
-
-    @property
-    def icon(self) -> str:
-        """Return an icon reflecting the API compatibility state."""
-        return "mdi:api-off" if self.is_on else "mdi:api"

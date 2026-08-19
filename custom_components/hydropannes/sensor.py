@@ -241,7 +241,6 @@ class HydroPannesNiveauUrgenceSensor(HydroPannesSensorBase):
     """Sensor reporting the urgency level."""
 
     _attr_translation_key = "niveau_urgence"
-    _attr_icon = "mdi:alert-octagon"
 
     def __init__(
         self,
@@ -267,7 +266,6 @@ class HydroPannesNombreClientSensor(HydroPannesSensorBase):
     """Sensor reporting the number of affected addresses."""
 
     _attr_translation_key = "adresses_touchees"
-    _attr_icon = "mdi:account-multiple"
     _attr_native_unit_of_measurement = "clients"
     _attr_state_class = SensorStateClass.MEASUREMENT
 
@@ -294,7 +292,6 @@ class HydroPannesDebutSensor(HydroPannesSensorBase):
     """Sensor reporting the effective start time."""
 
     _attr_translation_key = "date_debut"
-    _attr_icon = "mdi:clock-start"
     _attr_device_class = SensorDeviceClass.TIMESTAMP
 
     def __init__(
@@ -375,7 +372,6 @@ class HydroPannesStatutInterventionSensor(HydroPannesSensorBase):
     """Sensor reporting the current intervention step."""
 
     _attr_translation_key = "statut_intervention"
-    _attr_icon = "mdi:account-hard-hat"
 
     def __init__(
         self,
@@ -417,7 +413,6 @@ class HydroPannesCauseSensor(HydroPannesSensorBase):
     """Sensor reporting the cause of the interruption."""
 
     _attr_translation_key = "cause"
-    _attr_icon = "mdi:help-circle-outline"
 
     def __init__(
         self,
@@ -447,7 +442,6 @@ class HydroPannesDureeSensor(HydroPannesSensorBase):
     """Sensor reporting the interruption duration in seconds."""
 
     _attr_translation_key = "duree"
-    _attr_icon = "mdi:timer-outline"
     _attr_native_unit_of_measurement = UnitOfTime.SECONDS
     _attr_device_class = SensorDeviceClass.DURATION
     # No state_class: the value grows with wall-clock time during an outage and
@@ -493,7 +487,6 @@ class HydroPannesDureeAvantRetablissementSensor(HydroPannesSensorBase):
     """Sensor reporting time remaining until restoration in seconds."""
 
     _attr_translation_key = "delai_avant_retablissement"
-    _attr_icon = "mdi:timer-sand"
     _attr_native_unit_of_measurement = UnitOfTime.SECONDS
     _attr_device_class = SensorDeviceClass.DURATION
     # No state_class: this countdown shifts every poll and resets between
@@ -526,7 +519,6 @@ class HydroPannesDerniereMAJSensor(HydroPannesSensorBase):
     """Sensor reporting the last update time."""
 
     _attr_translation_key = "derniere_maj"
-    _attr_icon = "mdi:clock-outline"
     _attr_device_class = SensorDeviceClass.TIMESTAMP
 
     def __init__(
@@ -564,7 +556,6 @@ class HydroPannesLieuConsoSensor(HydroPannesSensorBase):
     """Diagnostic sensor reporting the consumption location ID."""
 
     _attr_translation_key = "lieu_consommation"
-    _attr_icon = "mdi:identifier"
     _attr_entity_category = EntityCategory.DIAGNOSTIC
 
     def __init__(
