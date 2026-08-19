@@ -450,7 +450,9 @@ class HydroPannesDureeSensor(HydroPannesSensorBase):
     _attr_icon = "mdi:timer-outline"
     _attr_native_unit_of_measurement = UnitOfTime.SECONDS
     _attr_device_class = SensorDeviceClass.DURATION
-    _attr_state_class = SensorStateClass.MEASUREMENT
+    # No state_class: the value grows with wall-clock time during an outage and
+    # resets between outages, so long-term statistics would be a meaningless
+    # sawtooth. It remains useful as a live state.
 
     def __init__(
         self,
@@ -494,7 +496,8 @@ class HydroPannesDureeAvantRetablissementSensor(HydroPannesSensorBase):
     _attr_icon = "mdi:timer-sand"
     _attr_native_unit_of_measurement = UnitOfTime.SECONDS
     _attr_device_class = SensorDeviceClass.DURATION
-    _attr_state_class = SensorStateClass.MEASUREMENT
+    # No state_class: this countdown shifts every poll and resets between
+    # outages, so long-term statistics would be a meaningless sawtooth.
 
     def __init__(
         self,
