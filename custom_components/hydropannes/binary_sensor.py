@@ -39,33 +39,16 @@ _LOGGER = logging.getLogger(__name__)
 # Entities are updated by the coordinator; no parallel polling needed.
 PARALLEL_UPDATES = 0
 
-# Interruption fields surfaced as extra state attributes. Date fields are
-# formatted consistently (localized ISO) by _interruption_attributes, matching
-# the info-pannes sensor.
-ETAT_SERVICE_ATTRIBUTE_KEYS = (
-    "dateDebut",
-    "dateFin",
+# The service-status binary sensor exposes no extra attributes — its on/off
+# state is the whole signal. The report-window and planned-intervention fields
+# below live only on the planned-intervention binary sensor. Fields already on
+# a dedicated sensor, or captured in the optional JSONL log (etat, codeMunicipal,
+# codeRemarque, probabilite), are not duplicated as attributes anywhere.
+INTERVENTION_PLANIFIEE_ATTRIBUTE_KEYS = (
     "dateDebutReport",
     "dateFinReport",
-    "dateFinEstimeeMax",
-    "etat",
-    "interruptionPlanifiee",
-    "codeIntervention",
-    "niveauUrgence",
-    "nbClient",
-    "codeCause",
-    "codeMunicipal",
     "dureePrevu",
-    "typeFinPrevue",
-)
-
-# The planned-intervention sensor exposes the same fields plus AIP-specific
-# metadata (publication date, remark code, probability).
-INTERVENTION_PLANIFIEE_ATTRIBUTE_KEYS = (
-    *ETAT_SERVICE_ATTRIBUTE_KEYS,
-    "datePublication",
-    "codeRemarque",
-    "probabilite",
+    "interruptionPlanifiee",
 )
 
 
@@ -176,24 +159,6 @@ class HydroPannesEtatServiceBinarySensor(HydroPannesBinarySensorBase):
         # etat is "N" (power out) but no specific interruption matched.
         # The API confirms there is a problem, even without a resolved outage.
         return True
-
-    @property
-    def extra_state_attributes(self) -> dict[str, Any]:
-        """Return key fields from the most relevant active interruption."""
-        if not self.coordinator.data:
-            return {}
-        interruptions = self._get_interruptions()
-        if not interruptions:
-            return {}
-
-        # Select the best interruption in priority order.
-        active_interruption = self._get_active_outage()
-        if not active_interruption:
-            active_interruption = self._get_planned_intervention()
-        if not active_interruption:
-            active_interruption = interruptions[0]
-
-        return self._interruption_attributes(active_interruption, ETAT_SERVICE_ATTRIBUTE_KEYS)
 
 
 class HydroPannesInterventionPlanifieeBinarySensor(HydroPannesBinarySensorBase):
