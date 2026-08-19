@@ -148,11 +148,7 @@ class HydroPannesInfoPannesSensor(HydroPannesSensorBase):
         terminated_outage = self._get_terminated_outage()
         if terminated_outage:
             planned_check = self._get_planned_intervention()
-            if (
-                not planned_check
-                or self._is_aip_annulee(planned_check)
-                or self._is_outage_terminated(planned_check)
-            ):
+            if not self._planned_supersedes_terminated(planned_check):
                 return INFO_PANNES_STATES["service_retabli"]
 
         planned = self._get_planned_intervention()
