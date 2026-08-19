@@ -182,6 +182,33 @@ class HydroPannesHelperMixin:
         return self._is_date_in_future(effective_debut)
 
     # ==========================================================================
+    # Attribute building
+    # ==========================================================================
+
+    def _interruption_attributes(
+        self, intr: dict[str, Any], keys: tuple[str, ...]
+    ) -> dict[str, Any]:
+        """Build an extra-state-attributes dict for the given interruption keys.
+
+        Date fields (keys starting with ``date``) are parsed to a localized
+        ISO string so every entity exposes timestamps in the same format;
+        values that cannot be parsed fall back to the raw string. Keys whose
+        value is None are omitted. Centralizing this keeps date formatting
+        consistent across the info-pannes and binary sensors.
+        """
+        attrs: dict[str, Any] = {}
+        for key in keys:
+            val = intr.get(key)
+            if val is None:
+                continue
+            if key.startswith("date") and val:
+                parsed = self._parse_dt(val)
+                attrs[key] = parsed.isoformat() if parsed else val
+            else:
+                attrs[key] = val
+        return attrs
+
+    # ==========================================================================
     # Interruption selection (priority logic)
     # ==========================================================================
 

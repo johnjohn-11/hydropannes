@@ -39,6 +39,35 @@ _LOGGER = logging.getLogger(__name__)
 # Entities are updated by the coordinator; no parallel polling needed.
 PARALLEL_UPDATES = 0
 
+# Interruption fields surfaced as extra state attributes. Date fields are
+# formatted consistently (localized ISO) by _interruption_attributes, matching
+# the info-pannes sensor.
+ETAT_SERVICE_ATTRIBUTE_KEYS = (
+    "dateDebut",
+    "dateFin",
+    "dateDebutReport",
+    "dateFinReport",
+    "dateFinEstimeeMax",
+    "etat",
+    "interruptionPlanifiee",
+    "codeIntervention",
+    "niveauUrgence",
+    "nbClient",
+    "codeCause",
+    "codeMunicipal",
+    "dureePrevu",
+    "typeFinPrevue",
+)
+
+# The planned-intervention sensor exposes the same fields plus AIP-specific
+# metadata (publication date, remark code, probability).
+INTERVENTION_PLANIFIEE_ATTRIBUTE_KEYS = (
+    *ETAT_SERVICE_ATTRIBUTE_KEYS,
+    "datePublication",
+    "codeRemarque",
+    "probabilite",
+)
+
 
 async def async_setup_entry(
     hass: HomeAssistant,
@@ -171,22 +200,7 @@ class HydroPannesEtatServiceBinarySensor(HydroPannesBinarySensorBase):
         if not active_interruption:
             active_interruption = interruptions[0]
 
-        return {
-            "dateDebut": active_interruption.get("dateDebut"),
-            "dateFin": active_interruption.get("dateFin"),
-            "dateDebutReport": active_interruption.get("dateDebutReport"),
-            "dateFinReport": active_interruption.get("dateFinReport"),
-            "dateFinEstimeeMax": active_interruption.get("dateFinEstimeeMax"),
-            "etat": active_interruption.get("etat"),
-            "interruptionPlanifiee": active_interruption.get("interruptionPlanifiee"),
-            "codeIntervention": active_interruption.get("codeIntervention"),
-            "niveauUrgence": active_interruption.get("niveauUrgence"),
-            "nbClient": active_interruption.get("nbClient"),
-            "codeCause": active_interruption.get("codeCause"),
-            "codeMunicipal": active_interruption.get("codeMunicipal"),
-            "dureePrevu": active_interruption.get("dureePrevu"),
-            "typeFinPrevue": active_interruption.get("typeFinPrevue"),
-        }
+        return self._interruption_attributes(active_interruption, ETAT_SERVICE_ATTRIBUTE_KEYS)
 
 
 class HydroPannesInterventionPlanifieeBinarySensor(HydroPannesBinarySensorBase):
@@ -244,25 +258,7 @@ class HydroPannesInterventionPlanifieeBinarySensor(HydroPannesBinarySensorBase):
         if not planned:
             return {}
 
-        return {
-            "dateDebut": planned.get("dateDebut"),
-            "dateFin": planned.get("dateFin"),
-            "dateDebutReport": planned.get("dateDebutReport"),
-            "dateFinReport": planned.get("dateFinReport"),
-            "dateFinEstimeeMax": planned.get("dateFinEstimeeMax"),
-            "etat": planned.get("etat"),
-            "interruptionPlanifiee": planned.get("interruptionPlanifiee"),
-            "codeIntervention": planned.get("codeIntervention"),
-            "niveauUrgence": planned.get("niveauUrgence"),
-            "nbClient": planned.get("nbClient"),
-            "codeCause": planned.get("codeCause"),
-            "codeMunicipal": planned.get("codeMunicipal"),
-            "dureePrevu": planned.get("dureePrevu"),
-            "typeFinPrevue": planned.get("typeFinPrevue"),
-            "datePublication": planned.get("datePublication"),
-            "codeRemarque": planned.get("codeRemarque"),
-            "probabilite": planned.get("probabilite"),
-        }
+        return self._interruption_attributes(planned, INTERVENTION_PLANIFIEE_ATTRIBUTE_KEYS)
 
 
 class HydroPannesAPICompatibilityBinarySensor(HydroPannesBinarySensorBase):
