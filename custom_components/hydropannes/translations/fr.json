@@ -90,23 +90,6 @@
       }
     }
   },
-  "exceptions": {
-    "entry_not_found": {
-      "message": "Aucune configuration Hydro-Pannes chargée avec l'identifiant « {entry_id} »."
-    }
-  },
-  "services": {
-    "refresh": {
-      "name": "Rafraîchir les données",
-      "description": "Force un rafraîchissement immédiat des données depuis l'API Hydro-Québec.",
-      "fields": {
-        "entry_id": {
-          "name": "Entrée de configuration",
-          "description": "L'entrée de configuration à rafraîchir. Laisser vide pour rafraîchir tous les lieux."
-        }
-      }
-    }
-  },
   "issues": {
     "api_schema_changed": {
       "title": "La structure de l'API Hydro-Québec a changé",

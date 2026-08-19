@@ -126,7 +126,6 @@ jobs:
             "custom_components/hydropannes/binary_sensor.py"
             "custom_components/hydropannes/config_flow.py"
             "custom_components/hydropannes/diagnostics.py"
-            "custom_components/hydropannes/services.yaml"
             "custom_components/hydropannes/strings.json"
             "custom_components/hydropannes/icons.json"
             "custom_components/hydropannes/translations/en.json"

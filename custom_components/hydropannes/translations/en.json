@@ -90,23 +90,6 @@
       }
     }
   },
-  "exceptions": {
-    "entry_not_found": {
-      "message": "No loaded Hydro-Pannes configuration found with entry ID \"{entry_id}\"."
-    }
-  },
-  "services": {
-    "refresh": {
-      "name": "Refresh data",
-      "description": "Force an immediate data refresh from the Hydro-Québec API.",
-      "fields": {
-        "entry_id": {
-          "name": "Config entry",
-          "description": "The configuration entry to refresh. Leave empty to refresh all locations."
-        }
-      }
-    }
-  },
   "issues": {
     "api_schema_changed": {
       "title": "Hydro-Québec API structure changed",
