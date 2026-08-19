@@ -111,21 +111,19 @@ class HydroPannesBinarySensorBase(
         super().__init__(coordinator)
         self._entry = entry
         self._nom_lieu = nom_lieu
+        # Device identity is fixed for the entity's lifetime; set it once here
+        # rather than rebuilding a DeviceInfo on every property access.
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, entry.entry_id)},
+            name=f"HydroPannes {nom_lieu}",
+            manufacturer="Hydro-Québec",
+            model="Info-pannes",
+        )
 
     @property
     def available(self) -> bool:
         """Return True only after a successful data fetch."""
         return super().available and self.coordinator.data is not None
-
-    @property
-    def device_info(self) -> DeviceInfo:
-        """Return device registry info shared by all entities for this location."""
-        return DeviceInfo(
-            identifiers={(DOMAIN, self._entry.entry_id)},
-            name=f"HydroPannes {self._nom_lieu}",
-            manufacturer="Hydro-Québec",
-            model="Info-pannes",
-        )
 
 
 class HydroPannesEtatServiceBinarySensor(HydroPannesBinarySensorBase):
