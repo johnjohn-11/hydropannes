@@ -107,9 +107,6 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             user_input[CONF_LIEU_CONSO] = user_input[CONF_LIEU_CONSO].strip()
             try:
                 info = await validate_input(self.hass, user_input)
-                await self.async_set_unique_id(user_input[CONF_LIEU_CONSO])
-                self._abort_if_unique_id_configured()
-                return self.async_create_entry(title=info["title"], data=user_input)
             except InvalidFormat:
                 errors[CONF_LIEU_CONSO] = "invalid_format"
             except CannotConnect:
@@ -119,6 +116,13 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             except Exception:
                 _LOGGER.exception("Unexpected exception in config flow")
                 errors["base"] = "unknown"
+            else:
+                # Outside the try/except so the AbortFlow raised by
+                # _abort_if_unique_id_configured propagates instead of being
+                # swallowed by the catch-all above.
+                await self.async_set_unique_id(user_input[CONF_LIEU_CONSO])
+                self._abort_if_unique_id_configured()
+                return self.async_create_entry(title=info["title"], data=user_input)
 
         return self.async_show_form(
             step_id="user", data_schema=STEP_USER_DATA_SCHEMA, errors=errors
