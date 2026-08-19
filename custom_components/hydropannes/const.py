@@ -33,7 +33,7 @@ CAUSE_CODES = {
     "26": "Conditions météorologiques",
     "31": "Accident ou incident",
     "32": "Accident ou incident",
-    "33": "Usure ou désagr.gation de matériel",
+    "33": "Usure ou désagrégation de matériel",
     "34": "Incendie ou fuite de gaz",
     "41": "Accident ou incident",
     "42": "Accident ou incident",
