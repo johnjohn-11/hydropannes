@@ -106,5 +106,11 @@
         }
       }
     }
+  },
+  "issues": {
+    "api_schema_changed": {
+      "title": "La structure de l'API Hydro-Québec a changé",
+      "description": "Hydro-Pannes a reçu une réponse inattendue de l'API Hydro-Québec (champs manquants : {missing_fields}). L'intégration doit peut-être être mise à jour pour correspondre à une nouvelle structure d'API. Si le problème persiste après la mise à jour, veuillez le signaler sur le suivi des problèmes."
+    }
   }
 }
