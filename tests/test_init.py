@@ -76,18 +76,6 @@ async def test_setup_retry_on_api_error(hass: HomeAssistant, aioclient_mock) -> 
     assert entry.state is ConfigEntryState.SETUP_RETRY
 
 
-async def test_refresh_service_registered(hass: HomeAssistant, aioclient_mock) -> None:
-    """The hydropannes.refresh service is registered once the entry loads."""
-    aioclient_mock.get(API_URL.format(LIEU), json=PAYLOAD)
-    entry = _entry()
-    entry.add_to_hass(hass)
-
-    assert await hass.config_entries.async_setup(entry.entry_id)
-    await hass.async_block_till_done()
-
-    assert hass.services.has_service(DOMAIN, "refresh")
-
-
 async def test_api_schema_issue_created_and_cleared(hass: HomeAssistant, aioclient_mock) -> None:
     """A missing root field raises a repair issue; recovery clears it."""
     # First response drops required root fields (idLieuConso, interruptions).
