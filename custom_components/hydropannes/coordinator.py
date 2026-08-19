@@ -28,6 +28,7 @@ import os
 from typing import TYPE_CHECKING, Any, NoReturn
 
 import aiohttp
+from homeassistant.helpers import issue_registry as ir
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.update_coordinator import (
     DataUpdateCoordinator,
@@ -116,6 +117,10 @@ class HydroPannesDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         # Tracks whether the last successful API response had the expected
         # root-level schema.  True until proven otherwise.
         self.api_compatible: bool = True
+
+        # Stable id for the repair issue raised when the API schema drifts,
+        # so it can be created and cleared for this location specifically.
+        self._api_issue_id: str = f"api_incompatible_{entry.entry_id}"
 
         # Hash of the last payload, used for change detection.
         self._last_hash: str | None = None
@@ -208,7 +213,22 @@ class HydroPannesDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                                     missing_root,
                                 )
                             self.api_compatible = False
+                            # Surface the breaking change to the user via Repairs.
+                            ir.async_create_issue(
+                                self.hass,
+                                DOMAIN,
+                                self._api_issue_id,
+                                is_fixable=False,
+                                severity=ir.IssueSeverity.WARNING,
+                                translation_key="api_schema_changed",
+                                translation_placeholders={
+                                    "missing_fields": ", ".join(sorted(missing_root)),
+                                },
+                            )
                         else:
+                            if not self.api_compatible:
+                                # Schema recovered — clear the repair issue.
+                                ir.async_delete_issue(self.hass, DOMAIN, self._api_issue_id)
                             self.api_compatible = True
 
                         # --- Option C: warn on unknown interruption fields ---

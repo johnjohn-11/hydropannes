@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING
 from unittest.mock import patch
 
 from homeassistant.config_entries import ConfigEntryState
+from homeassistant.helpers import issue_registry as ir
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
@@ -85,3 +86,26 @@ async def test_refresh_service_registered(hass: HomeAssistant, aioclient_mock) -
     await hass.async_block_till_done()
 
     assert hass.services.has_service(DOMAIN, "refresh")
+
+
+async def test_api_schema_issue_created_and_cleared(hass: HomeAssistant, aioclient_mock) -> None:
+    """A missing root field raises a repair issue; recovery clears it."""
+    # First response drops required root fields (idLieuConso, interruptions).
+    aioclient_mock.get(API_URL.format(LIEU), json=[{"etat": "A"}])
+    entry = _entry()
+    entry.add_to_hass(hass)
+
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    registry = ir.async_get(hass)
+    issue_id = f"api_incompatible_{entry.entry_id}"
+    assert registry.async_get_issue(DOMAIN, issue_id) is not None
+
+    # A well-formed response on the next refresh clears the issue.
+    aioclient_mock.clear_requests()
+    aioclient_mock.get(API_URL.format(LIEU), json=PAYLOAD)
+    await entry.runtime_data.async_refresh()
+    await hass.async_block_till_done()
+
+    assert registry.async_get_issue(DOMAIN, issue_id) is None
