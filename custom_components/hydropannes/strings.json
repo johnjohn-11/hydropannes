@@ -8,6 +8,13 @@
           "lieu_consommation": "Consumption location number",
           "nom_lieu": "Location name (e.g., Home, Cottage)"
         }
+      },
+      "reconfigure": {
+        "title": "Change consumption location number",
+        "description": "Update the consumption location number for this location.",
+        "data": {
+          "lieu_consommation": "Consumption location number"
+        }
       }
     },
     "error": {
@@ -17,7 +24,8 @@
       "unknown": "Unexpected error"
     },
     "abort": {
-      "already_configured": "This consumption location is already configured"
+      "already_configured": "This consumption location is already configured",
+      "reconfigure_successful": "Consumption location number updated"
     }
   },
   "options": {
