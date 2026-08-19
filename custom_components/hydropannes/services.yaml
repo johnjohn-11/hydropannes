@@ -1,8 +1,0 @@
-refresh:
-  fields:
-    entry_id:
-      required: false
-      example: "abc123def456abc123def456"
-      selector:
-        config_entry:
-          integration: hydropannes

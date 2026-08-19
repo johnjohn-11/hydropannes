@@ -81,14 +81,9 @@ TYPE_FIN_PREVUE_CODES = {
     "X": "Rétablissement prévu",  # observed near end of major outage; exact meaning unconfirmed
 }
 
-# codeRemarque → meaning observed empirically.
-CODE_REMARQUE_CODES: dict[str, str] = {
-    "91": "Changement à la demande d'un tiers",
-    "92": "Annulation d'une AIP",
-    "93": "Report d'une AIP",  # kept as fallback; "91" confirmed in production
-}
-
 # Codes that indicate a rescheduled AIP (original slot cancelled, new date assigned).
+# codeRemarque meanings (observed empirically): "91" changement à la demande d'un
+# tiers, "92" annulation d'une AIP, "93" report d'une AIP ("91" confirmed in prod).
 AIP_REPORT_CODES = {"91", "93"}
 
 ETAT_INTERRUPTION_CODES = {

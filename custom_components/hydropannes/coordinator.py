@@ -28,6 +28,7 @@ import os
 from typing import TYPE_CHECKING, Any, NoReturn
 
 import aiohttp
+from homeassistant.helpers import issue_registry as ir
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.update_coordinator import (
     DataUpdateCoordinator,
@@ -117,6 +118,10 @@ class HydroPannesDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         # root-level schema.  True until proven otherwise.
         self.api_compatible: bool = True
 
+        # Stable id for the repair issue raised when the API schema drifts,
+        # so it can be created and cleared for this location specifically.
+        self._api_issue_id: str = f"api_incompatible_{entry.entry_id}"
+
         # Hash of the last payload, used for change detection.
         self._last_hash: str | None = None
 
@@ -203,12 +208,27 @@ class HydroPannesDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                             if self.api_compatible:
                                 # Log once per transition to avoid log spam.
                                 _LOGGER.error(
-                                    "Structure de l'API Hydro-Québec non reconnue ou "
-                                    "modifiée — champs manquants: %s",
+                                    "Unrecognized or changed Hydro-Québec API structure "
+                                    "— missing fields: %s",
                                     missing_root,
                                 )
                             self.api_compatible = False
+                            # Surface the breaking change to the user via Repairs.
+                            ir.async_create_issue(
+                                self.hass,
+                                DOMAIN,
+                                self._api_issue_id,
+                                is_fixable=False,
+                                severity=ir.IssueSeverity.WARNING,
+                                translation_key="api_schema_changed",
+                                translation_placeholders={
+                                    "missing_fields": ", ".join(sorted(missing_root)),
+                                },
+                            )
                         else:
+                            if not self.api_compatible:
+                                # Schema recovered — clear the repair issue.
+                                ir.async_delete_issue(self.hass, DOMAIN, self._api_issue_id)
                             self.api_compatible = True
 
                         # --- Option C: warn on unknown interruption fields ---
@@ -218,8 +238,8 @@ class HydroPannesDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                             unknown = intr.keys() - KNOWN_INTERRUPTION_FIELDS
                             if unknown:
                                 _LOGGER.warning(
-                                    "Nouveaux champs API détectés dans une interruption "
-                                    "(lieu %s): %s — le schéma HQ a peut-être évolué.",
+                                    "New API fields detected in an interruption (lieu %s): "
+                                    "%s — the Hydro-Québec schema may have evolved.",
                                     self.lieu_conso,
                                     unknown,
                                 )

@@ -8,6 +8,13 @@
           "lieu_consommation": "Numéro de lieu de consommation",
           "nom_lieu": "Nom du lieu (ex. : Maison, Chalet)"
         }
+      },
+      "reconfigure": {
+        "title": "Modifier le numéro de lieu de consommation",
+        "description": "Mettez à jour le numéro de lieu de consommation pour ce lieu.",
+        "data": {
+          "lieu_consommation": "Numéro de lieu de consommation"
+        }
       }
     },
     "error": {
@@ -17,7 +24,8 @@
       "unknown": "Erreur inattendue"
     },
     "abort": {
-      "already_configured": "Ce lieu de consommation est déjà configuré"
+      "already_configured": "Ce lieu de consommation est déjà configuré",
+      "reconfigure_successful": "Numéro de lieu de consommation mis à jour"
     }
   },
   "options": {
@@ -82,21 +90,10 @@
       }
     }
   },
-  "exceptions": {
-    "entry_not_found": {
-      "message": "Aucune configuration Hydro-Pannes chargée avec l'identifiant « {entry_id} »."
-    }
-  },
-  "services": {
-    "refresh": {
-      "name": "Rafraîchir les données",
-      "description": "Force un rafraîchissement immédiat des données depuis l'API Hydro-Québec.",
-      "fields": {
-        "entry_id": {
-          "name": "Entrée de configuration",
-          "description": "L'entrée de configuration à rafraîchir. Laisser vide pour rafraîchir tous les lieux."
-        }
-      }
+  "issues": {
+    "api_schema_changed": {
+      "title": "La structure de l'API Hydro-Québec a changé",
+      "description": "Hydro-Pannes a reçu une réponse inattendue de l'API Hydro-Québec (champs manquants : {missing_fields}). L'intégration doit peut-être être mise à jour pour correspondre à une nouvelle structure d'API. Si le problème persiste après la mise à jour, veuillez le signaler sur le suivi des problèmes."
     }
   }
 }

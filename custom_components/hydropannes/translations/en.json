@@ -8,6 +8,13 @@
           "lieu_consommation": "Consumption location number",
           "nom_lieu": "Location name (e.g., Home, Cottage)"
         }
+      },
+      "reconfigure": {
+        "title": "Change consumption location number",
+        "description": "Update the consumption location number for this location.",
+        "data": {
+          "lieu_consommation": "Consumption location number"
+        }
       }
     },
     "error": {
@@ -17,7 +24,8 @@
       "unknown": "Unexpected error"
     },
     "abort": {
-      "already_configured": "This consumption location is already configured"
+      "already_configured": "This consumption location is already configured",
+      "reconfigure_successful": "Consumption location number updated"
     }
   },
   "options": {
@@ -82,21 +90,10 @@
       }
     }
   },
-  "exceptions": {
-    "entry_not_found": {
-      "message": "No loaded Hydro-Pannes configuration found with entry ID \"{entry_id}\"."
-    }
-  },
-  "services": {
-    "refresh": {
-      "name": "Refresh data",
-      "description": "Force an immediate data refresh from the Hydro-Québec API.",
-      "fields": {
-        "entry_id": {
-          "name": "Config entry",
-          "description": "The configuration entry to refresh. Leave empty to refresh all locations."
-        }
-      }
+  "issues": {
+    "api_schema_changed": {
+      "title": "Hydro-Québec API structure changed",
+      "description": "Hydro-Pannes received an unexpected response from the Hydro-Québec API (missing fields: {missing_fields}). The integration may need to be updated to match a new API structure. If this persists after updating, please report it on the issue tracker."
     }
   }
 }
