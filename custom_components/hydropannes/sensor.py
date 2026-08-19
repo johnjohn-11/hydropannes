@@ -41,6 +41,29 @@ _LOGGER = logging.getLogger(__name__)
 # Entities are updated by the coordinator; no parallel polling needed.
 PARALLEL_UPDATES = 0
 
+# Interruption fields surfaced as extra state attributes by the info-pannes
+# sensor. Date fields are formatted consistently by _interruption_attributes.
+INTERRUPTION_ATTRIBUTE_KEYS = (
+    "dateDebut",
+    "dateFin",
+    "etat",
+    "dateFinEstimeeMin",
+    "dateFinEstimeeMax",
+    "dateDebutReport",
+    "dateFinReport",
+    "codeIntervention",
+    "niveauUrgence",
+    "nbClient",
+    "codeCause",
+    "codeMunicipal",
+    "datePublication",
+    "codeRemarque",
+    "dureePrevu",
+    "probabilite",
+    "interruptionPlanifiee",
+    "typeFinPrevue",
+)
+
 
 async def async_setup_entry(
     hass: HomeAssistant,
@@ -203,33 +226,7 @@ class HydroPannesInfoPannesSensor(HydroPannesSensorBase):
         inter = self._get_current_interruption()
         if not inter:
             return {}
-        attrs: dict[str, Any] = {}
-        for key in (
-            "dateDebut",
-            "dateFin",
-            "etat",
-            "dateFinEstimeeMin",
-            "dateFinEstimeeMax",
-            "dateDebutReport",
-            "dateFinReport",
-            "codeIntervention",
-            "niveauUrgence",
-            "nbClient",
-            "codeCause",
-            "codeMunicipal",
-            "datePublication",
-            "codeRemarque",
-            "dureePrevu",
-            "probabilite",
-            "interruptionPlanifiee",
-            "typeFinPrevue",
-        ):
-            val = inter.get(key)
-            if key.startswith("date") and val:
-                parsed = self._parse_dt(val)
-                attrs[key] = parsed.isoformat() if parsed else val
-            elif val is not None:
-                attrs[key] = val
+        attrs = self._interruption_attributes(inter, INTERRUPTION_ATTRIBUTE_KEYS)
         code_remarque = str(inter.get("codeRemarque", ""))
         if code_remarque:
             raison = CODE_REMARQUE_CODES.get(code_remarque)

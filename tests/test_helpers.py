@@ -240,3 +240,39 @@ def test_planned_supersedes_terminated_false_when_terminated() -> None:
     planned = make_interruption(interruptionPlanifiee=True, dateFin=hours_from_now(-1))
     h = harness()
     assert h._planned_supersedes_terminated(planned) is False
+
+
+# ---------------------------------------------------------------------------
+# _interruption_attributes
+# ---------------------------------------------------------------------------
+
+
+def test_attributes_parse_date_fields_to_localized_iso() -> None:
+    raw = hours_from_now(-2)
+    intr = {"dateDebut": raw}
+    h = harness()
+    attrs = h._interruption_attributes(intr, ("dateDebut",))
+    assert attrs["dateDebut"] == h._parse_dt(raw).isoformat()
+
+
+def test_attributes_omit_none_values() -> None:
+    intr = {"dateFin": None, "nbClient": 42}
+    h = harness()
+    attrs = h._interruption_attributes(intr, ("dateFin", "nbClient"))
+    assert "dateFin" not in attrs
+    assert attrs["nbClient"] == 42
+
+
+def test_attributes_keep_falsy_non_none_values() -> None:
+    intr = {"interruptionPlanifiee": False, "nbClient": 0}
+    h = harness()
+    attrs = h._interruption_attributes(intr, ("interruptionPlanifiee", "nbClient"))
+    assert attrs["interruptionPlanifiee"] is False
+    assert attrs["nbClient"] == 0
+
+
+def test_attributes_unparseable_date_falls_back_to_raw() -> None:
+    intr = {"dateDebut": "not-a-date"}
+    h = harness()
+    attrs = h._interruption_attributes(intr, ("dateDebut",))
+    assert attrs["dateDebut"] == "not-a-date"
