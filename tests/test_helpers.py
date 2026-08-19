@@ -210,3 +210,33 @@ def test_most_recent_terminated_outage_is_chosen() -> None:
 def test_no_interruptions_returns_none() -> None:
     h = harness(etat="A", interruptions=[])
     assert h._get_current_interruption() is None
+
+
+# ---------------------------------------------------------------------------
+# _planned_supersedes_terminated
+# ---------------------------------------------------------------------------
+
+
+def test_planned_supersedes_terminated_true_for_future_aip() -> None:
+    planned = make_interruption(
+        interruptionPlanifiee=True, dateDebut=hours_from_now(24), dateFin=hours_from_now(26)
+    )
+    h = harness()
+    assert h._planned_supersedes_terminated(planned) is True
+
+
+def test_planned_supersedes_terminated_false_when_none() -> None:
+    h = harness()
+    assert h._planned_supersedes_terminated(None) is False
+
+
+def test_planned_supersedes_terminated_false_when_cancelled() -> None:
+    planned = make_interruption(interruptionPlanifiee=True, etat="A", codeRemarque="92")
+    h = harness()
+    assert h._planned_supersedes_terminated(planned) is False
+
+
+def test_planned_supersedes_terminated_false_when_terminated() -> None:
+    planned = make_interruption(interruptionPlanifiee=True, dateFin=hours_from_now(-1))
+    h = harness()
+    assert h._planned_supersedes_terminated(planned) is False

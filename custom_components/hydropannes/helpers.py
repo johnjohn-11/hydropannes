@@ -244,6 +244,20 @@ class HydroPannesHelperMixin:
 
         return planned[0]
 
+    def _planned_supersedes_terminated(self, planned: dict[str, Any] | None) -> bool:
+        """Return True when a planned intervention outranks a past outage.
+
+        A still-relevant AIP (present, not cancelled, not terminated) should
+        be displayed in place of an already-terminated unplanned outage. This
+        rule is shared by _get_current_interruption and the info-pannes sensor
+        so the two never drift apart.
+        """
+        return (
+            planned is not None
+            and not self._is_aip_annulee(planned)
+            and not self._is_outage_terminated(planned)
+        )
+
     def _get_current_interruption(self) -> dict[str, Any] | None:
         """Return the most relevant interruption for sensor display.
 
@@ -263,11 +277,7 @@ class HydroPannesHelperMixin:
         terminated_outage = self._get_terminated_outage()
         if terminated_outage:
             planned_check = self._get_planned_intervention()
-            if (
-                not planned_check
-                or self._is_aip_annulee(planned_check)
-                or self._is_outage_terminated(planned_check)
-            ):
+            if not self._planned_supersedes_terminated(planned_check):
                 return terminated_outage
             # Fall through — AIP state supersedes the past outage.
 
