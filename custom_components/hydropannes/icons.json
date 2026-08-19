@@ -1,0 +1,53 @@
+{
+  "entity": {
+    "sensor": {
+      "niveau_urgence": {
+        "default": "mdi:alert-octagon"
+      },
+      "adresses_touchees": {
+        "default": "mdi:account-multiple"
+      },
+      "date_debut": {
+        "default": "mdi:clock-start"
+      },
+      "statut_intervention": {
+        "default": "mdi:account-hard-hat"
+      },
+      "cause": {
+        "default": "mdi:help-circle-outline"
+      },
+      "duree": {
+        "default": "mdi:timer-outline"
+      },
+      "delai_avant_retablissement": {
+        "default": "mdi:timer-sand"
+      },
+      "derniere_maj": {
+        "default": "mdi:clock-outline"
+      },
+      "lieu_consommation": {
+        "default": "mdi:identifier"
+      }
+    },
+    "binary_sensor": {
+      "etat_service": {
+        "default": "mdi:power-plug",
+        "state": {
+          "on": "mdi:power-plug-off"
+        }
+      },
+      "intervention_planifiee": {
+        "default": "mdi:calendar-check",
+        "state": {
+          "on": "mdi:calendar-clock"
+        }
+      },
+      "api_compatibilite": {
+        "default": "mdi:api",
+        "state": {
+          "on": "mdi:api-off"
+        }
+      }
+    }
+  }
+}

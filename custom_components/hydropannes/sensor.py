@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 import logging
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from homeassistant.components.sensor import (
     SensorDeviceClass,
@@ -19,7 +19,6 @@ from homeassistant.util import dt as dt_util
 from .const import (
     ATTRIBUTION,
     CAUSE_CODES,
-    CODE_REMARQUE_CODES,
     DOMAIN,
     INFO_PANNES_STATES,
     INTERVENTION_CODES,
@@ -88,21 +87,19 @@ class HydroPannesSensorBase(
         super().__init__(coordinator)
         self._entry = entry
         self._nom_lieu = nom_lieu
+        # Device identity is fixed for the entity's lifetime; set it once here
+        # rather than rebuilding a DeviceInfo on every property access.
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, entry.entry_id)},
+            name=f"HydroPannes {nom_lieu}",
+            manufacturer="Hydro-Québec",
+            model="Info-pannes",
+        )
 
     @property
     def available(self) -> bool:
         """Return True only when the coordinator has successfully fetched data."""
         return super().available and self.coordinator.data is not None
-
-    @property
-    def device_info(self) -> DeviceInfo:
-        """Return device registry information."""
-        return DeviceInfo(
-            identifiers={(DOMAIN, self._entry.entry_id)},
-            name=f"HydroPannes {self._nom_lieu}",
-            manufacturer="Hydro-Québec",
-            model="Info-pannes",
-        )
 
 
 class HydroPannesInfoPannesSensor(HydroPannesSensorBase):
@@ -148,11 +145,7 @@ class HydroPannesInfoPannesSensor(HydroPannesSensorBase):
         terminated_outage = self._get_terminated_outage()
         if terminated_outage:
             planned_check = self._get_planned_intervention()
-            if (
-                not planned_check
-                or self._is_aip_annulee(planned_check)
-                or self._is_outage_terminated(planned_check)
-            ):
+            if not self._planned_supersedes_terminated(planned_check):
                 return INFO_PANNES_STATES["service_retabli"]
 
         planned = self._get_planned_intervention()
@@ -196,61 +189,11 @@ class HydroPannesInfoPannesSensor(HydroPannesSensorBase):
             return "mdi:alert-circle"
         return "mdi:help-circle"
 
-    @property
-    def extra_state_attributes(self) -> dict[str, Any]:
-        """Return key fields from the selected interruption."""
-        if not self.coordinator.data:
-            return {}
-        interruptions = self._get_interruptions()
-        if not interruptions:
-            return {}
-        inter = self._get_current_interruption()
-        if not inter:
-            return {}
-        attrs: dict[str, Any] = {}
-        for key in (
-            "dateDebut",
-            "dateFin",
-            "etat",
-            "dateFinEstimeeMin",
-            "dateFinEstimeeMax",
-            "dateDebutReport",
-            "dateFinReport",
-            "codeIntervention",
-            "niveauUrgence",
-            "nbClient",
-            "codeCause",
-            "codeMunicipal",
-            "datePublication",
-            "codeRemarque",
-            "dureePrevu",
-            "probabilite",
-            "interruptionPlanifiee",
-            "typeFinPrevue",
-        ):
-            val = inter.get(key)
-            if key.startswith("date") and val:
-                parsed = self._parse_dt(val)
-                attrs[key] = parsed.isoformat() if parsed else val
-            elif val is not None:
-                attrs[key] = val
-        code_remarque = str(inter.get("codeRemarque", ""))
-        if code_remarque:
-            raison = CODE_REMARQUE_CODES.get(code_remarque)
-            attrs["raisonRemarque"] = (
-                f"{raison} ({code_remarque})" if raison else f"Indéterminé ({code_remarque})"
-            )
-        attrs["repriseGraduellePossible"] = self.coordinator.data.get(
-            "repriseGraduellePossible", False
-        )
-        return attrs
-
 
 class HydroPannesNiveauUrgenceSensor(HydroPannesSensorBase):
     """Sensor reporting the urgency level."""
 
     _attr_translation_key = "niveau_urgence"
-    _attr_icon = "mdi:alert-octagon"
 
     def __init__(
         self,
@@ -276,7 +219,6 @@ class HydroPannesNombreClientSensor(HydroPannesSensorBase):
     """Sensor reporting the number of affected addresses."""
 
     _attr_translation_key = "adresses_touchees"
-    _attr_icon = "mdi:account-multiple"
     _attr_native_unit_of_measurement = "clients"
     _attr_state_class = SensorStateClass.MEASUREMENT
 
@@ -303,7 +245,6 @@ class HydroPannesDebutSensor(HydroPannesSensorBase):
     """Sensor reporting the effective start time."""
 
     _attr_translation_key = "date_debut"
-    _attr_icon = "mdi:clock-start"
     _attr_device_class = SensorDeviceClass.TIMESTAMP
 
     def __init__(
@@ -384,7 +325,6 @@ class HydroPannesStatutInterventionSensor(HydroPannesSensorBase):
     """Sensor reporting the current intervention step."""
 
     _attr_translation_key = "statut_intervention"
-    _attr_icon = "mdi:account-hard-hat"
 
     def __init__(
         self,
@@ -426,7 +366,6 @@ class HydroPannesCauseSensor(HydroPannesSensorBase):
     """Sensor reporting the cause of the interruption."""
 
     _attr_translation_key = "cause"
-    _attr_icon = "mdi:help-circle-outline"
 
     def __init__(
         self,
@@ -456,10 +395,11 @@ class HydroPannesDureeSensor(HydroPannesSensorBase):
     """Sensor reporting the interruption duration in seconds."""
 
     _attr_translation_key = "duree"
-    _attr_icon = "mdi:timer-outline"
     _attr_native_unit_of_measurement = UnitOfTime.SECONDS
     _attr_device_class = SensorDeviceClass.DURATION
-    _attr_state_class = SensorStateClass.MEASUREMENT
+    # No state_class: the value grows with wall-clock time during an outage and
+    # resets between outages, so long-term statistics would be a meaningless
+    # sawtooth. It remains useful as a live state.
 
     def __init__(
         self,
@@ -473,20 +413,24 @@ class HydroPannesDureeSensor(HydroPannesSensorBase):
 
     @property
     def native_value(self) -> int | None:
-        """Return the interruption duration in seconds."""
+        """Return the interruption duration in seconds.
+
+        Uses the effective start/end dates so postponed or rescheduled AIPs
+        are measured against their real (rescheduled) window rather than the
+        cancelled original slot. Returns None when the interruption has not
+        started yet (e.g. an upcoming planned intervention), which avoids
+        reporting a negative duration. When the interruption is ongoing (no
+        effective end date), the elapsed time up to now is returned.
+        """
         outage = self._get_current_interruption()
-        if not outage or "dateDebut" not in outage:
+        if not outage:
             return None
         try:
-            date_debut = self._parse_dt(outage["dateDebut"])
-            if not date_debut:
+            effective_debut, effective_fin = self._get_effective_dates(outage)
+            if not effective_debut or self._is_date_in_future(effective_debut):
                 return None
-            if outage.get("dateFin"):
-                date_fin = self._parse_dt(outage["dateFin"])
-                if not date_fin:
-                    return None
-                return round((date_fin - date_debut).total_seconds())
-            return round((dt_util.now() - date_debut).total_seconds())
+            end = effective_fin or dt_util.now()
+            return max(round((end - effective_debut).total_seconds()), 0)
         except (ValueError, TypeError):
             _LOGGER.exception("Error calculating interruption duration")
             return None
@@ -496,10 +440,10 @@ class HydroPannesDureeAvantRetablissementSensor(HydroPannesSensorBase):
     """Sensor reporting time remaining until restoration in seconds."""
 
     _attr_translation_key = "delai_avant_retablissement"
-    _attr_icon = "mdi:timer-sand"
     _attr_native_unit_of_measurement = UnitOfTime.SECONDS
     _attr_device_class = SensorDeviceClass.DURATION
-    _attr_state_class = SensorStateClass.MEASUREMENT
+    # No state_class: this countdown shifts every poll and resets between
+    # outages, so long-term statistics would be a meaningless sawtooth.
 
     def __init__(
         self,
@@ -528,7 +472,6 @@ class HydroPannesDerniereMAJSensor(HydroPannesSensorBase):
     """Sensor reporting the last update time."""
 
     _attr_translation_key = "derniere_maj"
-    _attr_icon = "mdi:clock-outline"
     _attr_device_class = SensorDeviceClass.TIMESTAMP
 
     def __init__(
@@ -566,7 +509,6 @@ class HydroPannesLieuConsoSensor(HydroPannesSensorBase):
     """Diagnostic sensor reporting the consumption location ID."""
 
     _attr_translation_key = "lieu_consommation"
-    _attr_icon = "mdi:identifier"
     _attr_entity_category = EntityCategory.DIAGNOSTIC
 
     def __init__(
