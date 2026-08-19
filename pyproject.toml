@@ -1,6 +1,6 @@
 [project]
 name = "hydropannes"
-version = "1.0.3"
+version = "1.1.0"
 description = "Home Assistant integration for Hydro-Québec outage monitoring"
 requires-python = ">=3.13"
 
