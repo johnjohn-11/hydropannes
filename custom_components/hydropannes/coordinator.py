@@ -208,8 +208,8 @@ class HydroPannesDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                             if self.api_compatible:
                                 # Log once per transition to avoid log spam.
                                 _LOGGER.error(
-                                    "Structure de l'API Hydro-Québec non reconnue ou "
-                                    "modifiée — champs manquants: %s",
+                                    "Unrecognized or changed Hydro-Québec API structure "
+                                    "— missing fields: %s",
                                     missing_root,
                                 )
                             self.api_compatible = False
@@ -238,8 +238,8 @@ class HydroPannesDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                             unknown = intr.keys() - KNOWN_INTERRUPTION_FIELDS
                             if unknown:
                                 _LOGGER.warning(
-                                    "Nouveaux champs API détectés dans une interruption "
-                                    "(lieu %s): %s — le schéma HQ a peut-être évolué.",
+                                    "New API fields detected in an interruption (lieu %s): "
+                                    "%s — the Hydro-Québec schema may have evolved.",
                                     self.lieu_conso,
                                     unknown,
                                 )
