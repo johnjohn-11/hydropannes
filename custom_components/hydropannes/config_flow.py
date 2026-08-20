@@ -19,7 +19,7 @@ from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 import voluptuous as vol
 
-from .const import API_URL, CONF_JSON_LOG, CONF_LIEU_CONSO, CONF_NOM_LIEU, DOMAIN
+from .const import API_URL, CONF_LIEU_CONSO, CONF_NOM_LIEU, DOMAIN
 
 if TYPE_CHECKING:
     from homeassistant.config_entries import ConfigFlowResult
@@ -183,35 +183,26 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
 
 class OptionsFlowHandler(config_entries.OptionsFlow):
-    """Handle options flow: rename the location and toggle the JSONL log.
+    """Handle the options flow: rename the location.
 
-    The name is written back to ``entry.data`` and the entry title; the
-    JSONL toggle is stored in ``entry.options``.  Everything is applied in a
-    single ``async_update_entry`` call so the update listener (which reloads
-    the entry) fires only once.
+    The name is written back to ``entry.data`` and the entry title in a single
+    ``async_update_entry`` call so the update listener (which reloads the entry)
+    fires only once. (To change the location number, use the Reconfigure flow.)
     """
 
     async def async_step_init(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
-        """Present the options form and apply the changes when submitted."""
+        """Present the options form and apply the rename when submitted."""
         if user_input is not None:
             new_data = {
                 **self.config_entry.data,
                 CONF_NOM_LIEU: user_input[CONF_NOM_LIEU],
             }
-            new_options = {
-                **self.config_entry.options,
-                CONF_JSON_LOG: user_input[CONF_JSON_LOG],
-            }
-            # Apply data, title, and options in one shot → one reload.
             self.hass.config_entries.async_update_entry(
                 self.config_entry,
                 data=new_data,
                 title=user_input[CONF_NOM_LIEU],
-                options=new_options,
             )
-            # data is identical to entry.options at this point, so this does
-            # not trigger a second update event.
-            return self.async_create_entry(title="", data=new_options)
+            return self.async_create_entry(title="", data={})
 
         return self.async_show_form(
             step_id="init",
@@ -221,10 +212,6 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
                         CONF_NOM_LIEU,
                         default=self.config_entry.data.get(CONF_NOM_LIEU, ""),
                     ): vol.All(str, vol.Length(min=1)),
-                    vol.Required(
-                        CONF_JSON_LOG,
-                        default=self.config_entry.options.get(CONF_JSON_LOG, False),
-                    ): bool,
                 }
             ),
         )
