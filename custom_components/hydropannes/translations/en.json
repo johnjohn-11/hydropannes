@@ -33,11 +33,7 @@
       "init": {
         "title": "Modify location",
         "data": {
-          "nom_lieu": "Location name",
-          "json_log": "Write API changes to a JSONL log file"
-        },
-        "data_description": {
-          "json_log": "When enabled, every API payload change is appended to config/hydropannes_logs/[location].jsonl for troubleshooting."
+          "nom_lieu": "Location name"
         }
       }
     }

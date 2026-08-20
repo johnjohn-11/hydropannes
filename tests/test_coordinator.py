@@ -12,13 +12,14 @@ from unittest.mock import patch
 
 from homeassistant.helpers.update_coordinator import UpdateFailed
 import pytest
-from pytest_homeassistant_custom_component.common import MockConfigEntry
+from pytest_homeassistant_custom_component.common import MockConfigEntry, async_capture_events
 
 from custom_components.hydropannes.const import (
     API_URL,
     CONF_LIEU_CONSO,
     CONF_NOM_LIEU,
     DOMAIN,
+    EVENT_DATA_CHANGED,
     UPDATE_INTERVAL,
 )
 from custom_components.hydropannes.coordinator import (
@@ -95,6 +96,22 @@ async def test_change_detection_and_history(hass: HomeAssistant, aioclient_mock)
     assert coordinator.total_changes == 1
     assert len(coordinator.api_history) == 1
     assert coordinator.total_polls == 2
+
+
+async def test_change_fires_event_with_payload(hass: HomeAssistant, aioclient_mock) -> None:
+    """A payload change fires hydropannes_data_changed once, carrying the payload."""
+    events = async_capture_events(hass, EVENT_DATA_CHANGED)
+    aioclient_mock.get(API_URL.format(LIEU), json=IDLE_PAYLOAD)
+    coordinator = _coordinator(hass)
+
+    await coordinator._async_update_data()
+    assert len(events) == 1
+    assert events[0].data["lieu_consommation"] == LIEU
+    assert events[0].data["data"]["idLieuConso"] == LIEU
+
+    # Unchanged payload on the next poll fires no further event.
+    await coordinator._async_update_data()
+    assert len(events) == 1
 
 
 async def test_persistent_server_error_raises_and_records(

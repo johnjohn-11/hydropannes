@@ -5,8 +5,9 @@ DOMAIN = "hydropannes"
 CONF_LIEU_CONSO = "lieu_consommation"
 CONF_NOM_LIEU = "nom_lieu"
 
-# Option (entry.options): enable the on-disk JSONL change log (opt-in).
-CONF_JSON_LOG = "json_log"
+# Bus event fired whenever a location's API payload changes. Carries the full
+# payload so users can log or react to changes from their own automations.
+EVENT_DATA_CHANGED = f"{DOMAIN}_data_changed"
 
 API_URL = "https://services-bs.solutions.hydroquebec.com/pan/web/api/v1/lieux-conso/etats/{}"
 
