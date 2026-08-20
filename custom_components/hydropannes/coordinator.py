@@ -9,8 +9,9 @@ The coordinator is responsible for:
   unavailable and the failure is visible (standard HA behaviour).
 - Maintaining an in-memory ring buffer (api_history) of the last
   API_HISTORY_SIZE distinct payloads for diagnostics.
-- Optionally writing a JSONL change log to the HA config directory for
-  troubleshooting (opt-in via the integration options).
+- Firing a ``hydropannes_data_changed`` bus event, carrying the full payload,
+  whenever a location's data changes, so users can log or react to changes
+  from their own automations.
 - Detecting API structure changes (missing root fields) and flagging unknown
   interruption fields when Hydro-Québec evolves their schema.
 - Tracking poll/error/change statistics exposed via the diagnostics report.
@@ -24,7 +25,6 @@ from datetime import timedelta
 import hashlib
 import json
 import logging
-import os
 from typing import TYPE_CHECKING, Any, NoReturn
 
 import aiohttp
@@ -36,7 +36,7 @@ from homeassistant.helpers.update_coordinator import (
 )
 from homeassistant.util import dt as dt_util
 
-from .const import API_URL, CONF_JSON_LOG, CONF_LIEU_CONSO, DOMAIN, UPDATE_INTERVAL
+from .const import API_URL, CONF_LIEU_CONSO, DOMAIN, EVENT_DATA_CHANGED, UPDATE_INTERVAL
 
 if TYPE_CHECKING:
     from homeassistant.config_entries import ConfigEntry
@@ -56,9 +56,6 @@ ACTIVE_OUTAGE_UPDATE_INTERVAL = 60  # seconds
 
 # Maximum number of distinct API payloads retained in the in-memory ring buffer.
 API_HISTORY_SIZE = 5
-
-# Rotate the JSONL log file when it exceeds this size.
-JSON_LOG_MAX_SIZE_MB = 5
 
 # ---------------------------------------------------------------------------
 # API schema validation
@@ -98,7 +95,7 @@ KNOWN_INTERRUPTION_FIELDS = {
 
 
 class HydroPannesDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
-    """Coordinator managing data fetching, caching, and change logging."""
+    """Coordinator managing data fetching, caching, and change notification."""
 
     def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
         """Initialize the coordinator.
@@ -109,10 +106,6 @@ class HydroPannesDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         """
         self.lieu_conso: str = entry.data[CONF_LIEU_CONSO]
-
-        # JSONL change log is opt-in (integration options).  Read once here;
-        # the update listener reloads the entry when options change.
-        self.json_log_enabled: bool = entry.options.get(CONF_JSON_LOG, False)
 
         # Tracks whether the last successful API response had the expected
         # root-level schema.  True until proven otherwise.
@@ -244,8 +237,7 @@ class HydroPannesDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                                     unknown,
                                 )
 
-                        # Compute hash once; reused for both the in-memory
-                        # history check and the disk log write.
+                        # Compute the payload hash once for change detection.
                         current_hash = hashlib.md5(
                             json.dumps(result, sort_keys=True).encode(),
                             usedforsecurity=False,
@@ -255,11 +247,9 @@ class HydroPannesDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                             self._last_hash = current_hash
                             self.total_changes += 1
                             self._append_history(result)
+                            self._fire_change_event(result)
 
                         self._adjust_update_interval(result)
-
-                        if changed and self.json_log_enabled:
-                            await self._write_log(self.lieu_conso, result)
 
                         return result
 
@@ -386,69 +376,23 @@ class HydroPannesDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         return False
 
     # -----------------------------------------------------------------------
-    # JSONL change log — opt-in (disk I/O runs in an executor thread)
+    # Change notification
     # -----------------------------------------------------------------------
 
-    async def _write_log(self, lieu_id: str, data: dict[str, Any]) -> None:
-        """Asynchronously append a JSONL entry to the change log.
+    def _fire_change_event(self, data: dict[str, Any]) -> None:
+        """Fire a bus event carrying the full payload on each change.
 
-        Only called when ``json_log_enabled`` is True (integration options).
-        File I/O is dispatched to a thread-pool executor via
-        async_add_executor_job so it does not block the HA event loop.
-        Called only when the payload has changed.
+        Called only when the payload has changed (caller guarantees this).
+        Users can subscribe to ``hydropannes_data_changed`` to log or react to
+        changes — e.g. append them to a file via the File integration — instead
+        of the integration writing to disk itself.
         """
-        entry = {
-            "timestamp": dt_util.utcnow().isoformat(),
-            "data": data,
-        }
-        entry_line = json.dumps(entry) + "\n"
-        log_dir = self.hass.config.path("hydropannes_logs")
-
-        await self.hass.async_add_executor_job(self._write_log_sync, lieu_id, log_dir, entry_line)
-
-    def _write_log_sync(self, lieu_id: str, log_dir: str, entry_line: str) -> None:
-        """Write a log entry to disk.
-
-        Runs in an executor thread (not the event loop).  Rotates the file
-        when it exceeds JSON_LOG_MAX_SIZE_MB to prevent unbounded growth.
-        """
-        try:
-            os.makedirs(log_dir, exist_ok=True)
-            log_file = os.path.join(log_dir, f"{lieu_id}.jsonl")
-
-            if os.path.exists(log_file):
-                size_mb = os.path.getsize(log_file) / (1024 * 1024)
-                if size_mb >= JSON_LOG_MAX_SIZE_MB:
-                    self._rotate_log(log_file)
-
-            with open(log_file, "a", encoding="utf-8") as f:
-                f.write(entry_line)
-
-            _LOGGER.debug("Logged change for lieu %s", lieu_id)
-
-        except OSError:
-            _LOGGER.exception("Failed to write log for lieu %s", lieu_id)
-
-    def _rotate_log(self, log_file: str) -> None:
-        """Trim the log file to its most recent half.
-
-        Called from _write_log_sync; already running in an executor thread.
-        Discards the oldest 50 % of entries to balance retention with disk use.
-        """
-        try:
-            with open(log_file, encoding="utf-8") as f:
-                lines = f.readlines()
-
-            keep = lines[len(lines) // 2 :]
-
-            with open(log_file, "w", encoding="utf-8") as f:
-                f.writelines(keep)
-
-            _LOGGER.info(
-                "Rotated %s: kept %d/%d entries",
-                log_file,
-                len(keep),
-                len(lines),
-            )
-        except OSError:
-            _LOGGER.exception("Failed to rotate log file %s", log_file)
+        self.hass.bus.async_fire(
+            EVENT_DATA_CHANGED,
+            {
+                "entry_id": self.config_entry.entry_id,
+                "lieu_consommation": self.lieu_conso,
+                "timestamp": dt_util.utcnow().isoformat(),
+                "data": data,
+            },
+        )

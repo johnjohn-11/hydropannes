@@ -44,8 +44,6 @@ async def async_get_config_entry_diagnostics(
         "update_interval": str(coordinator.update_interval),
         # Indicates whether the last API response had the expected schema.
         "api_compatible": coordinator.api_compatible,
-        # Whether the opt-in JSONL change log is enabled.
-        "json_log_enabled": coordinator.json_log_enabled,
         # Lifetime counters (reset on each HA restart).
         "total_polls": coordinator.total_polls,
         "total_changes": coordinator.total_changes,
