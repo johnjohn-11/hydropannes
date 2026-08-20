@@ -2,3 +2,5 @@ config/
 __pycache__/
 *.pyc
 .pytest_cache/
+# Change log written by a user automation from the hydropannes_data_changed event
+hydropannes_changes.jsonl
