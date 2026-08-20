@@ -3,7 +3,7 @@
 [![hacs_badge](https://img.shields.io/badge/HACS-Custom-41BDF5.svg)](https://github.com/hacs/integration)
 [![GitHub Release](https://img.shields.io/github/release/johnjohn-11/hydropannes.svg)](https://github.com/johnjohn-11/hydropannes/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![HA Version](https://img.shields.io/badge/Home%20Assistant-2024.1%2B-blue.svg)](https://www.home-assistant.io/)
+[![HA Version](https://img.shields.io/badge/Home%20Assistant-2024.11%2B-blue.svg)](https://www.home-assistant.io/)
 
 Intégration Home Assistant pour surveiller les pannes d'électricité d'Hydro-Québec.
 
@@ -27,6 +27,7 @@ Suivez en temps réel l'état du service électrique pour un ou plusieurs lieux 
 - ⚡ **Polling adaptatif** : Mise à jour toutes les 60 s pendant une panne, 3 min sinon
 - 📊 **Données post-panne** : Informations conservées après le rétablissement
 - 🔍 **Historique API** : Les 5 derniers changements de données conservés pour le diagnostic
+- 🔔 **Événement de changement** : `hydropannes_data_changed` émis à chaque changement des données de l'API
 
 ---
 
@@ -62,7 +63,7 @@ Ou manuellement :
 
 1. **Paramètres** → **Appareils et services** → **+ Ajouter une intégration**
 2. Rechercher « Hydro-Pannes »
-3. Entrer votre **numéro de lieu de consommation** (10 chiffres, visible sur votre facture Hydro-Québec)
+3. Entrer votre **numéro de lieu de consommation** (10 chiffres — voir le guide ci-dessous pour le trouver)
 4. Donner un **nom** à ce lieu (ex. : « Maison », « Chalet »)
 
 Répétez l'opération pour chaque lieu à surveiller. Chaque lieu crée un appareil indépendant avec ses propres entités.
@@ -74,6 +75,15 @@ Répétez l'opération pour chaque lieu à surveiller. Chaque lieu crée un appa
 1. **Paramètres** → **Appareils et services** → **Hydro-Pannes**
 2. Cliquer sur **Configurer** (icône engrenage) à côté du lieu
 3. Modifier le nom et sauvegarder
+
+### Modifier le numéro de lieu de consommation
+
+Si vous avez saisi un mauvais numéro, corrigez-le sans supprimer l'appareil
+(les entités et l'historique sont conservés) :
+
+1. **Paramètres** → **Appareils et services** → **Hydro-Pannes**
+2. Cliquer sur les 3 points à côté du lieu → **Reconfigurer**
+3. Entrer le nouveau numéro et sauvegarder
 
 ---
 
@@ -95,15 +105,15 @@ Chaque lieu de consommation configuré crée un appareil avec les entités suiva
 | `sensor.*_duree` | Durée de la panne en secondes |
 | `sensor.*_delai_avant_retablissement` | Temps restant avant le rétablissement estimé |
 | `sensor.*_derniere_maj` | Horodatage de la dernière mise à jour des données |
-| `sensor.*_lieu_conso` | Numéro de lieu de consommation *(Diagnostic)* |
+| `sensor.*_lieu_de_consommation` | Numéro de lieu de consommation *(Diagnostic)* |
 
 ### Binary Sensors
 
 | Entité | Description |
 |--------|-------------|
-| `binary_sensor.*_etat_service` | `on` = panne active ou intervention planifiée en cours, `off` = service normal |
+| `binary_sensor.*_etat_du_service` | `on` = panne active ou intervention planifiée en cours, `off` = service normal |
 | `binary_sensor.*_intervention_planifiee` | `on` = intervention planifiée active ou à venir |
-| `binary_sensor.*_api_compatibility` | `on` = structure de l'API Hydro-Québec modifiée *(Diagnostic)* |
+| `binary_sensor.*_compatibilite_api` | `on` = structure de l'API Hydro-Québec modifiée *(Diagnostic)* |
 
 > 💡 Les entités de catégorie **Diagnostic** sont masquées par défaut dans l'interface. Elles sont accessibles via **Paramètres** → **Appareils et services** → appareil → **Entités de diagnostic**.
 
@@ -122,6 +132,7 @@ Chaque lieu de consommation configuré crée un appareil avec les entités suiva
 | `Interruption planifiée à venir` | Travaux planifiés annoncés pour plus tard |
 | `Interruption planifiée terminée` | Travaux planifiés complétés |
 | `Interruption planifiée annulée` | Travaux planifiés annulés par Hydro-Québec |
+| `Interruption planifiée reportée` | Travaux planifiés reportés à une nouvelle date |
 
 ---
 
@@ -156,7 +167,7 @@ automation:
   - alias: "Notification panne électrique"
     trigger:
       - platform: state
-        entity_id: binary_sensor.hydropannes_maison_etat_service
+        entity_id: binary_sensor.hydropannes_maison_etat_du_service
         to: "on"
     action:
       - service: notify.mobile_app
@@ -175,7 +186,7 @@ automation:
   - alias: "Notification courant rétabli"
     trigger:
       - platform: state
-        entity_id: binary_sensor.hydropannes_maison_etat_service
+        entity_id: binary_sensor.hydropannes_maison_etat_du_service
         from: "on"
         to: "off"
     action:
@@ -186,6 +197,19 @@ automation:
             Le courant est rétabli après
             {{ (states('sensor.hydropannes_maison_duree') | int / 3600) | round(1) }} h.
 ```
+
+## Journaliser les changements (événement)
+
+À chaque changement de données d'un lieu, l'intégration émet l'événement
+`hydropannes_data_changed` sur le bus Home Assistant, avec le payload complet :
+
+| Champ | Description |
+|-------|-------------|
+| `entry_id` | Identifiant de l'entrée de configuration |
+| `lieu_consommation` | Numéro de lieu de consommation |
+| `timestamp` | Horodatage UTC du changement |
+| `data` | Payload brut complet renvoyé par l'API |
+
 
 ## Diagnostics
 
@@ -214,8 +238,10 @@ Le coordinator n'a pas encore reçu de données valides. Vérifiez votre connexi
 **Les sensors restent sur leur ancienne valeur**
 Comportement normal en cas d'erreur réseau transitoire. Les données sont conservées jusqu'au prochain cycle réussi.
 
-**Le sensor `api_compatibility` est `on`**
-L'API Hydro-Québec a probablement modifié sa structure. Vérifiez si une mise à jour de l'intégration est disponible dans HACS et ouvrez une [issue](https://github.com/johnjohn-11/hydropannes/issues) si le problème persiste.
+**Le sensor `compatibilite_api` est `on` (ou une alerte apparaît dans Réparations)**
+L'API Hydro-Québec a probablement modifié sa structure. Une carte est aussi
+ajoutée dans **Paramètres** → **Appareils et services** → **Réparations**.
+Vérifiez si une mise à jour de l'intégration est disponible dans HACS et ouvrez une [issue](https://github.com/johnjohn-11/hydropannes/issues) si le problème persiste.
 
 ---
 
