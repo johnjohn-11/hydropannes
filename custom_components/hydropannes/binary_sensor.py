@@ -42,8 +42,8 @@ PARALLEL_UPDATES = 0
 # The service-status binary sensor exposes no extra attributes — its on/off
 # state is the whole signal. The report-window and planned-intervention fields
 # below live only on the planned-intervention binary sensor. Fields already on
-# a dedicated sensor, or captured in the optional JSONL log (etat, codeMunicipal,
-# codeRemarque, probabilite), are not duplicated as attributes anywhere.
+# a dedicated sensor, or carried by the hydropannes_data_changed event (etat,
+# codeMunicipal, codeRemarque, probabilite), are not duplicated as attributes.
 INTERVENTION_PLANIFIEE_ATTRIBUTE_KEYS = (
     "dateDebutReport",
     "dateFinReport",

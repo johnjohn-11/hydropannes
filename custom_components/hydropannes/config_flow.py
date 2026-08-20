@@ -1,7 +1,7 @@
 """Config flow for Hydro-Pannes integration.
 
-Handles the initial user setup (lieu de consommation + friendly name) and
-the options flow (rename + JSONL change-log opt-in).  The lieu de
+Handles the initial user setup (lieu de consommation + friendly name), the
+options flow (rename), and reconfiguration (change the number).  The lieu de
 consommation number is validated against the Hydro-Québec API before the
 entry is created to surface configuration errors early.
 """
