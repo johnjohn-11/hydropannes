@@ -107,6 +107,10 @@ class HydroPannesDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         """
         self.lieu_conso: str = entry.data[CONF_LIEU_CONSO]
 
+        # Captured here so the change event doesn't rely on self.config_entry
+        # (typed Optional by the base coordinator).
+        self._entry_id: str = entry.entry_id
+
         # Tracks whether the last successful API response had the expected
         # root-level schema.  True until proven otherwise.
         self.api_compatible: bool = True
@@ -390,7 +394,7 @@ class HydroPannesDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self.hass.bus.async_fire(
             EVENT_DATA_CHANGED,
             {
-                "entry_id": self.config_entry.entry_id,
+                "entry_id": self._entry_id,
                 "lieu_consommation": self.lieu_conso,
                 "timestamp": dt_util.utcnow().isoformat(),
                 "data": data,
