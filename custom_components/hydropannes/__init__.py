@@ -47,8 +47,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: HydroPannesConfigEntry) 
 
     entry.runtime_data = coordinator
 
-    # Reload the entry when data/options change (rename, JSONL logging toggle)
-    # so the new title and options take effect immediately.
+    # Reload the entry when its data or options change (e.g. a rename) so the
+    # new title takes effect immediately.
     entry.async_on_unload(entry.add_update_listener(_async_update_listener))
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
