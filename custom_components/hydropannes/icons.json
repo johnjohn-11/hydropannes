@@ -1,6 +1,21 @@
 {
   "entity": {
     "sensor": {
+      "info_pannes": {
+        "default": "mdi:help-circle",
+        "state": {
+          "aucune_panne": "mdi:check-circle",
+          "panne_en_cours": "mdi:alert-circle",
+          "panne_majeure": "mdi:alert-octagon",
+          "reprise_graduelle": "mdi:restore-alert",
+          "service_retabli": "mdi:check-circle-outline",
+          "aip_en_cours": "mdi:calendar-clock",
+          "aip_a_venir": "mdi:calendar-clock",
+          "aip_terminee": "mdi:check-circle-outline",
+          "aip_annulee": "mdi:calendar-remove",
+          "aip_reportee": "mdi:calendar-refresh"
+        }
+      },
       "niveau_urgence": {
         "default": "mdi:alert-octagon"
       },
