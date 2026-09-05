@@ -39,6 +39,8 @@ from homeassistant.util import dt as dt_util
 from .const import API_URL, CONF_LIEU_CONSO, DOMAIN, EVENT_DATA_CHANGED, UPDATE_INTERVAL
 
 if TYPE_CHECKING:
+    from datetime import datetime
+
     from homeassistant.config_entries import ConfigEntry
     from homeassistant.core import HomeAssistant
 
@@ -143,6 +145,15 @@ class HydroPannesDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         # Details of the most recent error, or None if no error has occurred.
         self.last_error: dict[str, str] | None = None
 
+        # UTC timestamp of the most recent successful fetch. Consumed by the
+        # "Dernière MAJ" sensor and the diagnostics report; the base
+        # DataUpdateCoordinator exposes no such attribute.
+        self.last_success_time: datetime | None = None
+
+        # Interruption field names already reported as unknown, so a schema
+        # change is logged once instead of on every poll.
+        self._warned_unknown_fields: set[str] = set()
+
         super().__init__(
             hass,
             _LOGGER,
@@ -233,12 +244,17 @@ class HydroPannesDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                         # is empty otherwise, so no false positives).
                         for intr in result.get("interruptions", []):
                             unknown = intr.keys() - KNOWN_INTERRUPTION_FIELDS
-                            if unknown:
+                            # Warn once per field name: during an outage the
+                            # coordinator polls every 60 s, so warning on each
+                            # poll would flood the log for as long as it lasts.
+                            new_fields = unknown - self._warned_unknown_fields
+                            if new_fields:
+                                self._warned_unknown_fields |= new_fields
                                 _LOGGER.warning(
                                     "New API fields detected in an interruption (lieu %s): "
                                     "%s — the Hydro-Québec schema may have evolved.",
                                     self.lieu_conso,
-                                    unknown,
+                                    new_fields,
                                 )
 
                         # Compute the payload hash once for change detection.
@@ -254,6 +270,8 @@ class HydroPannesDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                             self._fire_change_event(result)
 
                         self._adjust_update_interval(result)
+
+                        self.last_success_time = dt_util.utcnow()
 
                         return result
 

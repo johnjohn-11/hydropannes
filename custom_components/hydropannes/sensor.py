@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from datetime import datetime
 import logging
 from typing import TYPE_CHECKING
 
@@ -30,6 +29,8 @@ from .coordinator import HydroPannesDataUpdateCoordinator
 from .helpers import HydroPannesHelperMixin
 
 if TYPE_CHECKING:
+    from datetime import datetime
+
     from homeassistant.core import HomeAssistant
     from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
@@ -134,7 +135,7 @@ class HydroPannesInfoPannesSensor(HydroPannesSensorBase):
             return None
 
         active_outage = self._get_active_outage()
-        if active_outage and self.coordinator.data.get("repriseGraduellePossible"):
+        if active_outage and self._is_reprise_graduelle(active_outage):
             return INFO_PANNES_STATES["reprise_graduelle"]
 
         if active_outage:
@@ -348,7 +349,7 @@ class HydroPannesStatutInterventionSensor(HydroPannesSensorBase):
             return INFO_PANNES_STATES["aip_reportee"]
         if outage.get("etat") == "R":
             return INFO_PANNES_STATES["aip_a_venir"]
-        if self.coordinator.data and self.coordinator.data.get("repriseGraduellePossible"):
+        if self._is_reprise_graduelle(outage):
             return INFO_PANNES_STATES["reprise_graduelle"]
         code = outage.get("codeIntervention")
         niveau = outage.get("niveauUrgence")
@@ -492,13 +493,9 @@ class HydroPannesDerniereMAJSensor(HydroPannesSensorBase):
             parsed = self._parse_dt(interruption.get("datePublication"))
             if parsed:
                 return parsed
-        if (
-            hasattr(self.coordinator, "last_update_success_time")
-            and self.coordinator.last_update_success_time
-        ):
-            val = self.coordinator.last_update_success_time
-            return val if isinstance(val, datetime) else None
-        return None
+        # Outside an outage there is no datePublication, so fall back to the
+        # time of the last successful poll.
+        return self.coordinator.last_success_time
 
 
 class HydroPannesLieuConsoSensor(HydroPannesSensorBase):
