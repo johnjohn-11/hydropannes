@@ -243,6 +243,31 @@ def test_planned_supersedes_terminated_false_when_terminated() -> None:
 
 
 # ---------------------------------------------------------------------------
+# _is_reprise_graduelle
+# ---------------------------------------------------------------------------
+
+
+def test_reprise_graduelle_read_from_payload_root() -> None:
+    intr = make_interruption(dateFin=None)
+    h = harness(etat="N", interruptions=[intr], repriseGraduellePossible=True)
+    assert h._is_reprise_graduelle(intr) is True
+
+
+def test_reprise_graduelle_read_from_interruption() -> None:
+    # The flag is listed as an interruption-level field, so it must be honoured
+    # there too and not only at the payload root.
+    intr = make_interruption(dateFin=None, repriseGraduellePossible=True)
+    h = harness(etat="N", interruptions=[intr])
+    assert h._is_reprise_graduelle(intr) is True
+
+
+def test_reprise_graduelle_absent_is_false() -> None:
+    intr = make_interruption(dateFin=None)
+    h = harness(etat="N", interruptions=[intr])
+    assert h._is_reprise_graduelle(intr) is False
+
+
+# ---------------------------------------------------------------------------
 # _interruption_attributes
 # ---------------------------------------------------------------------------
 

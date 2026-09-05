@@ -13,6 +13,19 @@ Suivez en temps réel l'état du service électrique pour un ou plusieurs lieux 
 > En cas de problème, ouvrez une [issue sur GitHub](https://github.com/johnjohn-11/hydropannes/issues).
 > **Ne contactez pas le service à la clientèle d'Hydro-Québec.**
 
+> 🔴 **Changement incompatible en 2.0.0 — les états des sensors ont changé.**
+> Les sensors `info_pannes`, `niveau_urgence`, `cause` et `statut_intervention`
+> exposent désormais un **identifiant neutre en langue** (ex. `panne_en_cours`)
+> au lieu du libellé français (ex. `Panne en cours`), conformément aux
+> conventions Home Assistant pour les sensors de type énumération.
+> Le libellé traduit reste affiché dans l'interface.
+> **Toute automatisation qui compare l'état à un texte français doit être mise à jour** :
+> voir [Migration vers la 2.0.0](#migration-vers-la-200).
+>
+> La 2.0.0 renomme aussi l'appareil (« Maison » au lieu de « HydroPannes Maison »)
+> et retire l'écran **Configurer** au profit de l'action **Renommer** native
+> de Home Assistant. Les entités existantes gardent leur `entity_id`.
+
 ---
 
 ## Fonctionnalités
@@ -72,9 +85,15 @@ Répétez l'opération pour chaque lieu à surveiller. Chaque lieu crée un appa
 
 ### Modifier le nom d'un lieu
 
+Le nom du lieu est le titre de l'entrée de configuration ; on le change avec
+l'action **Renommer** de Home Assistant, sans écran propre à l'intégration.
+
 1. **Paramètres** → **Appareils et services** → **Hydro-Pannes**
-2. Cliquer sur **Configurer** (icône engrenage) à côté du lieu
-3. Modifier le nom et sauvegarder
+2. Cliquer sur les 3 points à côté du lieu → **Renommer**
+3. Saisir le nouveau nom
+
+L'appareil est renommé immédiatement. Les `entity_id` déjà attribués ne
+changent pas ; pour les renommer aussi, passez par la page de l'entité.
 
 ### Modifier le numéro de lieu de consommation
 
@@ -101,7 +120,7 @@ Chaque lieu de consommation configuré crée un appareil avec les entités suiva
 | `sensor.*_date_debut` | Date et heure de début de la panne ou de l'intervention |
 | `sensor.*_date_fin` | Date et heure de fin réelle ou estimée |
 | `sensor.*_statut_intervention` | Étape de l'intervention (équipe désignée, travaux en cours, etc.) |
-| `sensor.*_cause` | Cause de la panne |
+| `sensor.*_cause` | Cause de la panne (le code brut d'Hydro-Québec reste dans l'attribut `code_cause`) |
 | `sensor.*_duree` | Durée de la panne en secondes |
 | `sensor.*_delai_avant_retablissement` | Temps restant avant le rétablissement estimé |
 | `sensor.*_derniere_maj` | Horodatage de la dernière mise à jour des données |
@@ -115,24 +134,117 @@ Chaque lieu de consommation configuré crée un appareil avec les entités suiva
 | `binary_sensor.*_intervention_planifiee` | `on` = intervention planifiée active ou à venir |
 | `binary_sensor.*_compatibilite_api` | `on` = structure de l'API Hydro-Québec modifiée *(Diagnostic)* |
 
+> 💡 Dans les exemples ci-dessous, `maison` correspond au nom donné au lieu.
+> Les installations antérieures à la 2.0.0 ont des `entity_id` préfixés
+> `hydropannes_` (par exemple `sensor.hydropannes_maison_cause`) ; Home Assistant
+> les conserve tels quels, adaptez donc les exemples à vos entités existantes.
+
 > 💡 Les entités de catégorie **Diagnostic** sont masquées par défaut dans l'interface. Elles sont accessibles via **Paramètres** → **Appareils et services** → appareil → **Entités de diagnostic**.
 
 ---
 
-## États du sensor Info-pannes
+## États des sensors
 
-| État | Description |
-|------|-------------|
-| `Aucune panne détectée` | Service normal, aucune interruption |
-| `Panne en cours` | Panne non planifiée active |
-| `Panne majeure en cours` | Panne de grande envergure |
-| `Rétablissement graduel du service en cours` | Retour progressif du courant |
-| `Service rétabli` | Panne terminée récemment |
-| `Interruption planifiée en cours` | Travaux planifiés en cours d'exécution |
-| `Interruption planifiée à venir` | Travaux planifiés annoncés pour plus tard |
-| `Interruption planifiée terminée` | Travaux planifiés complétés |
-| `Interruption planifiée annulée` | Travaux planifiés annulés par Hydro-Québec |
-| `Interruption planifiée reportée` | Travaux planifiés reportés à une nouvelle date |
+Les quatre sensors ci-dessous sont des énumérations (`device_class: enum`).
+Leur **état** est un identifiant stable et neutre en langue, celui que renvoie
+`states()` et qu'il faut utiliser dans les automatisations. Le **libellé**
+affiché dans l'interface est traduit ; on le récupère dans un template avec
+`state_translated('sensor.xxx')`.
+
+### `sensor.*_info_pannes`
+
+| État | Libellé affiché (fr) | Description |
+|------|----------------------|-------------|
+| `aucune_panne` | Aucune panne détectée | Service normal, aucune interruption |
+| `panne_en_cours` | Panne en cours | Panne non planifiée active |
+| `panne_majeure` | Panne majeure en cours | Panne de grande envergure |
+| `reprise_graduelle` | Rétablissement graduel du service en cours | Retour progressif du courant |
+| `service_retabli` | Service rétabli | Panne terminée récemment |
+| `aip_en_cours` | Interruption planifiée en cours | Travaux planifiés en cours d'exécution |
+| `aip_a_venir` | Interruption planifiée à venir | Travaux planifiés annoncés pour plus tard |
+| `aip_terminee` | Interruption planifiée terminée | Travaux planifiés complétés |
+| `aip_annulee` | Interruption planifiée annulée | Travaux planifiés annulés par Hydro-Québec |
+| `aip_reportee` | Interruption planifiée reportée | Travaux planifiés reportés à une nouvelle date |
+
+### `sensor.*_niveau_urgence`
+
+| État | Libellé affiché (fr) |
+|------|----------------------|
+| `normal` | Normal |
+| `panne_majeure` | Panne majeure |
+
+### `sensor.*_cause`
+
+| État | Libellé affiché (fr) |
+|------|----------------------|
+| `accident_ou_incident` | Accident ou incident |
+| `amelioration_entretien_reseau` | Amélioration ou entretien du réseau |
+| `bris_equipement` | Bris d'équipement |
+| `conditions_meteorologiques` | Conditions météorologiques |
+| `dommages_animal` | Dommages dus à un animal |
+| `dommages_vegetation` | Dommages dus à la végétation |
+| `incendie_ou_fuite_gaz` | Incendie ou fuite de gaz |
+| `securite_publique` | Interruption - Sécurité publique |
+| `travaux_renforcement_reseau` | Travaux planifiés - Renforcement de réseau |
+| `travaux_vegetation_elagage` | Travaux sur la végétation ou élagage |
+| `usure_materiel` | Usure ou désagrégation de matériel |
+| `indeterminee` | Indéterminée *(Hydro-Québec ne fournit aucun code)* |
+| `inconnue` | Inconnue *(code non encore reconnu par l'intégration)* |
+
+Plusieurs codes d'Hydro-Québec partagent un même état ; le code brut reste
+disponible dans l'attribut `code_cause`.
+
+### `sensor.*_statut_intervention`
+
+| État | Libellé affiché (fr) |
+|------|----------------------|
+| `evaluation_travaux` | Évaluation des travaux requis |
+| `equipe_designee` | Équipe désignée |
+| `equipe_en_route` | Équipe en route |
+| `travaux_en_cours` | Travaux en cours sur le réseau électrique |
+| `travaux_par_priorite` | Réalisation des travaux par ordre de priorité |
+| `retablissement_en_evaluation` | Heure de rétablissement en cours d'évaluation |
+| `retablissement_prevu` | Rétablissement prévu |
+| `fin_non_determinee` | Fin non déterminée |
+| `reprise_graduelle` | Rétablissement graduel du service en cours |
+| `service_retabli` | Service rétabli |
+| `aip_a_venir` | Interruption planifiée à venir |
+| `aip_reportee` | Interruption planifiée reportée |
+
+---
+
+## Migration vers la 2.0.0
+
+Avant la 2.0.0, ces sensors renvoyaient directement le libellé français. Une
+automatisation écrite ainsi ne se déclenche plus :
+
+```yaml
+# ❌ Ne fonctionne plus
+condition:
+  - condition: state
+    entity_id: sensor.maison_info_pannes
+    state: "Panne en cours"
+```
+
+Remplacez le libellé par l'identifiant correspondant :
+
+```yaml
+# ✅ Correct
+condition:
+  - condition: state
+    entity_id: sensor.maison_info_pannes
+    state: "panne_en_cours"
+```
+
+Pour afficher le libellé traduit dans une notification, utilisez
+`state_translated` :
+
+```yaml
+message: "Cause : {{ state_translated('sensor.maison_cause') }}"
+```
+
+Les sensors non énumérés (dates, durées, nombre de clients) et les binary
+sensors sont inchangés.
 
 ---
 
@@ -167,7 +279,7 @@ automation:
   - alias: "Notification panne électrique"
     trigger:
       - platform: state
-        entity_id: binary_sensor.hydropannes_maison_etat_du_service
+        entity_id: binary_sensor.maison_etat_du_service
         to: "on"
     action:
       - service: notify.mobile_app
@@ -175,8 +287,8 @@ automation:
           title: "⚡ Panne électrique"
           message: >
             Panne détectée à {{ now().strftime('%H:%M') }}.
-            Cause : {{ states('sensor.hydropannes_maison_cause') }}.
-            Rétablissement estimé : {{ states('sensor.hydropannes_maison_date_fin') }}.
+            Cause : {{ state_translated('sensor.maison_cause') }}.
+            Rétablissement estimé : {{ states('sensor.maison_date_fin') }}.
 ```
 
 ### Notification au rétablissement
@@ -186,7 +298,7 @@ automation:
   - alias: "Notification courant rétabli"
     trigger:
       - platform: state
-        entity_id: binary_sensor.hydropannes_maison_etat_du_service
+        entity_id: binary_sensor.maison_etat_du_service
         from: "on"
         to: "off"
     action:
@@ -195,7 +307,7 @@ automation:
           title: "✅ Courant rétabli"
           message: >
             Le courant est rétabli après
-            {{ (states('sensor.hydropannes_maison_duree') | int / 3600) | round(1) }} h.
+            {{ (states('sensor.maison_duree') | int / 3600) | round(1) }} h.
 ```
 
 ## Journaliser les changements (événement)
@@ -240,7 +352,11 @@ Comportement normal en cas d'erreur réseau transitoire. Les données sont conse
 
 **Le sensor `compatibilite_api` est `on` (ou une alerte apparaît dans Réparations)**
 L'API Hydro-Québec a probablement modifié sa structure. Une carte est aussi
-ajoutée dans **Paramètres** → **Appareils et services** → **Réparations**.
+ajoutée dans **Paramètres** → **Appareils et services** → **Réparations** :
+« structure modifiée » si la réponse a perdu des champs attendus, « réponse
+inattendue » si elle n'a plus la forme d'une liste de lieux. Dans ce second cas
+les autres entités deviennent indisponibles, mais `compatibilite_api` reste
+lisible pour vous dire pourquoi.
 Vérifiez si une mise à jour de l'intégration est disponible dans HACS et ouvrez une [issue](https://github.com/johnjohn-11/hydropannes/issues) si le problème persiste.
 
 ---

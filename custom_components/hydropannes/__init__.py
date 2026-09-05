@@ -17,7 +17,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.helpers import config_validation as cv
 
-from .const import DOMAIN
+from .const import CONF_NOM_LIEU, DOMAIN
 from .coordinator import HydroPannesDataUpdateCoordinator
 
 if TYPE_CHECKING:
@@ -56,8 +56,29 @@ async def async_setup_entry(hass: HomeAssistant, entry: HydroPannesConfigEntry) 
     return True
 
 
+async def async_migrate_entry(hass: HomeAssistant, entry: HydroPannesConfigEntry) -> bool:
+    """Migrate an older config entry to the current version.
+
+    Version 1 stored the location name in ``entry.data`` next to the entry
+    title, kept in step by a dedicated options flow. The title is now the only
+    source of truth — it is what Home Assistant's own Rename action updates —
+    so the stored copy is dropped; leaving it would let the two drift apart.
+    """
+    if entry.version == 1:
+        data = {k: v for k, v in entry.data.items() if k != CONF_NOM_LIEU}
+        hass.config_entries.async_update_entry(entry, data=data, version=2)
+        _LOGGER.debug("Migrated config entry %s from version 1 to 2", entry.entry_id)
+
+    return True
+
+
 async def _async_update_listener(hass: HomeAssistant, entry: HydroPannesConfigEntry) -> None:
-    """Reload the config entry when its data or options are updated."""
+    """Reload the config entry when it is updated.
+
+    A rename changes the entry title, which names the device and prefixes every
+    entity name, so the entry is reloaded for the new title to take effect
+    without restarting Home Assistant.
+    """
     await hass.config_entries.async_reload(entry.entry_id)
 
 

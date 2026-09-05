@@ -22,9 +22,14 @@ class FakeCoordinator:
     Only exposes the ``data`` attribute the helper mixin reads.
     """
 
-    def __init__(self, data: dict[str, Any] | None) -> None:
+    def __init__(
+        self,
+        data: dict[str, Any] | None,
+        last_success_time: datetime | None = None,
+    ) -> None:
         """Store the API payload the mixin will interpret."""
         self.data = data
+        self.last_success_time = last_success_time
 
 
 def iso(dt: datetime) -> str:

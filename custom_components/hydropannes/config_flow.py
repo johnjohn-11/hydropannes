@@ -1,9 +1,13 @@
 """Config flow for Hydro-Pannes integration.
 
-Handles the initial user setup (lieu de consommation + friendly name), the
-options flow (rename), and reconfiguration (change the number).  The lieu de
-consommation number is validated against the Hydro-Québec API before the
-entry is created to surface configuration errors early.
+Handles the initial user setup (lieu de consommation + friendly name) and
+reconfiguration (change the number). The lieu de consommation number is
+validated against the Hydro-Québec API before the entry is created so
+configuration errors surface early.
+
+There is no options flow: the location name is the config entry title, which
+Home Assistant already lets the user change through the entry's own Rename
+action. Keeping a second copy in ``entry.data`` only let the two drift apart.
 """
 
 from __future__ import annotations
@@ -14,7 +18,6 @@ from typing import TYPE_CHECKING, Any
 
 import aiohttp
 from homeassistant import config_entries
-from homeassistant.core import callback
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 import voluptuous as vol
@@ -37,8 +40,8 @@ STEP_USER_DATA_SCHEMA = vol.Schema(
     }
 )
 
-# Reconfigure only changes the consumption location number; the friendly name
-# is edited through the options flow.
+# Reconfigure only changes the consumption location number; the name is the
+# entry title and is changed with Home Assistant's own Rename action.
 STEP_RECONFIGURE_DATA_SCHEMA = vol.Schema(
     {
         vol.Required(CONF_LIEU_CONSO): str,
@@ -46,20 +49,19 @@ STEP_RECONFIGURE_DATA_SCHEMA = vol.Schema(
 )
 
 
-async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str, Any]:
-    """Validate the lieu de consommation by querying the Hydro-Québec API.
+async def validate_lieu_conso(hass: HomeAssistant, lieu_conso: str) -> None:
+    """Validate a lieu de consommation number against the Hydro-Québec API.
+
+    Args:
+        hass: The Home Assistant instance.
+        lieu_conso: The number to validate, already stripped by the caller.
 
     Raises:
         InvalidFormat: The number does not match the 10-digit pattern.
         CannotConnect: A network error or timeout prevented the validation request.
         InvalidLieuConso: The API returned an empty payload for this number.
 
-    Returns:
-        A dict with the ``title`` key set to the user-supplied location name.
-
     """
-    lieu_conso = data[CONF_LIEU_CONSO]  # already stripped by the caller
-
     if not _LIEU_CONSO_RE.match(lieu_conso):
         raise InvalidFormat
 
@@ -79,34 +81,27 @@ async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str,
         _LOGGER.debug("HydroPannes config_flow network error: %s", err)
         raise CannotConnect from err
 
-    return {"title": data[CONF_NOM_LIEU]}
-
 
 class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Handle the initial configuration flow for Hydro-Pannes."""
 
-    VERSION = 1
-
-    @staticmethod
-    @callback
-    def async_get_options_flow(
-        config_entry: config_entries.ConfigEntry,
-    ) -> OptionsFlowHandler:
-        """Return the options flow handler."""
-        return OptionsFlowHandler()
+    # Version 2 dropped the location name from entry.data; see
+    # async_migrate_entry in __init__.py.
+    VERSION = 2
 
     async def async_step_user(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         """Handle the user-initiated setup step.
 
         Strips whitespace from the lieu de consommation number before
         validation and storage so that accidental leading/trailing spaces
-        never end up in the config entry or in API URLs.
+        never end up in the config entry or in API URLs. The supplied name
+        becomes the entry title and is not duplicated into entry.data.
         """
         errors: dict[str, str] = {}
         if user_input is not None:
-            user_input[CONF_LIEU_CONSO] = user_input[CONF_LIEU_CONSO].strip()
+            lieu = user_input[CONF_LIEU_CONSO].strip()
             try:
-                info = await validate_input(self.hass, user_input)
+                await validate_lieu_conso(self.hass, lieu)
             except InvalidFormat:
                 errors[CONF_LIEU_CONSO] = "invalid_format"
             except CannotConnect:
@@ -120,9 +115,12 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 # Outside the try/except so the AbortFlow raised by
                 # _abort_if_unique_id_configured propagates instead of being
                 # swallowed by the catch-all above.
-                await self.async_set_unique_id(user_input[CONF_LIEU_CONSO])
+                await self.async_set_unique_id(lieu)
                 self._abort_if_unique_id_configured()
-                return self.async_create_entry(title=info["title"], data=user_input)
+                return self.async_create_entry(
+                    title=user_input[CONF_NOM_LIEU],
+                    data={CONF_LIEU_CONSO: lieu},
+                )
 
         return self.async_show_form(
             step_id="user", data_schema=STEP_USER_DATA_SCHEMA, errors=errors
@@ -143,14 +141,8 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         errors: dict[str, str] = {}
         if user_input is not None:
             lieu = user_input[CONF_LIEU_CONSO].strip()
-            # validate_input needs a name for its return value; reuse the
-            # existing one since reconfigure does not change it.
-            validate_data = {
-                CONF_LIEU_CONSO: lieu,
-                CONF_NOM_LIEU: reconfigure_entry.data[CONF_NOM_LIEU],
-            }
             try:
-                await validate_input(self.hass, validate_data)
+                await validate_lieu_conso(self.hass, lieu)
             except InvalidFormat:
                 errors[CONF_LIEU_CONSO] = "invalid_format"
             except CannotConnect:
@@ -179,41 +171,6 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 {CONF_LIEU_CONSO: reconfigure_entry.data[CONF_LIEU_CONSO]},
             ),
             errors=errors,
-        )
-
-
-class OptionsFlowHandler(config_entries.OptionsFlow):
-    """Handle the options flow: rename the location.
-
-    The name is written back to ``entry.data`` and the entry title in a single
-    ``async_update_entry`` call so the update listener (which reloads the entry)
-    fires only once. (To change the location number, use the Reconfigure flow.)
-    """
-
-    async def async_step_init(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
-        """Present the options form and apply the rename when submitted."""
-        if user_input is not None:
-            new_data = {
-                **self.config_entry.data,
-                CONF_NOM_LIEU: user_input[CONF_NOM_LIEU],
-            }
-            self.hass.config_entries.async_update_entry(
-                self.config_entry,
-                data=new_data,
-                title=user_input[CONF_NOM_LIEU],
-            )
-            return self.async_create_entry(title="", data={})
-
-        return self.async_show_form(
-            step_id="init",
-            data_schema=vol.Schema(
-                {
-                    vol.Required(
-                        CONF_NOM_LIEU,
-                        default=self.config_entry.data.get(CONF_NOM_LIEU, ""),
-                    ): vol.All(str, vol.Length(min=1)),
-                }
-            ),
         )
 
 

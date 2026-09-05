@@ -116,6 +116,19 @@ class HydroPannesHelperMixin:
         date_fin = self._parse_dt(intr.get("dateFin"))
         return self._is_date_in_past(date_fin)
 
+    def _is_reprise_graduelle(self, intr: dict[str, Any] | None = None) -> bool:
+        """Return True when Hydro-Québec signals a gradual service restoration.
+
+        ``repriseGraduellePossible`` is consumed from the payload root, but it
+        is also listed among the interruption-level fields the integration
+        knows about. Both locations are honoured so the flag is not missed if
+        Hydro-Québec reports it per interruption rather than at the root.
+        """
+        if intr is not None and intr.get("repriseGraduellePossible"):
+            return True
+        data = self.coordinator.data
+        return bool(data and data.get("repriseGraduellePossible"))
+
     def _is_planned_intervention(self, intr: dict[str, Any]) -> bool:
         """Return True if the interruption is a planned intervention (AIP)."""
         result: bool = intr.get("interruptionPlanifiee", False)

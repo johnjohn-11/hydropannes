@@ -2,9 +2,8 @@
 
 from __future__ import annotations
 
-from datetime import datetime
 import logging
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from homeassistant.components.sensor import (
     SensorDeviceClass,
@@ -19,17 +18,22 @@ from homeassistant.util import dt as dt_util
 from .const import (
     ATTRIBUTION,
     CAUSE_CODES,
+    CAUSE_OPTIONS,
     DOMAIN,
-    INFO_PANNES_STATES,
+    INFO_PANNES_OPTIONS,
     INTERVENTION_CODES,
     INTERVENTION_CODES_MAJEUR,
     NIVEAU_URGENCE_CODES,
+    NIVEAU_URGENCE_OPTIONS,
+    STATUT_INTERVENTION_OPTIONS,
     TYPE_FIN_PREVUE_CODES,
 )
 from .coordinator import HydroPannesDataUpdateCoordinator
 from .helpers import HydroPannesHelperMixin
 
 if TYPE_CHECKING:
+    from datetime import datetime
+
     from homeassistant.core import HomeAssistant
     from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
@@ -89,9 +93,12 @@ class HydroPannesSensorBase(
         self._nom_lieu = nom_lieu
         # Device identity is fixed for the entity's lifetime; set it once here
         # rather than rebuilding a DeviceInfo on every property access.
+        # The device is named after the location alone: Home Assistant already
+        # shows the integration name around it, and with has_entity_name the
+        # device name prefixes every entity name.
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, entry.entry_id)},
-            name=f"HydroPannes {nom_lieu}",
+            name=nom_lieu,
             manufacturer="Hydro-Québec",
             model="Info-pannes",
         )
@@ -103,9 +110,16 @@ class HydroPannesSensorBase(
 
 
 class HydroPannesInfoPannesSensor(HydroPannesSensorBase):
-    """Sensor reporting the overall service status."""
+    """Sensor reporting the overall service status.
+
+    The state is a language-neutral slug from INFO_PANNES_OPTIONS; the labels
+    shown in the UI come from the translation files. Per-state icons live in
+    icons.json.
+    """
 
     _attr_translation_key = "info_pannes"
+    _attr_device_class = SensorDeviceClass.ENUM
+    _attr_options = INFO_PANNES_OPTIONS
 
     def __init__(
         self,
@@ -128,72 +142,51 @@ class HydroPannesInfoPannesSensor(HydroPannesSensorBase):
 
         if not interruptions:
             if main_etat == "A":
-                return INFO_PANNES_STATES["aucune_panne"]
+                return "aucune_panne"
             if main_etat == "N":
-                return INFO_PANNES_STATES["panne_en_cours"]
+                return "panne_en_cours"
             return None
 
         active_outage = self._get_active_outage()
-        if active_outage and self.coordinator.data.get("repriseGraduellePossible"):
-            return INFO_PANNES_STATES["reprise_graduelle"]
+        if active_outage and self._is_reprise_graduelle(active_outage):
+            return "reprise_graduelle"
 
         if active_outage:
             if active_outage.get("niveauUrgence") == "P":
-                return INFO_PANNES_STATES["panne_majeure"]
-            return INFO_PANNES_STATES["panne_en_cours"]
+                return "panne_majeure"
+            return "panne_en_cours"
 
         terminated_outage = self._get_terminated_outage()
         if terminated_outage:
             planned_check = self._get_planned_intervention()
             if not self._planned_supersedes_terminated(planned_check):
-                return INFO_PANNES_STATES["service_retabli"]
+                return "service_retabli"
 
         planned = self._get_planned_intervention()
         if planned:
             if self._is_aip_reportee(planned):
-                return INFO_PANNES_STATES["aip_reportee"]
+                return "aip_reportee"
             if self._is_aip_annulee(planned):
-                return INFO_PANNES_STATES["aip_annulee"]
+                return "aip_annulee"
             if self._is_outage_terminated(planned):
-                return INFO_PANNES_STATES["aip_terminee"]
+                return "aip_terminee"
             if main_etat == "N":
-                return INFO_PANNES_STATES["aip_en_cours"]
-            return INFO_PANNES_STATES["aip_a_venir"]
+                return "aip_en_cours"
+            return "aip_a_venir"
 
         if main_etat == "A":
-            return INFO_PANNES_STATES["aucune_panne"]
+            return "aucune_panne"
         if main_etat == "N":
-            return INFO_PANNES_STATES["panne_en_cours"]
+            return "panne_en_cours"
         return None
-
-    @property
-    def icon(self) -> str:
-        """Return an icon matching the current service status."""
-        state = self.native_value
-        if state == INFO_PANNES_STATES["aucune_panne"]:
-            return "mdi:check-circle"
-        if state in (INFO_PANNES_STATES["service_retabli"], INFO_PANNES_STATES["aip_terminee"]):
-            return "mdi:check-circle-outline"
-        if state in (
-            INFO_PANNES_STATES["aip_a_venir"],
-            INFO_PANNES_STATES["aip_en_cours"],
-            INFO_PANNES_STATES["aip_annulee"],
-            INFO_PANNES_STATES["aip_reportee"],
-        ):
-            return "mdi:calendar-clock"
-        if state == INFO_PANNES_STATES["panne_majeure"]:
-            return "mdi:alert-octagon"
-        if state == INFO_PANNES_STATES["reprise_graduelle"]:
-            return "mdi:restore-alert"
-        if state == INFO_PANNES_STATES["panne_en_cours"]:
-            return "mdi:alert-circle"
-        return "mdi:help-circle"
 
 
 class HydroPannesNiveauUrgenceSensor(HydroPannesSensorBase):
     """Sensor reporting the urgency level."""
 
     _attr_translation_key = "niveau_urgence"
+    _attr_device_class = SensorDeviceClass.ENUM
+    _attr_options = NIVEAU_URGENCE_OPTIONS
 
     def __init__(
         self,
@@ -207,12 +200,18 @@ class HydroPannesNiveauUrgenceSensor(HydroPannesSensorBase):
 
     @property
     def native_value(self) -> str | None:
-        """Return the human-readable urgency level."""
+        """Return the urgency level slug, or None if HQ reports none.
+
+        An unrecognized code yields None rather than a made-up state: Home
+        Assistant rejects any value outside _attr_options.
+        """
         interruption = self._get_current_interruption()
-        if not interruption or "niveauUrgence" not in interruption:
+        if not interruption:
             return None
         niveau = interruption.get("niveauUrgence")
-        return NIVEAU_URGENCE_CODES.get(niveau, f"Inconnu ({niveau})") if niveau else None
+        if not niveau:
+            return None
+        return NIVEAU_URGENCE_CODES.get(niveau)
 
 
 class HydroPannesNombreClientSensor(HydroPannesSensorBase):
@@ -325,6 +324,8 @@ class HydroPannesStatutInterventionSensor(HydroPannesSensorBase):
     """Sensor reporting the current intervention step."""
 
     _attr_translation_key = "statut_intervention"
+    _attr_device_class = SensorDeviceClass.ENUM
+    _attr_options = STATUT_INTERVENTION_OPTIONS
 
     def __init__(
         self,
@@ -338,27 +339,31 @@ class HydroPannesStatutInterventionSensor(HydroPannesSensorBase):
 
     @property
     def native_value(self) -> str | None:
-        """Return the current intervention step label."""
+        """Return the current intervention step slug.
+
+        An unrecognized typeFinPrevue yields None rather than a made-up state:
+        Home Assistant rejects any value outside _attr_options.
+        """
         outage = self._get_current_interruption()
         if not outage:
             return None
         if self._is_outage_terminated(outage):
-            return INFO_PANNES_STATES["service_retabli"]
+            return "service_retabli"
         if self._is_aip_reportee(outage):
-            return INFO_PANNES_STATES["aip_reportee"]
+            return "aip_reportee"
         if outage.get("etat") == "R":
-            return INFO_PANNES_STATES["aip_a_venir"]
-        if self.coordinator.data and self.coordinator.data.get("repriseGraduellePossible"):
-            return INFO_PANNES_STATES["reprise_graduelle"]
+            return "aip_a_venir"
+        if self._is_reprise_graduelle(outage):
+            return "reprise_graduelle"
         code = outage.get("codeIntervention")
         niveau = outage.get("niveauUrgence")
         type_fin = outage.get("typeFinPrevue")
         if code == "L":
-            return INTERVENTION_CODES_MAJEUR["L"] if niveau == "P" else INTERVENTION_CODES.get("L")
+            return INTERVENTION_CODES_MAJEUR["L"] if niveau == "P" else INTERVENTION_CODES["L"]
         if code in INTERVENTION_CODES:
             return INTERVENTION_CODES[code]
         if type_fin:
-            return TYPE_FIN_PREVUE_CODES.get(type_fin, f"Inconnu ({type_fin})")
+            return TYPE_FIN_PREVUE_CODES.get(type_fin)
         return None
 
 
@@ -366,6 +371,8 @@ class HydroPannesCauseSensor(HydroPannesSensorBase):
     """Sensor reporting the cause of the interruption."""
 
     _attr_translation_key = "cause"
+    _attr_device_class = SensorDeviceClass.ENUM
+    _attr_options = CAUSE_OPTIONS
 
     def __init__(
         self,
@@ -379,16 +386,34 @@ class HydroPannesCauseSensor(HydroPannesSensorBase):
 
     @property
     def native_value(self) -> str | None:
-        """Return the human-readable cause label."""
+        """Return the cause slug.
+
+        "indeterminee" when Hydro-Québec reports no code at all, "inconnue"
+        when it reports a code this integration does not know yet. The raw
+        code is kept in the code_cause attribute either way.
+        """
         outage = self._get_current_interruption()
         if not outage:
             return None
         code = outage.get("codeCause")
         if code is None:
-            return "Indéterminée"
-        code_str = str(code)
-        cause_text = CAUSE_CODES.get(code_str)
-        return f"{cause_text} ({code_str})" if cause_text else f"Inconnu ({code_str})"
+            return "indeterminee"
+        return CAUSE_CODES.get(str(code), "inconnue")
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Expose the raw HQ cause code.
+
+        Several codes map onto a single slug, so the code is kept as an
+        attribute to preserve the distinction the state no longer carries.
+        """
+        outage = self._get_current_interruption()
+        if not outage:
+            return {}
+        code = outage.get("codeCause")
+        if code is None:
+            return {}
+        return {"code_cause": str(code)}
 
 
 class HydroPannesDureeSensor(HydroPannesSensorBase):
@@ -492,13 +517,9 @@ class HydroPannesDerniereMAJSensor(HydroPannesSensorBase):
             parsed = self._parse_dt(interruption.get("datePublication"))
             if parsed:
                 return parsed
-        if (
-            hasattr(self.coordinator, "last_update_success_time")
-            and self.coordinator.last_update_success_time
-        ):
-            val = self.coordinator.last_update_success_time
-            return val if isinstance(val, datetime) else None
-        return None
+        # Outside an outage there is no datePublication, so fall back to the
+        # time of the last successful poll.
+        return self.coordinator.last_success_time
 
 
 class HydroPannesLieuConsoSensor(HydroPannesSensorBase):

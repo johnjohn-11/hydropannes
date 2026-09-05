@@ -39,6 +39,8 @@ from homeassistant.util import dt as dt_util
 from .const import API_URL, CONF_LIEU_CONSO, DOMAIN, EVENT_DATA_CHANGED, UPDATE_INTERVAL
 
 if TYPE_CHECKING:
+    from datetime import datetime
+
     from homeassistant.config_entries import ConfigEntry
     from homeassistant.core import HomeAssistant
 
@@ -115,9 +117,14 @@ class HydroPannesDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         # root-level schema.  True until proven otherwise.
         self.api_compatible: bool = True
 
-        # Stable id for the repair issue raised when the API schema drifts,
-        # so it can be created and cleared for this location specifically.
+        # Stable ids for the repair issues raised for this location: one for a
+        # payload whose shape is not the expected list, one for a payload that
+        # is a list but no longer carries the expected root fields.
         self._api_issue_id: str = f"api_incompatible_{entry.entry_id}"
+        self._invalid_response_issue_id: str = f"api_invalid_response_{entry.entry_id}"
+
+        # Whether the invalid-response repair issue is currently raised.
+        self._invalid_response_flagged: bool = False
 
         # Hash of the last payload, used for change detection.
         self._last_hash: str | None = None
@@ -142,6 +149,15 @@ class HydroPannesDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         # Details of the most recent error, or None if no error has occurred.
         self.last_error: dict[str, str] | None = None
+
+        # UTC timestamp of the most recent successful fetch. Consumed by the
+        # "Dernière MAJ" sensor and the diagnostics report; the base
+        # DataUpdateCoordinator exposes no such attribute.
+        self.last_success_time: datetime | None = None
+
+        # Interruption field names already reported as unknown, so a schema
+        # change is logged once instead of on every poll.
+        self._warned_unknown_fields: set[str] = set()
 
         super().__init__(
             hass,
@@ -194,10 +210,16 @@ class HydroPannesDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                         data = await response.json()
 
                         if not data or not isinstance(data, list):
-                            self.api_compatible = False
+                            # Surface this through Repairs too: the update
+                            # fails, so entities other than the API-compatibility
+                            # sensor go unavailable and cannot report it.
+                            self._flag_invalid_response()
                             self._raise_failure("API returned invalid data format (expected list)")
 
                         result: dict[str, Any] = data[0]
+
+                        # A well-formed list clears the invalid-response issue.
+                        self._clear_invalid_response()
 
                         # --- Option A: validate required root-level fields ---
                         missing_root = EXPECTED_ROOT_FIELDS - result.keys()
@@ -233,12 +255,17 @@ class HydroPannesDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                         # is empty otherwise, so no false positives).
                         for intr in result.get("interruptions", []):
                             unknown = intr.keys() - KNOWN_INTERRUPTION_FIELDS
-                            if unknown:
+                            # Warn once per field name: during an outage the
+                            # coordinator polls every 60 s, so warning on each
+                            # poll would flood the log for as long as it lasts.
+                            new_fields = unknown - self._warned_unknown_fields
+                            if new_fields:
+                                self._warned_unknown_fields |= new_fields
                                 _LOGGER.warning(
                                     "New API fields detected in an interruption (lieu %s): "
                                     "%s — the Hydro-Québec schema may have evolved.",
                                     self.lieu_conso,
-                                    unknown,
+                                    new_fields,
                                 )
 
                         # Compute the payload hash once for change detection.
@@ -254,6 +281,8 @@ class HydroPannesDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                             self._fire_change_event(result)
 
                         self._adjust_update_interval(result)
+
+                        self.last_success_time = dt_util.utcnow()
 
                         return result
 
@@ -291,6 +320,43 @@ class HydroPannesDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 self._raise_failure(f"Unexpected error: {err}")
 
         self._raise_failure("Unknown error")
+
+    # -----------------------------------------------------------------------
+    # API response validation
+    # -----------------------------------------------------------------------
+
+    def _flag_invalid_response(self) -> None:
+        """Mark the API incompatible and raise a repair issue.
+
+        Called when the payload is not the expected non-empty list. Unlike a
+        missing root field, this also fails the update, so every entity except
+        the API-compatibility sensor goes unavailable — Repairs is then the
+        only place the user can see what happened.
+        """
+        self.api_compatible = False
+        if self._invalid_response_flagged:
+            return
+        self._invalid_response_flagged = True
+        _LOGGER.error(
+            "Hydro-Québec API returned an unexpected payload shape for lieu %s "
+            "(expected a non-empty list)",
+            self.lieu_conso,
+        )
+        ir.async_create_issue(
+            self.hass,
+            DOMAIN,
+            self._invalid_response_issue_id,
+            is_fixable=False,
+            severity=ir.IssueSeverity.WARNING,
+            translation_key="api_invalid_response",
+        )
+
+    def _clear_invalid_response(self) -> None:
+        """Clear the invalid-response repair issue once the payload is sane."""
+        if not self._invalid_response_flagged:
+            return
+        self._invalid_response_flagged = False
+        ir.async_delete_issue(self.hass, DOMAIN, self._invalid_response_issue_id)
 
     # -----------------------------------------------------------------------
     # Failure handling
