@@ -13,7 +13,6 @@ Provides three binary sensors per configured location:
 
 from __future__ import annotations
 
-import logging
 from typing import TYPE_CHECKING, Any
 
 from homeassistant.components.binary_sensor import (
@@ -33,8 +32,6 @@ if TYPE_CHECKING:
     from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
     from . import HydroPannesConfigEntry
-
-_LOGGER = logging.getLogger(__name__)
 
 # Entities are updated by the coordinator; no parallel polling needed.
 PARALLEL_UPDATES = 0
