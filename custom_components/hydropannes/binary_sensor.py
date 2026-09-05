@@ -93,9 +93,12 @@ class HydroPannesBinarySensorBase(
         self._nom_lieu = nom_lieu
         # Device identity is fixed for the entity's lifetime; set it once here
         # rather than rebuilding a DeviceInfo on every property access.
+        # The device is named after the location alone: Home Assistant already
+        # shows the integration name around it, and with has_entity_name the
+        # device name prefixes every entity name.
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, entry.entry_id)},
-            name=f"HydroPannes {nom_lieu}",
+            name=nom_lieu,
             manufacturer="Hydro-Québec",
             model="Info-pannes",
         )
@@ -235,6 +238,17 @@ class HydroPannesAPICompatibilityBinarySensor(HydroPannesBinarySensorBase):
         """Initialize the diagnostic sensor."""
         super().__init__(coordinator, entry, nom_lieu)
         self._attr_unique_id = f"{entry.entry_id}_api_compatibility"
+
+    @property
+    def available(self) -> bool:
+        """Stay available even when the last update failed.
+
+        This sensor reports coordinator state rather than payload data. A
+        payload the integration cannot parse fails the update, and that is
+        precisely when the user needs this sensor to read "problem" instead of
+        going unavailable along with every other entity.
+        """
+        return True
 
     @property
     def is_on(self) -> bool:

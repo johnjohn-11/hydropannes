@@ -10,7 +10,11 @@ from typing import TYPE_CHECKING
 from unittest.mock import patch
 
 from homeassistant.config_entries import ConfigEntryState
-from homeassistant.helpers import entity_registry as er, issue_registry as ir
+from homeassistant.helpers import (
+    device_registry as dr,
+    entity_registry as er,
+    issue_registry as ir,
+)
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
@@ -154,3 +158,115 @@ async def test_api_schema_issue_created_and_cleared(hass: HomeAssistant, aioclie
     await hass.async_block_till_done()
 
     assert registry.async_get_issue(DOMAIN, issue_id) is None
+
+
+async def test_device_is_named_after_the_location_alone(
+    hass: HomeAssistant, aioclient_mock
+) -> None:
+    """The device name does not repeat the integration name.
+
+    With has_entity_name the device name prefixes every entity name, and Home
+    Assistant already shows "Hydro-Pannes" around the device, so "HydroPannes
+    Maison Info-pannes" said it twice.
+    """
+    aioclient_mock.get(API_URL.format(LIEU), json=PAYLOAD)
+    entry = _entry()
+    entry.add_to_hass(hass)
+
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    device = dr.async_get(hass).async_get_device(identifiers={(DOMAIN, entry.entry_id)})
+    assert device is not None
+    assert device.name == "Maison"
+
+
+async def test_rename_without_options_flow(hass: HomeAssistant, aioclient_mock) -> None:
+    """Renaming the entry renames the device, with no options flow involved.
+
+    The options flow that used to do this duplicated Home Assistant's own
+    Rename action, so it was removed; this proves renaming still works.
+    """
+    aioclient_mock.get(API_URL.format(LIEU), json=PAYLOAD)
+    entry = _entry()
+    entry.add_to_hass(hass)
+
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    # The integration no longer advertises an options flow.
+    assert entry.supports_options is False
+
+    hass.config_entries.async_update_entry(entry, title="Chalet")
+    await hass.async_block_till_done()
+
+    device = dr.async_get(hass).async_get_device(identifiers={(DOMAIN, entry.entry_id)})
+    assert device.name == "Chalet"
+
+
+async def test_migration_v1_drops_stored_name(hass: HomeAssistant, aioclient_mock) -> None:
+    """A version 1 entry loses its duplicated name but keeps its title."""
+    aioclient_mock.get(API_URL.format(LIEU), json=PAYLOAD)
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        unique_id=LIEU,
+        data={CONF_LIEU_CONSO: LIEU, CONF_NOM_LIEU: "Maison"},
+        title="Maison",
+        version=1,
+    )
+    entry.add_to_hass(hass)
+
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    assert entry.version == 2
+    assert CONF_NOM_LIEU not in entry.data
+    assert entry.data[CONF_LIEU_CONSO] == LIEU
+    # The name survives as the title, which is what names the device.
+    assert entry.title == "Maison"
+
+
+async def test_api_compatibility_sensor_survives_a_broken_payload(
+    hass: HomeAssistant, aioclient_mock
+) -> None:
+    """A payload that is not a list raises a repair issue and is reported.
+
+    The update fails, so every other entity goes unavailable. The
+    API-compatibility sensor must stay available — it is the one entity whose
+    whole purpose is to report this.
+    """
+    aioclient_mock.get(API_URL.format(LIEU), json=PAYLOAD)
+    entry = _entry()
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    registry = er.async_get(hass)
+    compat_id = registry.async_get_entity_id(
+        "binary_sensor", DOMAIN, f"{entry.entry_id}_api_compatibility"
+    )
+    assert hass.states.get(compat_id).state == "off"
+
+    # The API starts answering with something that is not a list.
+    aioclient_mock.clear_requests()
+    aioclient_mock.get(API_URL.format(LIEU), json={"not": "a list"})
+    await entry.runtime_data.async_refresh()
+    await hass.async_block_till_done()
+
+    issue_registry = ir.async_get(hass)
+    issue_id = f"api_invalid_response_{entry.entry_id}"
+    assert issue_registry.async_get_issue(DOMAIN, issue_id) is not None
+
+    # Other entities are unavailable, but this one reports the problem.
+    info_id = registry.async_get_entity_id("sensor", DOMAIN, f"{entry.entry_id}_info_pannes")
+    assert hass.states.get(info_id).state == "unavailable"
+    assert hass.states.get(compat_id).state == "on"
+
+    # A valid payload clears the issue.
+    aioclient_mock.clear_requests()
+    aioclient_mock.get(API_URL.format(LIEU), json=PAYLOAD)
+    await entry.runtime_data.async_refresh()
+    await hass.async_block_till_done()
+
+    assert issue_registry.async_get_issue(DOMAIN, issue_id) is None
+    assert hass.states.get(compat_id).state == "off"

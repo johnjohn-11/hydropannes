@@ -21,6 +21,10 @@ Suivez en temps réel l'état du service électrique pour un ou plusieurs lieux 
 > Le libellé traduit reste affiché dans l'interface.
 > **Toute automatisation qui compare l'état à un texte français doit être mise à jour** :
 > voir [Migration vers la 2.0.0](#migration-vers-la-200).
+>
+> La 2.0.0 renomme aussi l'appareil (« Maison » au lieu de « HydroPannes Maison »)
+> et retire l'écran **Configurer** au profit de l'action **Renommer** native
+> de Home Assistant. Les entités existantes gardent leur `entity_id`.
 
 ---
 
@@ -81,9 +85,15 @@ Répétez l'opération pour chaque lieu à surveiller. Chaque lieu crée un appa
 
 ### Modifier le nom d'un lieu
 
+Le nom du lieu est le titre de l'entrée de configuration ; on le change avec
+l'action **Renommer** de Home Assistant, sans écran propre à l'intégration.
+
 1. **Paramètres** → **Appareils et services** → **Hydro-Pannes**
-2. Cliquer sur **Configurer** (icône engrenage) à côté du lieu
-3. Modifier le nom et sauvegarder
+2. Cliquer sur les 3 points à côté du lieu → **Renommer**
+3. Saisir le nouveau nom
+
+L'appareil est renommé immédiatement. Les `entity_id` déjà attribués ne
+changent pas ; pour les renommer aussi, passez par la page de l'entité.
 
 ### Modifier le numéro de lieu de consommation
 
@@ -123,6 +133,11 @@ Chaque lieu de consommation configuré crée un appareil avec les entités suiva
 | `binary_sensor.*_etat_du_service` | `on` = panne active ou intervention planifiée en cours, `off` = service normal |
 | `binary_sensor.*_intervention_planifiee` | `on` = intervention planifiée active ou à venir |
 | `binary_sensor.*_compatibilite_api` | `on` = structure de l'API Hydro-Québec modifiée *(Diagnostic)* |
+
+> 💡 Dans les exemples ci-dessous, `maison` correspond au nom donné au lieu.
+> Les installations antérieures à la 2.0.0 ont des `entity_id` préfixés
+> `hydropannes_` (par exemple `sensor.hydropannes_maison_cause`) ; Home Assistant
+> les conserve tels quels, adaptez donc les exemples à vos entités existantes.
 
 > 💡 Les entités de catégorie **Diagnostic** sont masquées par défaut dans l'interface. Elles sont accessibles via **Paramètres** → **Appareils et services** → appareil → **Entités de diagnostic**.
 
@@ -207,7 +222,7 @@ automatisation écrite ainsi ne se déclenche plus :
 # ❌ Ne fonctionne plus
 condition:
   - condition: state
-    entity_id: sensor.hydropannes_maison_info_pannes
+    entity_id: sensor.maison_info_pannes
     state: "Panne en cours"
 ```
 
@@ -217,7 +232,7 @@ Remplacez le libellé par l'identifiant correspondant :
 # ✅ Correct
 condition:
   - condition: state
-    entity_id: sensor.hydropannes_maison_info_pannes
+    entity_id: sensor.maison_info_pannes
     state: "panne_en_cours"
 ```
 
@@ -225,7 +240,7 @@ Pour afficher le libellé traduit dans une notification, utilisez
 `state_translated` :
 
 ```yaml
-message: "Cause : {{ state_translated('sensor.hydropannes_maison_cause') }}"
+message: "Cause : {{ state_translated('sensor.maison_cause') }}"
 ```
 
 Les sensors non énumérés (dates, durées, nombre de clients) et les binary
@@ -264,7 +279,7 @@ automation:
   - alias: "Notification panne électrique"
     trigger:
       - platform: state
-        entity_id: binary_sensor.hydropannes_maison_etat_du_service
+        entity_id: binary_sensor.maison_etat_du_service
         to: "on"
     action:
       - service: notify.mobile_app
@@ -272,8 +287,8 @@ automation:
           title: "⚡ Panne électrique"
           message: >
             Panne détectée à {{ now().strftime('%H:%M') }}.
-            Cause : {{ state_translated('sensor.hydropannes_maison_cause') }}.
-            Rétablissement estimé : {{ states('sensor.hydropannes_maison_date_fin') }}.
+            Cause : {{ state_translated('sensor.maison_cause') }}.
+            Rétablissement estimé : {{ states('sensor.maison_date_fin') }}.
 ```
 
 ### Notification au rétablissement
@@ -283,7 +298,7 @@ automation:
   - alias: "Notification courant rétabli"
     trigger:
       - platform: state
-        entity_id: binary_sensor.hydropannes_maison_etat_du_service
+        entity_id: binary_sensor.maison_etat_du_service
         from: "on"
         to: "off"
     action:
@@ -292,7 +307,7 @@ automation:
           title: "✅ Courant rétabli"
           message: >
             Le courant est rétabli après
-            {{ (states('sensor.hydropannes_maison_duree') | int / 3600) | round(1) }} h.
+            {{ (states('sensor.maison_duree') | int / 3600) | round(1) }} h.
 ```
 
 ## Journaliser les changements (événement)
@@ -337,7 +352,11 @@ Comportement normal en cas d'erreur réseau transitoire. Les données sont conse
 
 **Le sensor `compatibilite_api` est `on` (ou une alerte apparaît dans Réparations)**
 L'API Hydro-Québec a probablement modifié sa structure. Une carte est aussi
-ajoutée dans **Paramètres** → **Appareils et services** → **Réparations**.
+ajoutée dans **Paramètres** → **Appareils et services** → **Réparations** :
+« structure modifiée » si la réponse a perdu des champs attendus, « réponse
+inattendue » si elle n'a plus la forme d'une liste de lieux. Dans ce second cas
+les autres entités deviennent indisponibles, mais `compatibilite_api` reste
+lisible pour vous dire pourquoi.
 Vérifiez si une mise à jour de l'intégration est disponible dans HACS et ouvrez une [issue](https://github.com/johnjohn-11/hydropannes/issues) si le problème persiste.
 
 ---

@@ -93,9 +93,12 @@ class HydroPannesSensorBase(
         self._nom_lieu = nom_lieu
         # Device identity is fixed for the entity's lifetime; set it once here
         # rather than rebuilding a DeviceInfo on every property access.
+        # The device is named after the location alone: Home Assistant already
+        # shows the integration name around it, and with has_entity_name the
+        # device name prefixes every entity name.
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, entry.entry_id)},
-            name=f"HydroPannes {nom_lieu}",
+            name=nom_lieu,
             manufacturer="Hydro-Québec",
             model="Info-pannes",
         )
