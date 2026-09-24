@@ -28,16 +28,6 @@
       "reconfigure_successful": "Consumption location number updated"
     }
   },
-  "options": {
-    "step": {
-      "init": {
-        "title": "Modify location",
-        "data": {
-          "nom_lieu": "Location name"
-        }
-      }
-    }
-  },
   "entity": {
     "sensor": {
       "info_pannes": {
@@ -135,6 +125,10 @@
     "api_schema_changed": {
       "title": "Hydro-Québec API structure changed",
       "description": "Hydro-Pannes received an unexpected response from the Hydro-Québec API (missing fields: {missing_fields}). The integration may need to be updated to match a new API structure. If this persists after updating, please report it on the issue tracker."
+    },
+    "api_invalid_response": {
+      "title": "Unexpected Hydro-Québec API response",
+      "description": "Hydro-Pannes received a response from the Hydro-Québec API in an unexpected format (a list of locations was expected). Entities stay unavailable until a valid response arrives. If this persists, check whether an integration update is available and report it on the issue tracker."
     }
   }
 }
