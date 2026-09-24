@@ -66,6 +66,37 @@ async def test_setup_and_unload(hass: HomeAssistant, aioclient_mock) -> None:
     assert entry.state is ConfigEntryState.NOT_LOADED
 
 
+async def test_unique_ids_are_stable(hass: HomeAssistant, aioclient_mock) -> None:
+    """Every entity keeps the unique_id it was registered with; a change would orphan it."""
+    aioclient_mock.get(API_URL.format(LIEU), json=PAYLOAD)
+    entry = _entry()
+    entry.add_to_hass(hass)
+
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    registered = {
+        (e.domain, e.unique_id.removeprefix(f"{entry.entry_id}_"))
+        for e in er.async_entries_for_config_entry(er.async_get(hass), entry.entry_id)
+    }
+    assert registered == {
+        ("sensor", "info_pannes"),
+        ("sensor", "niveau_urgence"),
+        ("sensor", "nbclient"),
+        ("sensor", "date_debut"),
+        ("sensor", "datefin"),
+        ("sensor", "statut_intervention"),
+        ("sensor", "cause"),
+        ("sensor", "duree"),
+        ("sensor", "delai_avant_retablissement"),
+        ("sensor", "derniere_maj"),
+        ("sensor", "idlieuconso"),
+        ("binary_sensor", "etat_service"),
+        ("binary_sensor", "intervention_planifiee"),
+        ("binary_sensor", "api_compatibility"),
+    }
+
+
 async def test_enum_sensor_states_accepted_by_home_assistant(
     hass: HomeAssistant, aioclient_mock, caplog
 ) -> None:
