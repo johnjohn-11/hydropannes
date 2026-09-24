@@ -11,13 +11,13 @@
 repos:
   - repo: https://github.com/astral-sh/ruff-pre-commit
     # Lancer `pre-commit autoupdate` pour épingler la dernière version.
-    rev: v0.8.6
+    rev: v0.16.8
     hooks:
       - id: ruff
         args: [--fix]
-        files: ^custom_components/hydropannes/
+        files: ^(custom_components/hydropannes|tests)/
       - id: ruff-format
-        files: ^custom_components/hydropannes/
+        files: ^(custom_components/hydropannes|tests)/
 
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v5.0.0
