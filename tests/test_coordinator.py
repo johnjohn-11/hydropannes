@@ -7,9 +7,11 @@ paths, driving the real coordinator against a stubbed API (aioclient_mock).
 from __future__ import annotations
 
 from datetime import timedelta
+import logging
 from typing import TYPE_CHECKING
 from unittest.mock import patch
 
+from homeassistant.helpers import issue_registry as ir
 from homeassistant.helpers.update_coordinator import UpdateFailed
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry, async_capture_events
@@ -145,6 +147,65 @@ async def test_client_error_fails_without_retry(hass: HomeAssistant, aioclient_m
     assert len(aioclient_mock.mock_calls) == 1
 
 
+async def test_unknown_interruption_field_warns_once(
+    hass: HomeAssistant, aioclient_mock, caplog
+) -> None:
+    """An unknown interruption field is reported once, not on every poll.
+
+    During an outage the coordinator polls every 60 s, so warning per poll would flood the log for the whole duration of the panne.
+    """
+    payload = [
+        {
+            "etat": "N",
+            "idLieuConso": LIEU,
+            "interruptions": [
+                {
+                    "dateDebut": "2024-01-01T00:00:00-05:00",
+                    "interruptionPlanifiee": False,
+                    "champTotalementNouveau": 1,
+                }
+            ],
+        }
+    ]
+    aioclient_mock.get(API_URL.format(LIEU), json=payload)
+    coordinator = _coordinator(hass)
+
+    with caplog.at_level(logging.WARNING):
+        for _ in range(5):
+            await coordinator._async_update_data()
+
+    warnings = [r for r in caplog.records if "New API fields detected" in r.message]
+    assert len(warnings) == 1
+    assert "champTotalementNouveau" in warnings[0].message
+
+
+async def test_last_success_time_is_recorded(hass: HomeAssistant, aioclient_mock) -> None:
+    """A successful fetch records the timestamp the DerniereMAJ sensor reads."""
+    aioclient_mock.get(API_URL.format(LIEU), json=IDLE_PAYLOAD)
+    coordinator = _coordinator(hass)
+
+    assert coordinator.last_success_time is None
+
+    await coordinator._async_update_data()
+
+    assert coordinator.last_success_time is not None
+
+
+async def test_last_success_time_untouched_by_failure(hass: HomeAssistant, aioclient_mock) -> None:
+    """A failed fetch leaves the previous success timestamp in place."""
+    aioclient_mock.get(API_URL.format(LIEU), json=IDLE_PAYLOAD)
+    coordinator = _coordinator(hass)
+    await coordinator._async_update_data()
+    first = coordinator.last_success_time
+
+    aioclient_mock.clear_requests()
+    aioclient_mock.get(API_URL.format(LIEU), status=404)
+    with pytest.raises(UpdateFailed):
+        await coordinator._async_update_data()
+
+    assert coordinator.last_success_time == first
+
+
 async def test_invalid_payload_shape_marks_incompatible(
     hass: HomeAssistant, aioclient_mock
 ) -> None:
@@ -156,3 +217,45 @@ async def test_invalid_payload_shape_marks_incompatible(
         await coordinator._async_update_data()
 
     assert coordinator.api_compatible is False
+
+
+@pytest.mark.parametrize("payload", [["x"], [None], [[]]])
+async def test_non_object_first_item_is_invalid_response(
+    hass: HomeAssistant, aioclient_mock, payload
+) -> None:
+    """A list whose first item is not an object keeps the Repairs issue up.
+
+    Clearing the issue before checking the item would leave the user with every entity unavailable and nothing in Repairs explaining why.
+    """
+    aioclient_mock.get(API_URL.format(LIEU), json={"not": "a list"})
+    coordinator = _coordinator(hass)
+    with pytest.raises(UpdateFailed):
+        await coordinator._async_update_data()
+
+    aioclient_mock.clear_requests()
+    aioclient_mock.get(API_URL.format(LIEU), json=payload)
+    with pytest.raises(UpdateFailed):
+        await coordinator._async_update_data()
+
+    issue_id = f"api_invalid_response_{coordinator.config_entry.entry_id}"
+    assert ir.async_get(hass).async_get_issue(DOMAIN, issue_id) is not None
+    assert coordinator.api_compatible is False
+
+
+async def test_missing_fields_logged_after_invalid_response(
+    hass: HomeAssistant, aioclient_mock, caplog
+) -> None:
+    """Missing root fields are logged even when an invalid payload came first."""
+    aioclient_mock.get(API_URL.format(LIEU), json={"not": "a list"})
+    coordinator = _coordinator(hass)
+    with pytest.raises(UpdateFailed):
+        await coordinator._async_update_data()
+
+    aioclient_mock.clear_requests()
+    aioclient_mock.get(API_URL.format(LIEU), json=[{"idLieuConso": LIEU}])
+    with caplog.at_level(logging.ERROR):
+        for _ in range(3):
+            await coordinator._async_update_data()
+
+    errors = [r for r in caplog.records if "missing fields" in r.message]
+    assert len(errors) == 1

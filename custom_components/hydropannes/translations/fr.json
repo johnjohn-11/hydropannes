@@ -28,23 +28,29 @@
       "reconfigure_successful": "Numéro de lieu de consommation mis à jour"
     }
   },
-  "options": {
-    "step": {
-      "init": {
-        "title": "Modifier le lieu",
-        "data": {
-          "nom_lieu": "Nom du lieu"
-        }
-      }
-    }
-  },
   "entity": {
     "sensor": {
       "info_pannes": {
-        "name": "Info-pannes"
+        "name": "Info-pannes",
+        "state": {
+          "aucune_panne": "Aucune panne détectée",
+          "panne_en_cours": "Panne en cours",
+          "panne_majeure": "Panne majeure en cours",
+          "reprise_graduelle": "Rétablissement graduel du service en cours",
+          "service_retabli": "Service rétabli",
+          "aip_en_cours": "Interruption planifiée en cours",
+          "aip_a_venir": "Interruption planifiée à venir",
+          "aip_terminee": "Interruption planifiée terminée",
+          "aip_annulee": "Interruption planifiée annulée",
+          "aip_reportee": "Interruption planifiée reportée"
+        }
       },
       "niveau_urgence": {
-        "name": "Niveau urgence"
+        "name": "Niveau urgence",
+        "state": {
+          "normal": "Normal",
+          "panne_majeure": "Panne majeure"
+        }
       },
       "adresses_touchees": {
         "name": "Adresses touchées"
@@ -56,10 +62,39 @@
         "name": "Date fin"
       },
       "statut_intervention": {
-        "name": "Statut intervention"
+        "name": "Statut intervention",
+        "state": {
+          "aip_a_venir": "Interruption planifiée à venir",
+          "aip_reportee": "Interruption planifiée reportée",
+          "equipe_designee": "Équipe désignée",
+          "equipe_en_route": "Équipe en route",
+          "evaluation_travaux": "Évaluation des travaux requis",
+          "fin_non_determinee": "Fin non déterminée",
+          "reprise_graduelle": "Rétablissement graduel du service en cours",
+          "retablissement_en_evaluation": "Heure de rétablissement en cours d'évaluation",
+          "retablissement_prevu": "Rétablissement prévu",
+          "service_retabli": "Service rétabli",
+          "travaux_en_cours": "Travaux en cours sur le réseau électrique",
+          "travaux_par_priorite": "Réalisation des travaux par ordre de priorité"
+        }
       },
       "cause": {
-        "name": "Cause"
+        "name": "Cause",
+        "state": {
+          "accident_ou_incident": "Accident ou incident",
+          "amelioration_entretien_reseau": "Amélioration ou entretien du réseau",
+          "bris_equipement": "Bris d'équipement",
+          "conditions_meteorologiques": "Conditions météorologiques",
+          "dommages_animal": "Dommages dus à un animal",
+          "dommages_vegetation": "Dommages dus à la végétation",
+          "incendie_ou_fuite_gaz": "Incendie ou fuite de gaz",
+          "inconnue": "Inconnue",
+          "indeterminee": "Indéterminée",
+          "securite_publique": "Interruption - Sécurité publique",
+          "travaux_renforcement_reseau": "Travaux planifiés - Renforcement de réseau",
+          "travaux_vegetation_elagage": "Travaux sur la végétation ou élagage",
+          "usure_materiel": "Usure ou désagrégation de matériel"
+        }
       },
       "duree": {
         "name": "Durée"
@@ -90,6 +125,10 @@
     "api_schema_changed": {
       "title": "La structure de l'API Hydro-Québec a changé",
       "description": "Hydro-Pannes a reçu une réponse inattendue de l'API Hydro-Québec (champs manquants : {missing_fields}). L'intégration doit peut-être être mise à jour pour correspondre à une nouvelle structure d'API. Si le problème persiste après la mise à jour, veuillez le signaler sur le suivi des problèmes."
+    },
+    "api_invalid_response": {
+      "title": "Réponse inattendue de l'API Hydro-Québec",
+      "description": "Hydro-Pannes a reçu de l'API Hydro-Québec une réponse dans un format inattendu (une liste de lieux était attendue). Les entités restent indisponibles jusqu'à la réception d'une réponse valide. Si le problème persiste, vérifiez si une mise à jour de l'intégration est disponible et signalez-le sur le suivi des problèmes."
     }
   }
 }
