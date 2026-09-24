@@ -50,14 +50,11 @@ async def async_get_config_entry_diagnostics(
         "total_errors": coordinator.total_errors,
         # None if no error has occurred since the last HA restart.
         "last_error": coordinator.last_error,
+        # UTC timestamp of the last successful fetch, or None before the first.
+        "last_success_time": (
+            coordinator.last_success_time.isoformat() if coordinator.last_success_time else None
+        ),
     }
-
-    if hasattr(coordinator, "last_update_success_time"):
-        coordinator_info["last_update_success_time"] = (
-            coordinator.last_update_success_time.isoformat()
-            if coordinator.last_update_success_time
-            else None
-        )
 
     # Deep-copy each history snapshot before redacting so the coordinator's
     # in-memory data is never mutated by the diagnostics call.
@@ -75,10 +72,8 @@ async def async_get_config_entry_diagnostics(
             "version": entry.version,
             "domain": entry.domain,
             "title": entry.title,
-            "data": {
-                "lieu_consommation": masked_lieu,
-                "nom_lieu": entry.data.get("nom_lieu"),
-            },
+            # The location name is the entry title, reported above.
+            "data": {"lieu_consommation": masked_lieu},
             "options": dict(entry.options),
         },
         "coordinator": coordinator_info,

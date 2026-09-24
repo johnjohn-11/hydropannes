@@ -28,23 +28,29 @@
       "reconfigure_successful": "Consumption location number updated"
     }
   },
-  "options": {
-    "step": {
-      "init": {
-        "title": "Modify location",
-        "data": {
-          "nom_lieu": "Location name"
-        }
-      }
-    }
-  },
   "entity": {
     "sensor": {
       "info_pannes": {
-        "name": "Outage info"
+        "name": "Outage info",
+        "state": {
+          "aucune_panne": "No outage detected",
+          "panne_en_cours": "Outage in progress",
+          "panne_majeure": "Major outage in progress",
+          "reprise_graduelle": "Gradual service restoration in progress",
+          "service_retabli": "Service restored",
+          "aip_en_cours": "Planned interruption in progress",
+          "aip_a_venir": "Planned interruption upcoming",
+          "aip_terminee": "Planned interruption completed",
+          "aip_annulee": "Planned interruption cancelled",
+          "aip_reportee": "Planned interruption postponed"
+        }
       },
       "niveau_urgence": {
-        "name": "Urgency level"
+        "name": "Urgency level",
+        "state": {
+          "normal": "Normal",
+          "panne_majeure": "Major outage"
+        }
       },
       "adresses_touchees": {
         "name": "Affected addresses"
@@ -56,10 +62,39 @@
         "name": "End date"
       },
       "statut_intervention": {
-        "name": "Intervention status"
+        "name": "Intervention status",
+        "state": {
+          "aip_a_venir": "Planned interruption upcoming",
+          "aip_reportee": "Planned interruption postponed",
+          "equipe_designee": "Crew assigned",
+          "equipe_en_route": "Crew on the way",
+          "evaluation_travaux": "Assessing required work",
+          "fin_non_determinee": "End time undetermined",
+          "reprise_graduelle": "Gradual service restoration in progress",
+          "retablissement_en_evaluation": "Restoration time being assessed",
+          "retablissement_prevu": "Restoration expected",
+          "service_retabli": "Service restored",
+          "travaux_en_cours": "Work in progress on the power grid",
+          "travaux_par_priorite": "Work carried out in priority order"
+        }
       },
       "cause": {
-        "name": "Cause"
+        "name": "Cause",
+        "state": {
+          "accident_ou_incident": "Accident or incident",
+          "amelioration_entretien_reseau": "Grid improvement or maintenance",
+          "bris_equipement": "Equipment failure",
+          "conditions_meteorologiques": "Weather conditions",
+          "dommages_animal": "Animal damage",
+          "dommages_vegetation": "Vegetation damage",
+          "incendie_ou_fuite_gaz": "Fire or gas leak",
+          "inconnue": "Unknown",
+          "indeterminee": "Undetermined",
+          "securite_publique": "Interruption - Public safety",
+          "travaux_renforcement_reseau": "Planned work - Grid reinforcement",
+          "travaux_vegetation_elagage": "Vegetation work or pruning",
+          "usure_materiel": "Material wear or degradation"
+        }
       },
       "duree": {
         "name": "Duration"
@@ -90,6 +125,10 @@
     "api_schema_changed": {
       "title": "Hydro-Québec API structure changed",
       "description": "Hydro-Pannes received an unexpected response from the Hydro-Québec API (missing fields: {missing_fields}). The integration may need to be updated to match a new API structure. If this persists after updating, please report it on the issue tracker."
+    },
+    "api_invalid_response": {
+      "title": "Unexpected Hydro-Québec API response",
+      "description": "Hydro-Pannes received a response from the Hydro-Québec API in an unexpected format (a list of locations was expected). Entities stay unavailable until a valid response arrives. If this persists, check whether an integration update is available and report it on the issue tracker."
     }
   }
 }
