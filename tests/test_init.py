@@ -252,6 +252,58 @@ async def test_migration_v1_drops_stored_name(hass: HomeAssistant, aioclient_moc
     assert entry.title == "Maison"
 
 
+async def test_migration_2_1_drops_leftover_options(hass: HomeAssistant, aioclient_mock) -> None:
+    """Options left behind by the removed options flow are cleared."""
+    aioclient_mock.get(API_URL.format(LIEU), json=PAYLOAD)
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        unique_id=LIEU,
+        data={CONF_LIEU_CONSO: LIEU},
+        options={"json_log": True},
+        title="Maison",
+        version=2,
+        minor_version=1,
+    )
+    entry.add_to_hass(hass)
+
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    assert (entry.version, entry.minor_version) == (2, 2)
+    assert entry.options == {}
+    assert entry.data == {CONF_LIEU_CONSO: LIEU}
+
+
+async def test_reconfigure_reloads_once_through_the_listener(
+    hass: HomeAssistant, aioclient_mock, caplog
+) -> None:
+    """Reconfiguring a loaded entry reloads it without Home Assistant's double-reload report."""
+    other = "9876543210"
+    aioclient_mock.get(API_URL.format(LIEU), json=PAYLOAD)
+    aioclient_mock.get(
+        API_URL.format(other), json=[{"etat": "A", "idLieuConso": other, "interruptions": []}]
+    )
+    entry = _entry()
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    result = await entry.start_reconfigure_flow(hass)
+    with patch("custom_components.hydropannes.config_flow.validate_lieu_conso"):
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"], {CONF_LIEU_CONSO: other}
+        )
+    await hass.async_block_till_done()
+
+    assert result["reason"] == "reconfigure_successful"
+    assert entry.state is ConfigEntryState.LOADED
+    # The reload rebuilt the coordinator for the new number.
+    assert entry.runtime_data.lieu_conso == other
+    # One setup, hence one first refresh, for the new number: a second reload would fetch it twice.
+    assert sum(str(url).endswith(other) for _, url, *_ in aioclient_mock.mock_calls) == 1
+    assert "should use it for scheduling a reload" not in caplog.text
+
+
 async def test_api_compatibility_sensor_survives_a_broken_payload(
     hass: HomeAssistant, aioclient_mock
 ) -> None:

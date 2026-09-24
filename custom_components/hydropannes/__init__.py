@@ -66,6 +66,11 @@ async def async_migrate_entry(hass: HomeAssistant, entry: HydroPannesConfigEntry
         hass.config_entries.async_update_entry(entry, data=data, version=2)
         _LOGGER.debug("Migrated config entry %s from version 1 to 2", entry.entry_id)
 
+    if entry.version == 2 and entry.minor_version < 2:
+        # The removed options flow left its values behind (e.g. json_log); nothing reads them any more.
+        hass.config_entries.async_update_entry(entry, options={}, minor_version=2)
+        _LOGGER.debug("Migrated config entry %s to version 2.2", entry.entry_id)
+
     return True
 
 
