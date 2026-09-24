@@ -82,8 +82,7 @@ L'appareil est renommé immédiatement. Les `entity_id` déjà attribués ne cha
 
 ### Modifier le numéro de lieu de consommation
 
-Si vous avez saisi un mauvais numéro, corrigez-le sans supprimer l'appareil
-(les entités et l'historique sont conservés) :
+Si vous avez saisi un mauvais numéro, corrigez-le sans supprimer l'appareil (les entités et l'historique sont conservés) :
 
 1. **Paramètres** → **Appareils et services** → **Hydro-Pannes**
 2. Cliquer sur les 3 points à côté du lieu → **Reconfigurer**
@@ -254,8 +253,7 @@ automation:
 
 ## Journaliser les changements (événement)
 
-À chaque changement de données d'un lieu, l'intégration émet l'événement
-`hydropannes_data_changed` sur le bus Home Assistant, avec le payload complet :
+À chaque changement de données d'un lieu, l'intégration émet l'événement `hydropannes_data_changed` sur le bus Home Assistant, avec le payload complet :
 
 | Champ | Description |
 |-------|-------------|
