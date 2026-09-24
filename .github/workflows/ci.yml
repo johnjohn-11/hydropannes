@@ -34,13 +34,13 @@ jobs:
           python-version: "3.13"
 
       - name: Install ruff
-        run: pip install ruff
+        run: pip install "$(grep "^ruff==" requirements-test.txt)"
 
       - name: Run ruff check
-        run: ruff check custom_components/hydropannes
+        run: ruff check custom_components/hydropannes tests
 
       - name: Run ruff format check
-        run: ruff format --check custom_components/hydropannes
+        run: ruff format --check custom_components/hydropannes tests
 
   type-check:
     name: Type Check
@@ -126,6 +126,7 @@ jobs:
             "custom_components/hydropannes/binary_sensor.py"
             "custom_components/hydropannes/config_flow.py"
             "custom_components/hydropannes/diagnostics.py"
+            "custom_components/hydropannes/entity.py"
             "custom_components/hydropannes/strings.json"
             "custom_components/hydropannes/icons.json"
             "custom_components/hydropannes/translations/en.json"
