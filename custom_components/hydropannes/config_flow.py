@@ -79,8 +79,9 @@ async def validate_lieu_conso(hass: HomeAssistant, lieu_conso: str) -> None:
 class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Handle the initial configuration flow for Hydro-Pannes."""
 
-    # Version 2 dropped the location name from entry.data; see async_migrate_entry in __init__.py.
+    # Version 2 dropped the location name from entry.data, 2.2 the leftover options; see async_migrate_entry in __init__.py.
     VERSION = 2
+    MINOR_VERSION = 2
 
     async def _async_validate(self, lieu: str) -> dict[str, str]:
         """Validate a number and return the form errors, empty when it is valid.
@@ -145,7 +146,8 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 for entry in self.hass.config_entries.async_entries(DOMAIN):
                     if entry.entry_id != reconfigure_entry.entry_id and entry.unique_id == lieu:
                         return self.async_abort(reason="already_configured")
-                return self.async_update_reload_and_abort(
+                # The update listener reloads the entry when the data changes. Home Assistant reports a flow that also schedules its own reload for an entry with a listener.
+                return self.async_update_and_abort(
                     reconfigure_entry,
                     unique_id=lieu,
                     data_updates={CONF_LIEU_CONSO: lieu},
