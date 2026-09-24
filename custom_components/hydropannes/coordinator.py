@@ -117,9 +117,15 @@ class HydroPannesDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         # root-level schema.  True until proven otherwise.
         self.api_compatible: bool = True
 
-        # Stable id for the repair issue raised when the API schema drifts,
-        # so it can be created and cleared for this location specifically.
+        # Stable ids for the repair issues raised for this location: one for a payload whose shape is not the expected list, one for a payload that is a list but no longer carries the expected root fields.
         self._api_issue_id: str = f"api_incompatible_{entry.entry_id}"
+        self._invalid_response_issue_id: str = f"api_invalid_response_{entry.entry_id}"
+
+        # Whether the invalid-response repair issue is currently raised.
+        self._invalid_response_flagged: bool = False
+
+        # Whether missing root fields have been logged since the schema was last seen intact.  Kept apart from api_compatible, which an invalid payload also clears, so that path cannot suppress this log.
+        self._missing_root_logged: bool = False
 
         # Hash of the last payload, used for change detection.
         self._last_hash: str | None = None
@@ -201,17 +207,24 @@ class HydroPannesDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
                         data = await response.json()
 
-                        if not data or not isinstance(data, list):
-                            self.api_compatible = False
-                            self._raise_failure("API returned invalid data format (expected list)")
+                        if not data or not isinstance(data, list) or not isinstance(data[0], dict):
+                            # Surface this through Repairs too: the update fails, so entities other than the API-compatibility sensor go unavailable and cannot report it.
+                            self._flag_invalid_response()
+                            self._raise_failure(
+                                "API returned invalid data format (expected a list of objects)"
+                            )
 
                         result: dict[str, Any] = data[0]
+
+                        # A well-formed payload clears the invalid-response issue.
+                        self._clear_invalid_response()
 
                         # --- Option A: validate required root-level fields ---
                         missing_root = EXPECTED_ROOT_FIELDS - result.keys()
                         if missing_root:
-                            if self.api_compatible:
+                            if not self._missing_root_logged:
                                 # Log once per transition to avoid log spam.
+                                self._missing_root_logged = True
                                 _LOGGER.error(
                                     "Unrecognized or changed Hydro-Québec API structure "
                                     "— missing fields: %s",
@@ -235,6 +248,7 @@ class HydroPannesDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                                 # Schema recovered — clear the repair issue.
                                 ir.async_delete_issue(self.hass, DOMAIN, self._api_issue_id)
                             self.api_compatible = True
+                            self._missing_root_logged = False
 
                         # --- Option C: warn on unknown interruption fields ---
                         # Only fires during an active panne (interruptions list
@@ -304,6 +318,40 @@ class HydroPannesDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 self._raise_failure(f"Unexpected error: {err}")
 
         self._raise_failure("Unknown error")
+
+    # -----------------------------------------------------------------------
+    # API response validation
+    # -----------------------------------------------------------------------
+
+    def _flag_invalid_response(self) -> None:
+        """Mark the API incompatible and raise a repair issue.
+
+        Called when the payload is not a non-empty list of objects. Unlike a missing root field, this also fails the update, so every entity except the API-compatibility sensor goes unavailable — Repairs is then the only place the user can see what happened.
+        """
+        self.api_compatible = False
+        if self._invalid_response_flagged:
+            return
+        self._invalid_response_flagged = True
+        _LOGGER.error(
+            "Hydro-Québec API returned an unexpected payload shape for lieu %s "
+            "(expected a non-empty list of objects)",
+            self.lieu_conso,
+        )
+        ir.async_create_issue(
+            self.hass,
+            DOMAIN,
+            self._invalid_response_issue_id,
+            is_fixable=False,
+            severity=ir.IssueSeverity.WARNING,
+            translation_key="api_invalid_response",
+        )
+
+    def _clear_invalid_response(self) -> None:
+        """Clear the invalid-response repair issue once the payload is sane."""
+        if not self._invalid_response_flagged:
+            return
+        self._invalid_response_flagged = False
+        ir.async_delete_issue(self.hass, DOMAIN, self._invalid_response_issue_id)
 
     # -----------------------------------------------------------------------
     # Failure handling

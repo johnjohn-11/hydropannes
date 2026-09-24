@@ -72,10 +72,8 @@ async def async_get_config_entry_diagnostics(
             "version": entry.version,
             "domain": entry.domain,
             "title": entry.title,
-            "data": {
-                "lieu_consommation": masked_lieu,
-                "nom_lieu": entry.data.get("nom_lieu"),
-            },
+            # The location name is the entry title, reported above.
+            "data": {"lieu_consommation": masked_lieu},
             "options": dict(entry.options),
         },
         "coordinator": coordinator_info,

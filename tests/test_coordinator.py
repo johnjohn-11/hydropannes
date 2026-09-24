@@ -11,6 +11,7 @@ import logging
 from typing import TYPE_CHECKING
 from unittest.mock import patch
 
+from homeassistant.helpers import issue_registry as ir
 from homeassistant.helpers.update_coordinator import UpdateFailed
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry, async_capture_events
@@ -216,3 +217,45 @@ async def test_invalid_payload_shape_marks_incompatible(
         await coordinator._async_update_data()
 
     assert coordinator.api_compatible is False
+
+
+@pytest.mark.parametrize("payload", [["x"], [None], [[]]])
+async def test_non_object_first_item_is_invalid_response(
+    hass: HomeAssistant, aioclient_mock, payload
+) -> None:
+    """A list whose first item is not an object keeps the Repairs issue up.
+
+    Clearing the issue before checking the item would leave the user with every entity unavailable and nothing in Repairs explaining why.
+    """
+    aioclient_mock.get(API_URL.format(LIEU), json={"not": "a list"})
+    coordinator = _coordinator(hass)
+    with pytest.raises(UpdateFailed):
+        await coordinator._async_update_data()
+
+    aioclient_mock.clear_requests()
+    aioclient_mock.get(API_URL.format(LIEU), json=payload)
+    with pytest.raises(UpdateFailed):
+        await coordinator._async_update_data()
+
+    issue_id = f"api_invalid_response_{coordinator.config_entry.entry_id}"
+    assert ir.async_get(hass).async_get_issue(DOMAIN, issue_id) is not None
+    assert coordinator.api_compatible is False
+
+
+async def test_missing_fields_logged_after_invalid_response(
+    hass: HomeAssistant, aioclient_mock, caplog
+) -> None:
+    """Missing root fields are logged even when an invalid payload came first."""
+    aioclient_mock.get(API_URL.format(LIEU), json={"not": "a list"})
+    coordinator = _coordinator(hass)
+    with pytest.raises(UpdateFailed):
+        await coordinator._async_update_data()
+
+    aioclient_mock.clear_requests()
+    aioclient_mock.get(API_URL.format(LIEU), json=[{"idLieuConso": LIEU}])
+    with caplog.at_level(logging.ERROR):
+        for _ in range(3):
+            await coordinator._async_update_data()
+
+    errors = [r for r in caplog.records if "missing fields" in r.message]
+    assert len(errors) == 1

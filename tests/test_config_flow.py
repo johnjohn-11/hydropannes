@@ -2,7 +2,7 @@
 
 These drive the real Home Assistant flow machinery (unlike the mixin unit
 tests, which stub the coordinator). The Hydro-Québec API is never contacted:
-validate_input and async_setup_entry are patched so no socket is opened.
+validate_lieu_conso and async_setup_entry are patched so no socket is opened.
 """
 
 from __future__ import annotations
@@ -25,7 +25,7 @@ from custom_components.hydropannes.const import CONF_LIEU_CONSO, CONF_NOM_LIEU, 
 if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
 
-_VALIDATE = "custom_components.hydropannes.config_flow.validate_input"
+_VALIDATE = "custom_components.hydropannes.config_flow.validate_lieu_conso"
 _SETUP = "custom_components.hydropannes.async_setup_entry"
 
 
@@ -44,7 +44,7 @@ async def test_user_flow_creates_entry(hass: HomeAssistant) -> None:
     assert result["step_id"] == "user"
 
     with (
-        patch(_VALIDATE, return_value={"title": "Maison"}),
+        patch(_VALIDATE, return_value=None),
         patch(_SETUP, return_value=True),
     ):
         result = await hass.config_entries.flow.async_configure(
@@ -54,8 +54,10 @@ async def test_user_flow_creates_entry(hass: HomeAssistant) -> None:
         await hass.async_block_till_done()
 
     assert result["type"] is FlowResultType.CREATE_ENTRY
+    # The supplied name becomes the entry title and is not copied into data.
     assert result["title"] == "Maison"
-    assert result["data"] == {CONF_LIEU_CONSO: "0123456789", CONF_NOM_LIEU: "Maison"}
+    assert result["data"] == {CONF_LIEU_CONSO: "0123456789"}
+    assert CONF_NOM_LIEU not in result["data"]
 
 
 async def test_user_flow_strips_whitespace(hass: HomeAssistant) -> None:
@@ -64,7 +66,7 @@ async def test_user_flow_strips_whitespace(hass: HomeAssistant) -> None:
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
     with (
-        patch(_VALIDATE, return_value={"title": "Maison"}) as validate,
+        patch(_VALIDATE, return_value=None) as validate,
         patch(_SETUP, return_value=True),
     ):
         result = await hass.config_entries.flow.async_configure(
@@ -75,8 +77,8 @@ async def test_user_flow_strips_whitespace(hass: HomeAssistant) -> None:
 
     assert result["type"] is FlowResultType.CREATE_ENTRY
     assert result["data"][CONF_LIEU_CONSO] == "0123456789"
-    # validate_input receives the already-stripped value.
-    assert validate.call_args.args[1][CONF_LIEU_CONSO] == "0123456789"
+    # validate_lieu_conso receives the already-stripped number.
+    assert validate.call_args.args[1] == "0123456789"
 
 
 @pytest.mark.parametrize(
@@ -107,13 +109,14 @@ async def test_user_flow_duplicate_aborts(hass: HomeAssistant) -> None:
     MockConfigEntry(
         domain=DOMAIN,
         unique_id="0123456789",
-        data={CONF_LIEU_CONSO: "0123456789", CONF_NOM_LIEU: "Maison"},
+        data={CONF_LIEU_CONSO: "0123456789"},
+        version=2,
     ).add_to_hass(hass)
 
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
-    with patch(_VALIDATE, return_value={"title": "Chalet"}):
+    with patch(_VALIDATE, return_value=None):
         result = await hass.config_entries.flow.async_configure(
             result["flow_id"],
             {CONF_LIEU_CONSO: "0123456789", CONF_NOM_LIEU: "Chalet"},
@@ -128,8 +131,9 @@ async def test_reconfigure_updates_number(hass: HomeAssistant) -> None:
     entry = MockConfigEntry(
         domain=DOMAIN,
         unique_id="0123456789",
-        data={CONF_LIEU_CONSO: "0123456789", CONF_NOM_LIEU: "Maison"},
+        data={CONF_LIEU_CONSO: "0123456789"},
         title="Maison",
+        version=2,
     )
     entry.add_to_hass(hass)
 
@@ -138,7 +142,7 @@ async def test_reconfigure_updates_number(hass: HomeAssistant) -> None:
     assert result["step_id"] == "reconfigure"
 
     with (
-        patch(_VALIDATE, return_value={"title": "Maison"}),
+        patch(_VALIDATE, return_value=None),
         patch(_SETUP, return_value=True),
     ):
         result = await hass.config_entries.flow.async_configure(
@@ -150,8 +154,8 @@ async def test_reconfigure_updates_number(hass: HomeAssistant) -> None:
     assert result["reason"] == "reconfigure_successful"
     assert entry.data[CONF_LIEU_CONSO] == "9876543210"
     assert entry.unique_id == "9876543210"
-    # The friendly name is untouched by reconfigure.
-    assert entry.data[CONF_NOM_LIEU] == "Maison"
+    # The friendly name lives in the title and is untouched by reconfigure.
+    assert entry.title == "Maison"
 
 
 async def test_reconfigure_to_other_entry_number_aborts(hass: HomeAssistant) -> None:
@@ -159,18 +163,20 @@ async def test_reconfigure_to_other_entry_number_aborts(hass: HomeAssistant) -> 
     other = MockConfigEntry(
         domain=DOMAIN,
         unique_id="1111111111",
-        data={CONF_LIEU_CONSO: "1111111111", CONF_NOM_LIEU: "Chalet"},
+        data={CONF_LIEU_CONSO: "1111111111"},
+        version=2,
     )
     other.add_to_hass(hass)
     entry = MockConfigEntry(
         domain=DOMAIN,
         unique_id="0123456789",
-        data={CONF_LIEU_CONSO: "0123456789", CONF_NOM_LIEU: "Maison"},
+        data={CONF_LIEU_CONSO: "0123456789"},
+        version=2,
     )
     entry.add_to_hass(hass)
 
     result = await entry.start_reconfigure_flow(hass)
-    with patch(_VALIDATE, return_value={"title": "Maison"}):
+    with patch(_VALIDATE, return_value=None):
         result = await hass.config_entries.flow.async_configure(
             result["flow_id"], {CONF_LIEU_CONSO: "1111111111"}
         )
