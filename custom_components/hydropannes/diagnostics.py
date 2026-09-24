@@ -36,9 +36,6 @@ async def async_get_config_entry_diagnostics(
     """
     coordinator = entry.runtime_data
 
-    lieu_conso = coordinator.lieu_conso
-    masked_lieu = f"****{lieu_conso[-4:]}" if len(lieu_conso) > 4 else "****"
-
     coordinator_info: dict[str, Any] = {
         "last_update_success": coordinator.last_update_success,
         "update_interval": str(coordinator.update_interval),
@@ -73,7 +70,7 @@ async def async_get_config_entry_diagnostics(
             "domain": entry.domain,
             "title": entry.title,
             # The location name is the entry title, reported above.
-            "data": {"lieu_consommation": masked_lieu},
+            "data": {"lieu_consommation": _mask(coordinator.lieu_conso)},
             "options": dict(entry.options),
         },
         "coordinator": coordinator_info,
@@ -95,7 +92,11 @@ def _redact_data(data: dict[str, Any]) -> dict[str, Any]:
     redacted = copy.deepcopy(data)
 
     if "idLieuConso" in redacted:
-        lieu = redacted["idLieuConso"]
-        redacted["idLieuConso"] = f"****{lieu[-4:]}" if len(lieu) > 4 else "****"
+        redacted["idLieuConso"] = _mask(str(redacted["idLieuConso"]))
 
     return redacted
+
+
+def _mask(lieu: str) -> str:
+    """Hide a consumption location number except for its last 4 digits."""
+    return f"****{lieu[-4:]}" if len(lieu) > 4 else "****"
