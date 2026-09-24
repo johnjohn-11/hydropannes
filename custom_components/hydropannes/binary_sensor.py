@@ -25,7 +25,7 @@ from .entity import HydroPannesEntity
 
 if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
-    from homeassistant.helpers.entity_platform import AddEntitiesCallback
+    from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
     from . import HydroPannesConfigEntry
 
@@ -48,7 +48,7 @@ INTERVENTION_PLANIFIEE_ATTRIBUTE_KEYS = (
 async def async_setup_entry(
     hass: HomeAssistant,
     entry: HydroPannesConfigEntry,
-    async_add_entities: AddEntitiesCallback,
+    async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
     """Set up Hydro-Pannes binary sensors for a config entry."""
     coordinator = entry.runtime_data

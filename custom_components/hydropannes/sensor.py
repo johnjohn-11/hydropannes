@@ -30,7 +30,7 @@ if TYPE_CHECKING:
     from datetime import datetime
 
     from homeassistant.core import HomeAssistant
-    from homeassistant.helpers.entity_platform import AddEntitiesCallback
+    from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
     from . import HydroPannesConfigEntry
 
@@ -43,7 +43,7 @@ PARALLEL_UPDATES = 0
 async def async_setup_entry(
     hass: HomeAssistant,
     entry: HydroPannesConfigEntry,
-    async_add_entities: AddEntitiesCallback,
+    async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
     """Set up Hydro-Pannes sensors for a config entry."""
     coordinator = entry.runtime_data
