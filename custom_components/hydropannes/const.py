@@ -161,6 +161,7 @@ TYPE_FIN_PREVUE_CODES = {
 STATUT_INTERVENTION_OPTIONS = [
     "interruption_planifiee_a_venir",
     "interruption_planifiee_reportee",
+    "interruption_planifiee_annulee",
     "equipe_designee",
     "evaluation_travaux",
     "fin_non_determinee",

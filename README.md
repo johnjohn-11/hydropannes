@@ -214,8 +214,9 @@ Cet attribut n'est pas enregistré dans l'historique de Home Assistant.
 | `service_retabli` | Service rétabli |
 | `interruption_planifiee_a_venir` | Interruption planifiée à venir |
 | `interruption_planifiee_reportee` | Interruption planifiée reportée |
+| `interruption_planifiee_annulee` | Interruption planifiée annulée |
 
-Pendant une interruption planifiée en cours, l'étape est `retablissement_prevu` dès que l'heure de fin est connue, sinon `travaux_en_cours`, comme sur le site.
+Pour une interruption planifiée qui n'est pas en cours, l'état est `interruption_planifiee_a_venir`, `interruption_planifiee_reportee` ou `interruption_planifiee_annulee`, comme pour `sensor.*_info_pannes`. Une interruption annulée reste annulée même une fois sa date passée. Pendant une interruption planifiée en cours, l'étape est `retablissement_prevu` dès que l'heure de fin est connue, sinon `travaux_en_cours`, comme sur le site.
 
 ### `sensor.*_retablissement`
 

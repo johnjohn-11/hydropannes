@@ -66,6 +66,7 @@
         "state": {
           "interruption_planifiee_a_venir": "Interruption planifiée à venir",
           "interruption_planifiee_reportee": "Interruption planifiée reportée",
+          "interruption_planifiee_annulee": "Interruption planifiée annulée",
           "equipe_designee": "Équipe désignée",
           "evaluation_travaux": "Évaluation des travaux requis",
           "fin_non_determinee": "Fin non déterminée",

@@ -215,12 +215,15 @@ def test_planned_in_progress_never_under_review() -> None:
     assert build(HydroPannesRetablissementSensor, payload).native_value == "prevu"
 
 
-def test_upcoming_planned_has_no_step() -> None:
+def test_upcoming_planned_has_no_restoration_step() -> None:
     intr = make_interruption(
         interruptionPlanifiee=True, dateDebut=hours_from_now(24), dateFin=hours_from_now(26)
     )
     payload = make_payload(etat="A", interruptions=[intr])
-    assert build(HydroPannesStatutInterventionSensor, payload).native_value is None
+    assert (
+        build(HydroPannesStatutInterventionSensor, payload).native_value
+        == "interruption_planifiee_a_venir"
+    )
     assert build(HydroPannesRetablissementSensor, payload).native_value is None
 
 
@@ -271,3 +274,37 @@ def test_info_pannes_follows_the_nearest_planned() -> None:
     payload = make_payload(etat="A", interruptions=[later, nearest])
     sensor = build(HydroPannesInfoPannesSensor, payload)
     assert sensor.native_value == "interruption_planifiee_reportee"
+
+
+# ---------------------------------------------------------------------------
+# Intervention status of a planned interruption that is not under way
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("overrides", "expected"),
+    [
+        ({"etat": "P"}, "interruption_planifiee_a_venir"),
+        ({"etat": "E", "dateDebutDecalage": hours_from_now(30)}, "interruption_planifiee_a_venir"),
+        (
+            {
+                "etat": "R",
+                "dateDebutReport": hours_from_now(30),
+                "dateFinReport": hours_from_now(34),
+            },
+            "interruption_planifiee_reportee",
+        ),
+        ({"etat": "A", "codeRemarque": "91"}, "interruption_planifiee_annulee"),
+    ],
+)
+def test_statut_of_planned_not_under_way(overrides, expected) -> None:
+    payload = make_payload(etat="A", interruptions=[_planned(24, **overrides)])
+    assert build(HydroPannesStatutInterventionSensor, payload).native_value == expected
+
+
+def test_cancelled_planned_stays_cancelled_once_its_slot_is_past() -> None:
+    payload = make_payload(etat="A", interruptions=[_planned(-10, etat="A")])
+    assert (
+        build(HydroPannesStatutInterventionSensor, payload).native_value
+        == "interruption_planifiee_annulee"
+    )
