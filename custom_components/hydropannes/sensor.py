@@ -110,15 +110,15 @@ class HydroPannesInfoPannesSensor(HydroPannesSensorBase):
             return "service_retabli"
 
         if planned:
-            if self._is_aip_reportee(planned):
-                return "aip_reportee"
-            if self._is_aip_annulee(planned):
-                return "aip_annulee"
+            if self._is_planned_postponed(planned):
+                return "interruption_planifiee_reportee"
+            if self._is_planned_cancelled(planned):
+                return "interruption_planifiee_annulee"
             if self._is_outage_terminated(planned):
-                return "aip_terminee"
+                return "interruption_planifiee_terminee"
             if main_etat == "N":
-                return "aip_en_cours"
-            return "aip_a_venir"
+                return "interruption_planifiee_en_cours"
+            return "interruption_planifiee_a_venir"
 
         if main_etat == "A":
             return "aucune_panne"
@@ -196,7 +196,7 @@ class HydroPannesFinEstimeeSensor(HydroPannesSensorBase):
         outage = self._get_current_interruption()
         if not outage:
             return None, False, False
-        if outage.get("etat") == "R" or self._is_aip_reportee(outage):
+        if outage.get("etat") == "R" or self._is_planned_postponed(outage):
             _, fin_report = self._get_effective_dates(outage)
             if fin_report:
                 return fin_report, False, True
@@ -249,10 +249,10 @@ class HydroPannesStatutInterventionSensor(HydroPannesSensorBase):
             return None
         if self._is_outage_terminated(outage):
             return "service_retabli"
-        if self._is_aip_reportee(outage):
-            return "aip_reportee"
+        if self._is_planned_postponed(outage):
+            return "interruption_planifiee_reportee"
         if outage.get("etat") == "R":
-            return "aip_a_venir"
+            return "interruption_planifiee_a_venir"
         if self._is_reprise_graduelle(outage):
             return "reprise_graduelle"
         code = outage.get("codeIntervention")
@@ -319,7 +319,7 @@ class HydroPannesDureeSensor(HydroPannesSensorBase):
     def native_value(self) -> int | None:
         """Return the interruption duration in seconds.
 
-        Uses the effective start/end dates so postponed or rescheduled AIPs
+        Uses the effective start/end dates so postponed or rescheduled planned interruptions
         are measured against their real (rescheduled) window rather than the
         cancelled original slot. Returns None when the interruption has not
         started yet (e.g. an upcoming planned intervention), which avoids
