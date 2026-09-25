@@ -21,6 +21,7 @@ from homeassistant.components.binary_sensor import (
 )
 from homeassistant.const import EntityCategory
 
+from .const import GRAP_DUREE_PREVUE_MINUTES
 from .entity import HydroPannesEntity
 
 if TYPE_CHECKING:
@@ -103,28 +104,32 @@ class HydroPannesInterventionPlanifieeBinarySensor(HydroPannesBinarySensorBase):
         """Return True if a planned intervention that is neither cancelled nor terminated exists."""
         if not self.coordinator.data:
             return None
-        return self._get_pending_planned() is not None
+        return bool(self._get_pending_planned())
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
         """Return key fields from the first planned interruption that is neither cancelled nor terminated."""
-        planned = self._get_pending_planned()
-        if not planned:
+        pending = self._get_pending_planned()
+        if not pending:
             return {}
-        return self._interruption_attributes(planned, INTERVENTION_PLANIFIEE_ATTRIBUTE_KEYS)
+        attrs = self._interruption_attributes(pending[0], INTERVENTION_PLANIFIEE_ATTRIBUTE_KEYS)
+        if len(pending) > 1:
+            attrs["interruptions_suivantes"] = [self._suivante(i) for i in pending[1:]]
+        return attrs
 
-    def _get_pending_planned(self) -> dict[str, Any] | None:
-        """Return the first planned interruption that is neither cancelled nor terminated."""
-        return next(
-            (
-                i
-                for i in self._get_interruptions()
-                if self._is_planned_intervention(i)
-                and not self._is_planned_cancelled(i)
-                and not self._is_outage_terminated(i)
-            ),
-            None,
-        )
+    def _suivante(self, intr: dict[str, Any]) -> dict[str, Any]:
+        """Summarize one of the other upcoming planned interruptions, as the site lists them."""
+        debut, fin = self._get_effective_dates(intr)
+        duree = intr.get("dureePrevu")
+        item: dict[str, Any] = {
+            "debut": debut.isoformat() if debut else None,
+            "fin": fin.isoformat() if fin else None,
+            "duree_prevue": duree,
+        }
+        # The site warns about a possible gradual restoration from 480 minutes of planned work.
+        if isinstance(duree, int | float) and duree >= GRAP_DUREE_PREVUE_MINUTES:
+            item["reprise_graduelle_possible"] = True
+        return item
 
 
 class HydroPannesAPICompatibilityBinarySensor(HydroPannesBinarySensorBase):

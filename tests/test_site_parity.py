@@ -1,4 +1,4 @@
-"""Tests for the behaviours copied from the Info-pannes site: several simultaneous outages, the restoration step and the rounded address count."""
+"""Tests for the behaviours copied from the Info-pannes site: several simultaneous outages, the restoration step, the rounded address count and planned interruptions."""
 
 from __future__ import annotations
 
@@ -9,13 +9,18 @@ from unittest.mock import patch
 from homeassistant.util import dt as dt_util
 import pytest
 
+from custom_components.hydropannes.binary_sensor import (
+    HydroPannesInterventionPlanifieeBinarySensor,
+)
 from custom_components.hydropannes.const import (
     RETABLISSEMENT_DESCRIPTIONS,
     RETABLISSEMENT_DESCRIPTIONS_MAJEUR,
 )
 from custom_components.hydropannes.sensor import (
+    HydroPannesInfoPannesSensor,
     HydroPannesNombreClientSensor,
     HydroPannesRetablissementSensor,
+    HydroPannesStatutInterventionSensor,
 )
 
 from .conftest import FakeCoordinator, hours_from_now, make_interruption, make_payload
@@ -137,15 +142,9 @@ def test_retablissement_major_description() -> None:
     [
         make_payload(etat="A", interruptions=[]),
         make_payload(etat="A", interruptions=[make_interruption(dateFin=hours_from_now(-1))]),
-        make_payload(
-            etat="N",
-            interruptions=[
-                make_interruption(interruptionPlanifiee=True, dateFin=hours_from_now(2))
-            ],
-        ),
     ],
 )
-def test_retablissement_none_without_active_unplanned_outage(payload) -> None:
+def test_retablissement_none_without_outage_or_planned_in_progress(payload) -> None:
     sensor = build(HydroPannesRetablissementSensor, payload)
     assert sensor.native_value is None
     assert sensor.extra_state_attributes == {}
@@ -180,3 +179,95 @@ def test_nb_client_arrondi(nb_client, expected) -> None:
 def test_new_attributes_are_not_recorded() -> None:
     assert "description" in HydroPannesRetablissementSensor._unrecorded_attributes
     assert "arrondi" in HydroPannesNombreClientSensor._unrecorded_attributes
+
+
+# ---------------------------------------------------------------------------
+# Planned interruption in progress
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("date_fin", "statut", "retablissement"),
+    [
+        (hours_from_now(2), "retablissement_prevu", "prevu"),
+        (None, "travaux_en_cours", None),
+    ],
+)
+def test_planned_in_progress_steps(date_fin, statut, retablissement) -> None:
+    # Recorded planned interruptions carry no codeIntervention nor typeFinPrevue.
+    intr = make_interruption(
+        interruptionPlanifiee=True, etat="P", dateDebut=hours_from_now(-1), dateFin=date_fin
+    )
+    payload = make_payload(etat="N", interruptions=[intr])
+    assert build(HydroPannesStatutInterventionSensor, payload).native_value == statut
+    assert build(HydroPannesRetablissementSensor, payload).native_value == retablissement
+
+
+def test_planned_in_progress_never_under_review() -> None:
+    # The site's planned-interruption tracker has no revision step, even past the estimate.
+    intr = make_interruption(
+        interruptionPlanifiee=True,
+        dateDebut=hours_from_now(-3),
+        dateFin=hours_from_now(1),
+        dateFinEstimeeMax=hours_from_now(-1),
+    )
+    payload = make_payload(etat="N", interruptions=[intr])
+    assert build(HydroPannesRetablissementSensor, payload).native_value == "prevu"
+
+
+def test_upcoming_planned_has_no_step() -> None:
+    intr = make_interruption(
+        interruptionPlanifiee=True, dateDebut=hours_from_now(24), dateFin=hours_from_now(26)
+    )
+    payload = make_payload(etat="A", interruptions=[intr])
+    assert build(HydroPannesStatutInterventionSensor, payload).native_value is None
+    assert build(HydroPannesRetablissementSensor, payload).native_value is None
+
+
+# ---------------------------------------------------------------------------
+# Other upcoming planned interruptions
+# ---------------------------------------------------------------------------
+
+
+def _planned(debut: float, **overrides: Any) -> dict[str, Any]:
+    fields = {
+        "interruptionPlanifiee": True,
+        "etat": "P",
+        "dateDebut": hours_from_now(debut),
+        "dateFin": hours_from_now(debut + 4),
+    }
+    return make_interruption(**{**fields, **overrides})
+
+
+def test_planned_sensor_lists_the_others_nearest_first() -> None:
+    later = _planned(72, dureePrevu=240)
+    nearest = _planned(24, dureePrevu=270)
+    long_one = _planned(48, dureePrevu=480)
+    cancelled = _planned(12, etat="A")
+    payload = make_payload(etat="A", interruptions=[later, nearest, long_one, cancelled])
+    attrs = build(HydroPannesInterventionPlanifieeBinarySensor, payload).extra_state_attributes
+    assert attrs["dureePrevu"] == 270  # the nearest non-cancelled one
+    suivantes = attrs["interruptions_suivantes"]
+    assert [s["duree_prevue"] for s in suivantes] == [480, 240]
+    assert suivantes[0]["reprise_graduelle_possible"] is True
+    assert "reprise_graduelle_possible" not in suivantes[1]
+    assert (
+        suivantes[0]["debut"]
+        == dt_util.as_local(dt_util.parse_datetime(long_one["dateDebut"])).isoformat()
+    )
+
+
+def test_planned_sensor_without_others_has_no_list() -> None:
+    payload = make_payload(etat="A", interruptions=[_planned(24, dureePrevu=270)])
+    attrs = build(HydroPannesInterventionPlanifieeBinarySensor, payload).extra_state_attributes
+    assert "interruptions_suivantes" not in attrs
+
+
+def test_info_pannes_follows_the_nearest_planned() -> None:
+    later = _planned(72)
+    nearest = _planned(
+        24, etat="R", dateDebutReport=hours_from_now(30), dateFinReport=hours_from_now(34)
+    )
+    payload = make_payload(etat="A", interruptions=[later, nearest])
+    sensor = build(HydroPannesInfoPannesSensor, payload)
+    assert sensor.native_value == "interruption_planifiee_reportee"

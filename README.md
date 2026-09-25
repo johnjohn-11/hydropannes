@@ -22,7 +22,7 @@ Suivez en temps réel l'état du service électrique pour un ou plusieurs lieux 
 - ⏱️ **Durée de la panne** : Temps écoulé depuis le début
 - 🕐 **Estimation de rétablissement** : Compte à rebours avant le retour du courant
 - 👥 **Adresses touchées** : Nombre de clients affectés
-- 🔧 **Statut d'intervention** : Évaluation, équipe en route, travaux en cours, etc.
+- 🔧 **Statut d'intervention** : Évaluation, équipe désignée, travaux en cours, etc.
 - 📍 **Multi-lieux** : Surveillance de plusieurs adresses indépendantes
 - ⚡ **Polling adaptatif** : Mise à jour toutes les 60 s pendant une panne, 3 min sinon
 - 📊 **Données post-panne** : Informations conservées après le rétablissement
@@ -106,7 +106,7 @@ Chaque lieu de consommation configuré crée un appareil avec les entités suiva
 | `sensor.*_statut_intervention` | Étape de l'intervention (équipe désignée, travaux en cours, etc.) |
 | `sensor.*_cause` | Cause de la panne (le code brut d'Hydro-Québec reste dans l'attribut `code_cause`) |
 | `sensor.*_duree` | Durée de la panne en secondes |
-| `sensor.*_retablissement` | Étape du rétablissement d'une panne en cours : en évaluation, prévu ou en révision |
+| `sensor.*_retablissement` | Étape du rétablissement d'une panne ou d'une interruption planifiée en cours : en évaluation, prévu ou en révision |
 | `sensor.*_delai_avant_retablissement` | Temps restant avant le rétablissement estimé |
 | `sensor.*_derniere_maj` | Horodatage de la dernière mise à jour des données |
 | `sensor.*_lieu_de_consommation` | Numéro de lieu de consommation *(Diagnostic)* |
@@ -116,7 +116,7 @@ Chaque lieu de consommation configuré crée un appareil avec les entités suiva
 | Entité | Description |
 |--------|-------------|
 | `binary_sensor.*_etat_du_service` | `on` = panne active ou intervention planifiée en cours, `off` = service normal |
-| `binary_sensor.*_intervention_planifiee` | `on` = intervention planifiée active ou à venir, et non annulée |
+| `binary_sensor.*_intervention_planifiee` | `on` = intervention planifiée active ou à venir, et non annulée. Ses attributs décrivent la plus proche, et `interruptions_suivantes` liste les autres (début, fin, durée prévue en minutes, et `reprise_graduelle_possible` à partir de 8 heures de travaux, comme sur le site) |
 | `binary_sensor.*_compatibilite_api` | `on` = structure de l'API Hydro-Québec modifiée *(Diagnostic)* |
 
 > 💡 Dans les exemples ci-dessous, `maison` correspond au nom donné au lieu.
@@ -215,6 +215,8 @@ Cet attribut n'est pas enregistré dans l'historique de Home Assistant.
 | `interruption_planifiee_a_venir` | Interruption planifiée à venir |
 | `interruption_planifiee_reportee` | Interruption planifiée reportée |
 
+Pendant une interruption planifiée en cours, l'étape est `retablissement_prevu` dès que l'heure de fin est connue, sinon `travaux_en_cours`, comme sur le site.
+
 ### `sensor.*_retablissement`
 
 | État | Libellé affiché (fr) | Quand |
@@ -223,7 +225,7 @@ Cet attribut n'est pas enregistré dans l'historique de Home Assistant.
 | `prevu` | Rétablissement prévu | Heure estimée, pas encore dépassée |
 | `en_revision` | Heure de rétablissement en cours de révision | Heure estimée dépassée (arrondie au quart d'heure supérieur), ou aucune heure estimée alors que l'équipe est en route ou sur place |
 
-Ce sensor suit la règle du site Info-pannes et n'a de valeur que pendant une panne non planifiée. Il a aussi un attribut `description`, non enregistré dans l'historique.
+Ce sensor suit la règle du site Info-pannes. Pendant une interruption planifiée en cours, il vaut `prevu` dès que l'heure de fin est connue, sans passer en révision, comme sur le site. Il n'a pas de valeur en dehors d'une panne ou d'une interruption planifiée en cours. Il a aussi un attribut `description`, non enregistré dans l'historique.
 
 ---
 

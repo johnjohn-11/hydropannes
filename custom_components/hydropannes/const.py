@@ -259,3 +259,6 @@ RAISON_ANNULATION_CODES = {
     "94": "autres_travaux_urgents",
 }
 RAISON_ANNULATION_DEFAUT = "planification_modifiee"
+
+# dureePrevu (minutes) from which the Info-pannes site warns that a planned interruption may end with a gradual restoration.
+GRAP_DUREE_PREVUE_MINUTES = 480
