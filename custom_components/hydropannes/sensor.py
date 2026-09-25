@@ -278,7 +278,7 @@ class HydroPannesCauseSensor(HydroPannesSensorBase):
     def native_value(self) -> str | None:
         """Return the cause slug.
 
-        "indeterminee" when Hydro-Québec reports no code at all, "inconnue" when it reports a code this integration does not know yet. The raw code is kept in the code_cause attribute either way.
+        "indeterminee" when Hydro-Québec reports no code or a code outside CAUSE_CODES, as the Info-pannes site does. The raw code is kept in the code_cause attribute either way.
         """
         outage = self._get_current_interruption()
         if not outage:
@@ -286,7 +286,7 @@ class HydroPannesCauseSensor(HydroPannesSensorBase):
         code = outage.get("codeCause")
         if code is None:
             return "indeterminee"
-        return CAUSE_CODES.get(str(code), "inconnue")
+        return CAUSE_CODES.get(str(code), "indeterminee")
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
