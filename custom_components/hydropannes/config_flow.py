@@ -79,8 +79,27 @@ async def validate_lieu_conso(hass: HomeAssistant, lieu_conso: str) -> None:
 class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Handle the initial configuration flow for Hydro-Pannes."""
 
-    # Version 2 dropped the location name from entry.data; see async_migrate_entry in __init__.py.
+    # Version 2 dropped the location name from entry.data, 2.2 the leftover options; see async_migrate_entry in __init__.py.
     VERSION = 2
+    MINOR_VERSION = 2
+
+    async def _async_validate(self, lieu: str) -> dict[str, str]:
+        """Validate a number and return the form errors, empty when it is valid.
+
+        The unique-id checks stay in the callers, outside the catch-all below, so the AbortFlow they raise is not turned into an "unknown" error.
+        """
+        try:
+            await validate_lieu_conso(self.hass, lieu)
+        except InvalidFormat:
+            return {CONF_LIEU_CONSO: "invalid_format"}
+        except CannotConnect:
+            return {"base": "cannot_connect"}
+        except InvalidLieuConso:
+            return {"base": "invalid_lieu"}
+        except Exception:
+            _LOGGER.exception("Unexpected exception while validating the consumption location")
+            return {"base": "unknown"}
+        return {}
 
     async def async_step_user(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         """Handle the user-initiated setup step.
@@ -92,21 +111,8 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         errors: dict[str, str] = {}
         if user_input is not None:
             lieu = user_input[CONF_LIEU_CONSO].strip()
-            try:
-                await validate_lieu_conso(self.hass, lieu)
-            except InvalidFormat:
-                errors[CONF_LIEU_CONSO] = "invalid_format"
-            except CannotConnect:
-                errors["base"] = "cannot_connect"
-            except InvalidLieuConso:
-                errors["base"] = "invalid_lieu"
-            except Exception:
-                _LOGGER.exception("Unexpected exception in config flow")
-                errors["base"] = "unknown"
-            else:
-                # Outside the try/except so the AbortFlow raised by
-                # _abort_if_unique_id_configured propagates instead of being
-                # swallowed by the catch-all above.
+            errors = await self._async_validate(lieu)
+            if not errors:
                 await self.async_set_unique_id(lieu)
                 self._abort_if_unique_id_configured()
                 return self.async_create_entry(
@@ -133,24 +139,15 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         errors: dict[str, str] = {}
         if user_input is not None:
             lieu = user_input[CONF_LIEU_CONSO].strip()
-            try:
-                await validate_lieu_conso(self.hass, lieu)
-            except InvalidFormat:
-                errors[CONF_LIEU_CONSO] = "invalid_format"
-            except CannotConnect:
-                errors["base"] = "cannot_connect"
-            except InvalidLieuConso:
-                errors["base"] = "invalid_lieu"
-            except Exception:
-                _LOGGER.exception("Unexpected exception in reconfigure flow")
-                errors["base"] = "unknown"
-            else:
+            errors = await self._async_validate(lieu)
+            if not errors:
                 await self.async_set_unique_id(lieu)
                 # Block adopting a number already configured on a different entry.
                 for entry in self.hass.config_entries.async_entries(DOMAIN):
                     if entry.entry_id != reconfigure_entry.entry_id and entry.unique_id == lieu:
                         return self.async_abort(reason="already_configured")
-                return self.async_update_reload_and_abort(
+                # The update listener reloads the entry when the data changes. Home Assistant reports a flow that also schedules its own reload for an entry with a listener.
+                return self.async_update_and_abort(
                     reconfigure_entry,
                     unique_id=lieu,
                     data_updates={CONF_LIEU_CONSO: lieu},

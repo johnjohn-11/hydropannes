@@ -9,7 +9,7 @@ from __future__ import annotations
 from datetime import timedelta
 import logging
 from typing import TYPE_CHECKING
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from homeassistant.helpers import issue_registry as ir
 from homeassistant.helpers.update_coordinator import UpdateFailed
@@ -26,6 +26,7 @@ from custom_components.hydropannes.const import (
 )
 from custom_components.hydropannes.coordinator import (
     ACTIVE_OUTAGE_UPDATE_INTERVAL,
+    MAX_RETRIES,
     HydroPannesDataUpdateCoordinator,
 )
 
@@ -60,6 +61,23 @@ def _coordinator(hass: HomeAssistant) -> HydroPannesDataUpdateCoordinator:
     )
     entry.add_to_hass(hass)
     return HydroPannesDataUpdateCoordinator(hass, entry)
+
+
+class _FakeResponse:
+    """Async context manager standing in for an aiohttp response."""
+
+    def __init__(self, status: int, payload: object = None) -> None:
+        self.status = status
+        self._payload = payload
+
+    async def __aenter__(self) -> _FakeResponse:
+        return self
+
+    async def __aexit__(self, *exc: object) -> None:
+        return None
+
+    async def json(self) -> object:
+        return self._payload
 
 
 async def test_polling_speeds_up_during_active_outage(hass: HomeAssistant, aioclient_mock) -> None:
@@ -132,6 +150,45 @@ async def test_persistent_server_error_raises_and_records(
     assert coordinator.total_errors == 1
     assert coordinator.last_error is not None
     assert coordinator.last_error["message"]
+    assert len(aioclient_mock.mock_calls) == MAX_RETRIES + 1
+
+
+async def test_persistent_timeout_is_retried_then_fails(
+    hass: HomeAssistant, aioclient_mock
+) -> None:
+    """A timeout is retried like a 5xx before the update fails."""
+    aioclient_mock.get(API_URL.format(LIEU), exc=TimeoutError())
+    coordinator = _coordinator(hass)
+
+    with (
+        patch("custom_components.hydropannes.coordinator.RETRY_DELAY", 0),
+        pytest.raises(UpdateFailed),
+    ):
+        await coordinator._async_update_data()
+
+    assert len(aioclient_mock.mock_calls) == MAX_RETRIES + 1
+    assert coordinator.total_errors == 1
+
+
+async def test_transient_server_error_recovers_on_retry(hass: HomeAssistant) -> None:
+    """A 5xx followed by a good answer succeeds within the same update."""
+    coordinator = _coordinator(hass)
+    responses = iter([_FakeResponse(503), _FakeResponse(200, IDLE_PAYLOAD)])
+    session = MagicMock()
+    session.get.side_effect = lambda _url: next(responses)
+
+    with (
+        patch("custom_components.hydropannes.coordinator.RETRY_DELAY", 0),
+        patch(
+            "custom_components.hydropannes.coordinator.async_get_clientsession",
+            return_value=session,
+        ),
+    ):
+        result = await coordinator._async_update_data()
+
+    assert result == IDLE_PAYLOAD[0]
+    assert session.get.call_count == 2
+    assert coordinator.total_errors == 0
 
 
 async def test_client_error_fails_without_retry(hass: HomeAssistant, aioclient_mock) -> None:

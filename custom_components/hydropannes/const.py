@@ -29,11 +29,11 @@ INFO_PANNES_OPTIONS = [
     "panne_majeure",
     "reprise_graduelle",
     "service_retabli",
-    "aip_en_cours",
-    "aip_a_venir",
-    "aip_terminee",
-    "aip_annulee",
-    "aip_reportee",
+    "interruption_planifiee_en_cours",
+    "interruption_planifiee_a_venir",
+    "interruption_planifiee_terminee",
+    "interruption_planifiee_annulee",
+    "interruption_planifiee_reportee",
 ]
 
 # ---------------------------------------------------------------------------
@@ -136,8 +136,8 @@ TYPE_FIN_PREVUE_CODES = {
 
 # The intervention-status sensor also reuses several info-pannes slugs when the interruption is over, postponed, upcoming, or being gradually restored.
 STATUT_INTERVENTION_OPTIONS = [
-    "aip_a_venir",
-    "aip_reportee",
+    "interruption_planifiee_a_venir",
+    "interruption_planifiee_reportee",
     "equipe_designee",
     "equipe_en_route",
     "evaluation_travaux",
@@ -154,7 +154,7 @@ STATUT_INTERVENTION_OPTIONS = [
 # Interruption bookkeeping (not sensor states)
 # ---------------------------------------------------------------------------
 
-# Codes that indicate a rescheduled AIP (original slot cancelled, new date assigned).
+# Codes that indicate a rescheduled planned interruption (original slot cancelled, new date assigned).
 # codeRemarque meanings (observed empirically): "91" changement à la demande d'un
-# tiers, "92" annulation d'une AIP, "93" report d'une AIP ("91" confirmed in prod).
-AIP_REPORT_CODES = {"91", "93"}
+# tiers, "92" annulation d'une interruption planifiée, "93" report d'une interruption planifiée ("91" confirmed in prod).
+PLANNED_RESCHEDULE_CODES = {"91", "93"}

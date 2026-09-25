@@ -10,19 +10,19 @@ qa: lint format-check type-check validate
 
 # Run ruff linter
 lint:
-    ruff check custom_components/hydropannes
+    ruff check custom_components/hydropannes tests
 
 # Check formatting without modifying
 format-check:
-    ruff format --check custom_components/hydropannes
+    ruff format --check custom_components/hydropannes tests
 
 # Format code
 format:
-    ruff format custom_components/hydropannes
+    ruff format custom_components/hydropannes tests
 
 # Fix linting issues automatically
 fix:
-    ruff check --fix custom_components/hydropannes
+    ruff check --fix custom_components/hydropannes tests
 
 # Run type checking
 type-check:

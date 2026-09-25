@@ -2,3 +2,6 @@
 # version; 0.13.316 pins homeassistant==2026.2.3, matching requirements-ci.txt.
 # It brings pytest, pytest-asyncio, and the HA test helpers transitively.
 pytest-homeassistant-custom-component==0.13.316
+
+# Same version as the ruff-pre-commit hook in .pre-commit-config.yaml. CI installs ruff from this line.
+ruff==0.16.8

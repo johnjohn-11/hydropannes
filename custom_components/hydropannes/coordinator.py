@@ -1,7 +1,7 @@
 """Data update coordinator for Hydro-Pannes.
 
 The coordinator is responsible for:
-- Polling the Hydro-Québec Info-pannes API at a configurable interval.
+- Polling the Hydro-Québec Info-pannes API.
 - Switching to faster polling (ACTIVE_OUTAGE_UPDATE_INTERVAL) during an
   active outage and back to the normal interval once it clears.
 - Retrying transient HTTP 5xx errors and timeouts up to MAX_RETRIES times.
@@ -52,6 +52,7 @@ _LOGGER = logging.getLogger(__name__)
 
 MAX_RETRIES = 2
 RETRY_DELAY = 2  # seconds between retry attempts
+REQUEST_TIMEOUT = 10  # seconds per attempt
 
 # Faster polling interval used while at least one active outage is detected.
 ACTIVE_OUTAGE_UPDATE_INTERVAL = 60  # seconds
@@ -64,13 +65,13 @@ API_HISTORY_SIZE = 5
 # ---------------------------------------------------------------------------
 
 # Fields that the Hydro-Québec API must always return at the root level.
-# Their absence indicates a breaking schema change (Option A validation).
+# Their absence indicates a breaking schema change.
 EXPECTED_ROOT_FIELDS = {"etat", "interruptions", "idLieuConso"}
 
 # All interruption-level fields currently consumed by the integration.
 # Any field returned by HQ that is NOT in this set triggers a warning log,
-# signalling that the API has evolved and the integration may need updating
-# (Option C validation — only fires when a panne is active).
+# signalling that the API has evolved and the integration may need updating.
+# Only fires while a panne is listed: the interruptions list is empty otherwise.
 KNOWN_INTERRUPTION_FIELDS = {
     "dateDebut",
     "dateFin",
@@ -172,156 +173,122 @@ class HydroPannesDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     async def _async_update_data(self) -> dict[str, Any]:
         """Fetch the latest outage data from the Hydro-Québec API.
 
-        Implements a retry loop for transient 5xx errors and network
-        timeouts.  On persistent failure, raises UpdateFailed; HA then marks
-        entities unavailable and keeps retrying on the normal schedule.
+        On persistent failure, raises UpdateFailed; HA then marks entities unavailable and keeps retrying on the normal schedule.
         """
         self.total_polls += 1
+        try:
+            payload = await self._async_fetch()
+            return self._process_payload(payload)
+        except UpdateFailed:
+            raise
+        except Exception as err:
+            _LOGGER.exception("Unexpected error for lieu %s", self.lieu_conso)
+            self._raise_failure(f"Unexpected error: {err}")
 
+    async def _async_fetch(self) -> Any:
+        """Return the decoded API response, retrying 5xx errors, timeouts and connection errors.
+
+        A 4xx fails at once: retrying would not change the answer.
+        """
         url = API_URL.format(self.lieu_conso)
         session = async_get_clientsession(self.hass)
 
-        for attempt in range(MAX_RETRIES + 1):
+        for attempt in range(1, MAX_RETRIES + 2):
             try:
-                async with asyncio.timeout(10):
-                    async with session.get(url) as response:
-                        # Retry on server-side errors; fail immediately on
-                        # client errors (4xx) since retrying would not help.
-                        if 500 <= response.status < 600:
-                            if attempt < MAX_RETRIES:
-                                _LOGGER.debug(
-                                    "API returned %s for lieu %s, retry %s/%s",
-                                    response.status,
-                                    self.lieu_conso,
-                                    attempt + 1,
-                                    MAX_RETRIES,
-                                )
-                                await asyncio.sleep(RETRY_DELAY)
-                                continue
-                            self._raise_failure(
-                                f"API returned {response.status} after {MAX_RETRIES + 1} attempts"
-                            )
-
-                        if response.status != 200:
-                            self._raise_failure(f"API returned status {response.status}")
-
-                        data = await response.json()
-
-                        if not data or not isinstance(data, list) or not isinstance(data[0], dict):
-                            # Surface this through Repairs too: the update fails, so entities other than the API-compatibility sensor go unavailable and cannot report it.
-                            self._flag_invalid_response()
-                            self._raise_failure(
-                                "API returned invalid data format (expected a list of objects)"
-                            )
-
-                        result: dict[str, Any] = data[0]
-
-                        # A well-formed payload clears the invalid-response issue.
-                        self._clear_invalid_response()
-
-                        # --- Option A: validate required root-level fields ---
-                        missing_root = EXPECTED_ROOT_FIELDS - result.keys()
-                        if missing_root:
-                            if not self._missing_root_logged:
-                                # Log once per transition to avoid log spam.
-                                self._missing_root_logged = True
-                                _LOGGER.error(
-                                    "Unrecognized or changed Hydro-Québec API structure "
-                                    "— missing fields: %s",
-                                    missing_root,
-                                )
-                            self.api_compatible = False
-                            # Surface the breaking change to the user via Repairs.
-                            ir.async_create_issue(
-                                self.hass,
-                                DOMAIN,
-                                self._api_issue_id,
-                                is_fixable=False,
-                                severity=ir.IssueSeverity.WARNING,
-                                translation_key="api_schema_changed",
-                                translation_placeholders={
-                                    "missing_fields": ", ".join(sorted(missing_root)),
-                                },
-                            )
-                        else:
-                            if not self.api_compatible:
-                                # Schema recovered — clear the repair issue.
-                                ir.async_delete_issue(self.hass, DOMAIN, self._api_issue_id)
-                            self.api_compatible = True
-                            self._missing_root_logged = False
-
-                        # --- Option C: warn on unknown interruption fields ---
-                        # Only fires during an active panne (interruptions list
-                        # is empty otherwise, so no false positives).
-                        for intr in result.get("interruptions", []):
-                            unknown = intr.keys() - KNOWN_INTERRUPTION_FIELDS
-                            # Warn once per field name: during an outage the coordinator polls every 60 s, so warning on each poll would flood the log for as long as it lasts.
-                            new_fields = unknown - self._warned_unknown_fields
-                            if new_fields:
-                                self._warned_unknown_fields |= new_fields
-                                _LOGGER.warning(
-                                    "New API fields detected in an interruption (lieu %s): "
-                                    "%s — the Hydro-Québec schema may have evolved.",
-                                    self.lieu_conso,
-                                    new_fields,
-                                )
-
-                        # Compute the payload hash once for change detection.
-                        current_hash = hashlib.md5(
-                            json.dumps(result, sort_keys=True).encode(),
-                            usedforsecurity=False,
-                        ).hexdigest()
-                        changed = self._last_hash != current_hash
-                        if changed:
-                            self._last_hash = current_hash
-                            self.total_changes += 1
-                            self._append_history(result)
-                            self._fire_change_event(result)
-
-                        self._adjust_update_interval(result)
-
-                        self.last_success_time = dt_util.utcnow()
-
-                        return result
-
-            except UpdateFailed:
-                # Raised by _raise_failure inside the try block; never retry.
-                raise
-
+                async with asyncio.timeout(REQUEST_TIMEOUT), session.get(url) as response:
+                    if response.status == 200:
+                        return await response.json()
+                    if not 500 <= response.status < 600:
+                        self._raise_failure(f"API returned status {response.status}")
+                    reason = f"API returned {response.status}"
             except TimeoutError:
-                if attempt < MAX_RETRIES:
-                    _LOGGER.debug(
-                        "Timeout for lieu %s, retry %s/%s",
-                        self.lieu_conso,
-                        attempt + 1,
-                        MAX_RETRIES,
-                    )
-                    await asyncio.sleep(RETRY_DELAY)
-                    continue
-                self._raise_failure("Timeout after retries")
-
+                reason = "Timeout"
             except aiohttp.ClientError as err:
-                if attempt < MAX_RETRIES:
-                    _LOGGER.debug(
-                        "Connection error for lieu %s: %s, retry %s/%s",
-                        self.lieu_conso,
-                        err,
-                        attempt + 1,
-                        MAX_RETRIES,
-                    )
-                    await asyncio.sleep(RETRY_DELAY)
-                    continue
-                self._raise_failure(f"Connection error: {err}")
+                reason = f"Connection error: {err}"
 
-            except Exception as err:
-                _LOGGER.exception("Unexpected error for lieu %s", self.lieu_conso)
-                self._raise_failure(f"Unexpected error: {err}")
+            if attempt > MAX_RETRIES:
+                self._raise_failure(f"{reason} after {attempt} attempts")
+            _LOGGER.debug(
+                "%s for lieu %s, retry %s/%s", reason, self.lieu_conso, attempt, MAX_RETRIES
+            )
+            # Outside the response context so the connection is released during the wait.
+            await asyncio.sleep(RETRY_DELAY)
 
-        self._raise_failure("Unknown error")
+        raise AssertionError("unreachable")
+
+    def _process_payload(self, data: Any) -> dict[str, Any]:
+        """Validate a decoded response and update the coordinator's bookkeeping."""
+        if not data or not isinstance(data, list) or not isinstance(data[0], dict):
+            # Surface this through Repairs too: the update fails, so entities other than the API-compatibility sensor go unavailable and cannot report it.
+            self._flag_invalid_response()
+            self._raise_failure("API returned invalid data format (expected a list of objects)")
+
+        result: dict[str, Any] = data[0]
+        self._clear_invalid_response()
+        self._check_root_fields(result)
+        self._warn_unknown_interruption_fields(result)
+
+        current_hash = hashlib.md5(
+            json.dumps(result, sort_keys=True).encode(),
+            usedforsecurity=False,
+        ).hexdigest()
+        if self._last_hash != current_hash:
+            self._last_hash = current_hash
+            self.total_changes += 1
+            self._append_history(result)
+            self._fire_change_event(result)
+
+        self._adjust_update_interval(result)
+        self.last_success_time = dt_util.utcnow()
+        return result
 
     # -----------------------------------------------------------------------
     # API response validation
     # -----------------------------------------------------------------------
+
+    def _check_root_fields(self, result: dict[str, Any]) -> None:
+        """Raise or clear the schema-change repair issue from the root fields present."""
+        missing_root = EXPECTED_ROOT_FIELDS - result.keys()
+        if not missing_root:
+            if not self.api_compatible:
+                ir.async_delete_issue(self.hass, DOMAIN, self._api_issue_id)
+            self.api_compatible = True
+            self._missing_root_logged = False
+            return
+
+        if not self._missing_root_logged:
+            # Log once per transition to avoid log spam.
+            self._missing_root_logged = True
+            _LOGGER.error(
+                "Unrecognized or changed Hydro-Québec API structure — missing fields: %s",
+                missing_root,
+            )
+        self.api_compatible = False
+        ir.async_create_issue(
+            self.hass,
+            DOMAIN,
+            self._api_issue_id,
+            is_fixable=False,
+            severity=ir.IssueSeverity.WARNING,
+            translation_key="api_schema_changed",
+            translation_placeholders={"missing_fields": ", ".join(sorted(missing_root))},
+        )
+
+    def _warn_unknown_interruption_fields(self, result: dict[str, Any]) -> None:
+        """Log interruption fields the integration does not know yet.
+
+        Warns once per field name: during an outage the coordinator polls every 60 s, so warning on each poll would flood the log for as long as it lasts.
+        """
+        for intr in result.get("interruptions", []):
+            new_fields = intr.keys() - KNOWN_INTERRUPTION_FIELDS - self._warned_unknown_fields
+            if new_fields:
+                self._warned_unknown_fields |= new_fields
+                _LOGGER.warning(
+                    "New API fields detected in an interruption (lieu %s): "
+                    "%s — the Hydro-Québec schema may have evolved.",
+                    self.lieu_conso,
+                    new_fields,
+                )
 
     def _flag_invalid_response(self) -> None:
         """Mark the API incompatible and raise a repair issue.
