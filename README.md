@@ -63,12 +63,17 @@ Ou manuellement :
 
 1. **Paramètres** → **Appareils et services** → **+ Ajouter une intégration**
 2. Rechercher « Hydro-Pannes »
-3. Entrer votre **numéro de lieu de consommation** (10 chiffres — voir le guide ci-dessous pour le trouver)
-4. Donner un **nom** à ce lieu (ex. : « Maison », « Chalet »)
+3. Choisir **Rechercher par adresse** et entrer le **code postal**, le **numéro civique** et, s'il y a lieu, l'**appartement**
+4. Si plusieurs lieux correspondent à l'adresse, choisir le bon dans la liste
+5. Donner un **nom** à ce lieu (ex. : « Maison », « Chalet »). L'adresse trouvée est proposée par défaut.
 
-Répétez l'opération pour chaque lieu à surveiller. Chaque lieu crée un appareil indépendant avec ses propres entités.
+L'adresse sert seulement à trouver le numéro de lieu de consommation auprès d'Hydro-Québec, elle n'est pas conservée. La recherche utilise le même service que le site Info-pannes, qu'Hydro-Québec ne documente pas.
+
+Si la recherche ne trouve pas votre lieu, choisissez plutôt **Entrer le numéro de lieu de consommation** à l'étape 3 et entrez le numéro (10 chiffres) avec un nom.
 
 > 📖 **Trouver votre numéro de lieu de consommation** : [Guide domo-quebec](https://github.com/domo-quebec/domo-quebec/blob/main/hydro-quebec/configuration_info-panne.md)
+
+Répétez l'opération pour chaque lieu à surveiller. Chaque lieu crée un appareil indépendant avec ses propres entités.
 
 ### Modifier le nom d'un lieu
 

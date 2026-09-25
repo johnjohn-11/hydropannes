@@ -7,12 +7,18 @@ DOMAIN = "hydropannes"
 
 CONF_LIEU_CONSO = "lieu_consommation"
 CONF_NOM_LIEU = "nom_lieu"
+CONF_CODE_POSTAL = "code_postal"
+CONF_NUMERO_CIVIQUE = "numero_civique"
+CONF_APPARTEMENT = "appartement"
 
 # Bus event fired whenever a location's API payload changes. Carries the full
 # payload so users can log or react to changes from their own automations.
 EVENT_DATA_CHANGED = f"{DOMAIN}_data_changed"
 
 API_URL = "https://services-bs.solutions.hydroquebec.com/pan/web/api/v1/lieux-conso/etats/{}"
+
+# Address lookup used by the Info-pannes site. Hydro-Québec does not document it, so the config flow keeps manual number entry as a fallback.
+SEARCH_URL = "https://services-bs.solutions.hydroquebec.com/pan/web/api/v1/lieux-conso"
 
 UPDATE_INTERVAL = 180  # seconds — default polling interval (no active outage)
 
