@@ -137,11 +137,11 @@ Les quatre sensors ci-dessous sont des énumérations (`device_class: enum`). Le
 | `panne_majeure` | Panne majeure en cours | Panne de grande envergure |
 | `reprise_graduelle` | Rétablissement graduel du service en cours | Retour progressif du courant |
 | `service_retabli` | Service rétabli | Panne terminée récemment |
-| `aip_en_cours` | Interruption planifiée en cours | Travaux planifiés en cours d'exécution |
-| `aip_a_venir` | Interruption planifiée à venir | Travaux planifiés annoncés pour plus tard |
-| `aip_terminee` | Interruption planifiée terminée | Travaux planifiés complétés |
-| `aip_annulee` | Interruption planifiée annulée | Travaux planifiés annulés par Hydro-Québec |
-| `aip_reportee` | Interruption planifiée reportée | Travaux planifiés reportés à une nouvelle date |
+| `interruption_planifiee_en_cours` | Interruption planifiée en cours | Travaux planifiés en cours d'exécution |
+| `interruption_planifiee_a_venir` | Interruption planifiée à venir | Travaux planifiés annoncés pour plus tard |
+| `interruption_planifiee_terminee` | Interruption planifiée terminée | Travaux planifiés complétés |
+| `interruption_planifiee_annulee` | Interruption planifiée annulée | Travaux planifiés annulés par Hydro-Québec |
+| `interruption_planifiee_reportee` | Interruption planifiée reportée | Travaux planifiés reportés à une nouvelle date |
 
 ### `sensor.*_niveau_urgence`
 
@@ -184,8 +184,8 @@ Plusieurs codes d'Hydro-Québec partagent un même état. Le code brut reste dis
 | `fin_non_determinee` | Fin non déterminée |
 | `reprise_graduelle` | Rétablissement graduel du service en cours |
 | `service_retabli` | Service rétabli |
-| `aip_a_venir` | Interruption planifiée à venir |
-| `aip_reportee` | Interruption planifiée reportée |
+| `interruption_planifiee_a_venir` | Interruption planifiée à venir |
+| `interruption_planifiee_reportee` | Interruption planifiée reportée |
 
 ---
 

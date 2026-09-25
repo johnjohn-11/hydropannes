@@ -3,7 +3,7 @@
 Provides three binary sensors per configured location:
 
 - **État du service** (BinarySensorDeviceClass.PROBLEM): ``True`` when an
-  active unplanned outage or active planned intervention (AIP) is in progress.
+  active unplanned outage or active planned intervention is in progress.
 - **Intervention planifiée** (BinarySensorDeviceClass.RUNNING): ``True``
   when at least one non-terminated planned intervention exists.
 - **Compatibilité API** (EntityCategory.DIAGNOSTIC, BinarySensorDeviceClass.PROBLEM):
@@ -69,7 +69,7 @@ class HydroPannesBinarySensorBase(HydroPannesEntity, BinarySensorEntity):
 class HydroPannesEtatServiceBinarySensor(HydroPannesBinarySensorBase):
     """Binary sensor indicating whether there is an active service problem.
 
-    ``True`` when the root etat is "N" (active outage or AIP in progress), ``False`` otherwise, ``None`` before the first fetch.
+    ``True`` when the root etat is "N" (active outage or planned interruption in progress), ``False`` otherwise, ``None`` before the first fetch.
     """
 
     _attr_translation_key = "etat_service"
@@ -78,7 +78,7 @@ class HydroPannesEtatServiceBinarySensor(HydroPannesBinarySensorBase):
 
     @property
     def is_on(self) -> bool | None:
-        """Return True when power is out or an AIP is actively in progress."""
+        """Return True when power is out or a planned interruption is actively in progress."""
         if not self.coordinator.data:
             return None
         # The root etat alone decides: "N" means the service point is not fed, whether or not an interruption object can be matched to it.
@@ -86,7 +86,7 @@ class HydroPannesEtatServiceBinarySensor(HydroPannesBinarySensorBase):
 
 
 class HydroPannesInterventionPlanifieeBinarySensor(HydroPannesBinarySensorBase):
-    """Binary sensor indicating whether a planned intervention (AIP) exists.
+    """Binary sensor indicating whether a planned intervention exists.
 
     Returns ``True`` when at least one non-terminated planned interruption is
     present in the API response (active or upcoming).
@@ -108,7 +108,7 @@ class HydroPannesInterventionPlanifieeBinarySensor(HydroPannesBinarySensorBase):
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
-        """Return key fields from the most relevant non-terminated AIP."""
+        """Return key fields from the most relevant non-terminated planned interruption."""
         if not self.coordinator.data:
             return {}
         interruptions = self._get_interruptions()

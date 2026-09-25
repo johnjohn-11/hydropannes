@@ -38,11 +38,11 @@
           "panne_majeure": "Panne majeure en cours",
           "reprise_graduelle": "Rétablissement graduel du service en cours",
           "service_retabli": "Service rétabli",
-          "aip_en_cours": "Interruption planifiée en cours",
-          "aip_a_venir": "Interruption planifiée à venir",
-          "aip_terminee": "Interruption planifiée terminée",
-          "aip_annulee": "Interruption planifiée annulée",
-          "aip_reportee": "Interruption planifiée reportée"
+          "interruption_planifiee_en_cours": "Interruption planifiée en cours",
+          "interruption_planifiee_a_venir": "Interruption planifiée à venir",
+          "interruption_planifiee_terminee": "Interruption planifiée terminée",
+          "interruption_planifiee_annulee": "Interruption planifiée annulée",
+          "interruption_planifiee_reportee": "Interruption planifiée reportée"
         }
       },
       "niveau_urgence": {
@@ -64,8 +64,8 @@
       "statut_intervention": {
         "name": "Statut intervention",
         "state": {
-          "aip_a_venir": "Interruption planifiée à venir",
-          "aip_reportee": "Interruption planifiée reportée",
+          "interruption_planifiee_a_venir": "Interruption planifiée à venir",
+          "interruption_planifiee_reportee": "Interruption planifiée reportée",
           "equipe_designee": "Équipe désignée",
           "equipe_en_route": "Équipe en route",
           "evaluation_travaux": "Évaluation des travaux requis",

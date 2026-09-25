@@ -1,7 +1,7 @@
 """Regression tests for HydroPannesDureeSensor duration calculation.
 
 Guards against the duration sensor reporting negative values for upcoming
-planned interventions, and against measuring a rescheduled AIP with its
+planned interventions, and against measuring a rescheduled planned interruption with its
 cancelled original slot instead of its effective window.
 """
 
@@ -45,7 +45,7 @@ def test_terminated_outage_duration_uses_window() -> None:
 
 
 def test_future_planned_intervention_returns_none_not_negative() -> None:
-    # Upcoming AIP whose start is in the future and has no dateFin.
+    # Upcoming planned interruption whose start is in the future and has no dateFin.
     intr = make_interruption(
         interruptionPlanifiee=True,
         etat="P",
@@ -56,7 +56,7 @@ def test_future_planned_intervention_returns_none_not_negative() -> None:
     assert duree_for(payload) is None
 
 
-def test_rescheduled_aip_measured_against_report_window() -> None:
+def test_rescheduled_planned_interruption_measured_against_report_window() -> None:
     # Cancelled original slot 48h ago; rescheduled to start 1h ago, end in 1h.
     intr = make_interruption(
         interruptionPlanifiee=True,
