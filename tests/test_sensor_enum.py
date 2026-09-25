@@ -105,7 +105,7 @@ def test_options_have_no_duplicates(cls, options) -> None:
                     )
                 ],
             ),
-            "aip_a_venir",
+            "interruption_planifiee_a_venir",
         ),
         (
             make_payload(
@@ -114,7 +114,7 @@ def test_options_have_no_duplicates(cls, options) -> None:
                     make_interruption(interruptionPlanifiee=True, dateFin=hours_from_now(2))
                 ],
             ),
-            "aip_en_cours",
+            "interruption_planifiee_en_cours",
         ),
         (
             make_payload(
@@ -123,7 +123,7 @@ def test_options_have_no_duplicates(cls, options) -> None:
                     make_interruption(interruptionPlanifiee=True, dateFin=hours_from_now(-1))
                 ],
             ),
-            "aip_terminee",
+            "interruption_planifiee_terminee",
         ),
         (
             make_payload(
@@ -137,7 +137,7 @@ def test_options_have_no_duplicates(cls, options) -> None:
                     )
                 ],
             ),
-            "aip_annulee",
+            "interruption_planifiee_annulee",
         ),
         (
             make_payload(
@@ -154,7 +154,7 @@ def test_options_have_no_duplicates(cls, options) -> None:
                     )
                 ],
             ),
-            "aip_reportee",
+            "interruption_planifiee_reportee",
         ),
     ],
 )

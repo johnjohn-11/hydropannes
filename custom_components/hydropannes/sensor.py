@@ -11,15 +11,11 @@ from homeassistant.components.sensor import (
     SensorStateClass,
 )
 from homeassistant.const import EntityCategory, UnitOfTime
-from homeassistant.helpers.device_registry import DeviceInfo
-from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.util import dt as dt_util
 
 from .const import (
-    ATTRIBUTION,
     CAUSE_CODES,
     CAUSE_OPTIONS,
-    DOMAIN,
     INFO_PANNES_OPTIONS,
     INTERVENTION_CODES,
     INTERVENTION_CODES_MAJEUR,
@@ -28,14 +24,13 @@ from .const import (
     STATUT_INTERVENTION_OPTIONS,
     TYPE_FIN_PREVUE_CODES,
 )
-from .coordinator import HydroPannesDataUpdateCoordinator
-from .helpers import HydroPannesHelperMixin
+from .entity import HydroPannesEntity
 
 if TYPE_CHECKING:
     from datetime import datetime
 
     from homeassistant.core import HomeAssistant
-    from homeassistant.helpers.entity_platform import AddEntitiesCallback
+    from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
     from . import HydroPannesConfigEntry
 
@@ -48,63 +43,30 @@ PARALLEL_UPDATES = 0
 async def async_setup_entry(
     hass: HomeAssistant,
     entry: HydroPannesConfigEntry,
-    async_add_entities: AddEntitiesCallback,
+    async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
     """Set up Hydro-Pannes sensors for a config entry."""
     coordinator = entry.runtime_data
-    nom_lieu = entry.title
 
     async_add_entities(
         [
-            HydroPannesInfoPannesSensor(coordinator, entry, nom_lieu),
-            HydroPannesNiveauUrgenceSensor(coordinator, entry, nom_lieu),
-            HydroPannesNombreClientSensor(coordinator, entry, nom_lieu),
-            HydroPannesDebutSensor(coordinator, entry, nom_lieu),
-            HydroPannesFinEstimeeSensor(coordinator, entry, nom_lieu),
-            HydroPannesStatutInterventionSensor(coordinator, entry, nom_lieu),
-            HydroPannesCauseSensor(coordinator, entry, nom_lieu),
-            HydroPannesDureeSensor(coordinator, entry, nom_lieu),
-            HydroPannesDureeAvantRetablissementSensor(coordinator, entry, nom_lieu),
-            HydroPannesDerniereMAJSensor(coordinator, entry, nom_lieu),
-            HydroPannesLieuConsoSensor(coordinator, entry, nom_lieu),
+            HydroPannesInfoPannesSensor(coordinator, entry),
+            HydroPannesNiveauUrgenceSensor(coordinator, entry),
+            HydroPannesNombreClientSensor(coordinator, entry),
+            HydroPannesDebutSensor(coordinator, entry),
+            HydroPannesFinEstimeeSensor(coordinator, entry),
+            HydroPannesStatutInterventionSensor(coordinator, entry),
+            HydroPannesCauseSensor(coordinator, entry),
+            HydroPannesDureeSensor(coordinator, entry),
+            HydroPannesDureeAvantRetablissementSensor(coordinator, entry),
+            HydroPannesDerniereMAJSensor(coordinator, entry),
+            HydroPannesLieuConsoSensor(coordinator, entry),
         ]
     )
 
 
-class HydroPannesSensorBase(
-    HydroPannesHelperMixin,
-    CoordinatorEntity[HydroPannesDataUpdateCoordinator],
-    SensorEntity,
-):
+class HydroPannesSensorBase(HydroPannesEntity, SensorEntity):
     """Base class for all Hydro-Pannes sensors."""
-
-    _attr_has_entity_name = True
-    _attr_attribution = ATTRIBUTION
-
-    def __init__(
-        self,
-        coordinator: HydroPannesDataUpdateCoordinator,
-        entry: HydroPannesConfigEntry,
-        nom_lieu: str,
-    ) -> None:
-        """Initialize the sensor."""
-        super().__init__(coordinator)
-        self._entry = entry
-        self._nom_lieu = nom_lieu
-        # Device identity is fixed for the entity's lifetime; set it once here
-        # rather than rebuilding a DeviceInfo on every property access.
-        # The device is named after the location alone: Home Assistant already shows the integration name around it, and with has_entity_name the device name prefixes every entity name.
-        self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, entry.entry_id)},
-            name=nom_lieu,
-            manufacturer="Hydro-Québec",
-            model="Info-pannes",
-        )
-
-    @property
-    def available(self) -> bool:
-        """Return True only when the coordinator has successfully fetched data."""
-        return super().available and self.coordinator.data is not None
 
 
 class HydroPannesInfoPannesSensor(HydroPannesSensorBase):
@@ -116,16 +78,7 @@ class HydroPannesInfoPannesSensor(HydroPannesSensorBase):
     _attr_translation_key = "info_pannes"
     _attr_device_class = SensorDeviceClass.ENUM
     _attr_options = INFO_PANNES_OPTIONS
-
-    def __init__(
-        self,
-        coordinator: HydroPannesDataUpdateCoordinator,
-        entry: HydroPannesConfigEntry,
-        nom_lieu: str,
-    ) -> None:
-        """Initialize the sensor."""
-        super().__init__(coordinator, entry, nom_lieu)
-        self._attr_unique_id = f"{entry.entry_id}_info_pannes"
+    _unique_id_suffix = "info_pannes"
 
     @property
     def native_value(self) -> str | None:
@@ -152,23 +105,20 @@ class HydroPannesInfoPannesSensor(HydroPannesSensorBase):
                 return "panne_majeure"
             return "panne_en_cours"
 
-        terminated_outage = self._get_terminated_outage()
-        if terminated_outage:
-            planned_check = self._get_planned_intervention()
-            if not self._planned_supersedes_terminated(planned_check):
-                return "service_retabli"
-
         planned = self._get_planned_intervention()
+        if self._get_terminated_outage() and not self._planned_supersedes_terminated(planned):
+            return "service_retabli"
+
         if planned:
-            if self._is_aip_reportee(planned):
-                return "aip_reportee"
-            if self._is_aip_annulee(planned):
-                return "aip_annulee"
+            if self._is_planned_postponed(planned):
+                return "interruption_planifiee_reportee"
+            if self._is_planned_cancelled(planned):
+                return "interruption_planifiee_annulee"
             if self._is_outage_terminated(planned):
-                return "aip_terminee"
+                return "interruption_planifiee_terminee"
             if main_etat == "N":
-                return "aip_en_cours"
-            return "aip_a_venir"
+                return "interruption_planifiee_en_cours"
+            return "interruption_planifiee_a_venir"
 
         if main_etat == "A":
             return "aucune_panne"
@@ -183,16 +133,7 @@ class HydroPannesNiveauUrgenceSensor(HydroPannesSensorBase):
     _attr_translation_key = "niveau_urgence"
     _attr_device_class = SensorDeviceClass.ENUM
     _attr_options = NIVEAU_URGENCE_OPTIONS
-
-    def __init__(
-        self,
-        coordinator: HydroPannesDataUpdateCoordinator,
-        entry: HydroPannesConfigEntry,
-        nom_lieu: str,
-    ) -> None:
-        """Initialize the sensor."""
-        super().__init__(coordinator, entry, nom_lieu)
-        self._attr_unique_id = f"{entry.entry_id}_niveau_urgence"
+    _unique_id_suffix = "niveau_urgence"
 
     @property
     def native_value(self) -> str | None:
@@ -215,16 +156,7 @@ class HydroPannesNombreClientSensor(HydroPannesSensorBase):
     _attr_translation_key = "adresses_touchees"
     _attr_native_unit_of_measurement = "clients"
     _attr_state_class = SensorStateClass.MEASUREMENT
-
-    def __init__(
-        self,
-        coordinator: HydroPannesDataUpdateCoordinator,
-        entry: HydroPannesConfigEntry,
-        nom_lieu: str,
-    ) -> None:
-        """Initialize the sensor."""
-        super().__init__(coordinator, entry, nom_lieu)
-        self._attr_unique_id = f"{entry.entry_id}_nbclient"
+    _unique_id_suffix = "nbclient"
 
     @property
     def native_value(self) -> int | None:
@@ -240,16 +172,7 @@ class HydroPannesDebutSensor(HydroPannesSensorBase):
 
     _attr_translation_key = "date_debut"
     _attr_device_class = SensorDeviceClass.TIMESTAMP
-
-    def __init__(
-        self,
-        coordinator: HydroPannesDataUpdateCoordinator,
-        entry: HydroPannesConfigEntry,
-        nom_lieu: str,
-    ) -> None:
-        """Initialize the sensor."""
-        super().__init__(coordinator, entry, nom_lieu)
-        self._attr_unique_id = f"{entry.entry_id}_date_debut"
+    _unique_id_suffix = "date_debut"
 
     @property
     def native_value(self) -> datetime | None:
@@ -266,23 +189,14 @@ class HydroPannesFinEstimeeSensor(HydroPannesSensorBase):
 
     _attr_translation_key = "date_fin"
     _attr_device_class = SensorDeviceClass.TIMESTAMP
-
-    def __init__(
-        self,
-        coordinator: HydroPannesDataUpdateCoordinator,
-        entry: HydroPannesConfigEntry,
-        nom_lieu: str,
-    ) -> None:
-        """Initialize the sensor."""
-        super().__init__(coordinator, entry, nom_lieu)
-        self._attr_unique_id = f"{entry.entry_id}_datefin"
+    _unique_id_suffix = "datefin"
 
     def _get_end_time_info(self) -> tuple[datetime | None, bool, bool]:
         """Return (end_time, is_actual, is_postponed)."""
         outage = self._get_current_interruption()
         if not outage:
             return None, False, False
-        if outage.get("etat") == "R" or self._is_aip_reportee(outage):
+        if outage.get("etat") == "R" or self._is_planned_postponed(outage):
             _, fin_report = self._get_effective_dates(outage)
             if fin_report:
                 return fin_report, False, True
@@ -321,16 +235,7 @@ class HydroPannesStatutInterventionSensor(HydroPannesSensorBase):
     _attr_translation_key = "statut_intervention"
     _attr_device_class = SensorDeviceClass.ENUM
     _attr_options = STATUT_INTERVENTION_OPTIONS
-
-    def __init__(
-        self,
-        coordinator: HydroPannesDataUpdateCoordinator,
-        entry: HydroPannesConfigEntry,
-        nom_lieu: str,
-    ) -> None:
-        """Initialize the sensor."""
-        super().__init__(coordinator, entry, nom_lieu)
-        self._attr_unique_id = f"{entry.entry_id}_statut_intervention"
+    _unique_id_suffix = "statut_intervention"
 
     @property
     def native_value(self) -> str | None:
@@ -344,10 +249,10 @@ class HydroPannesStatutInterventionSensor(HydroPannesSensorBase):
             return None
         if self._is_outage_terminated(outage):
             return "service_retabli"
-        if self._is_aip_reportee(outage):
-            return "aip_reportee"
+        if self._is_planned_postponed(outage):
+            return "interruption_planifiee_reportee"
         if outage.get("etat") == "R":
-            return "aip_a_venir"
+            return "interruption_planifiee_a_venir"
         if self._is_reprise_graduelle(outage):
             return "reprise_graduelle"
         code = outage.get("codeIntervention")
@@ -368,16 +273,7 @@ class HydroPannesCauseSensor(HydroPannesSensorBase):
     _attr_translation_key = "cause"
     _attr_device_class = SensorDeviceClass.ENUM
     _attr_options = CAUSE_OPTIONS
-
-    def __init__(
-        self,
-        coordinator: HydroPannesDataUpdateCoordinator,
-        entry: HydroPannesConfigEntry,
-        nom_lieu: str,
-    ) -> None:
-        """Initialize the sensor."""
-        super().__init__(coordinator, entry, nom_lieu)
-        self._attr_unique_id = f"{entry.entry_id}_cause"
+    _unique_id_suffix = "cause"
 
     @property
     def native_value(self) -> str | None:
@@ -417,22 +313,13 @@ class HydroPannesDureeSensor(HydroPannesSensorBase):
     # No state_class: the value grows with wall-clock time during an outage and
     # resets between outages, so long-term statistics would be a meaningless
     # sawtooth. It remains useful as a live state.
-
-    def __init__(
-        self,
-        coordinator: HydroPannesDataUpdateCoordinator,
-        entry: HydroPannesConfigEntry,
-        nom_lieu: str,
-    ) -> None:
-        """Initialize the sensor."""
-        super().__init__(coordinator, entry, nom_lieu)
-        self._attr_unique_id = f"{entry.entry_id}_duree"
+    _unique_id_suffix = "duree"
 
     @property
     def native_value(self) -> int | None:
         """Return the interruption duration in seconds.
 
-        Uses the effective start/end dates so postponed or rescheduled AIPs
+        Uses the effective start/end dates so postponed or rescheduled planned interruptions
         are measured against their real (rescheduled) window rather than the
         cancelled original slot. Returns None when the interruption has not
         started yet (e.g. an upcoming planned intervention), which avoids
@@ -461,16 +348,7 @@ class HydroPannesDureeAvantRetablissementSensor(HydroPannesSensorBase):
     _attr_device_class = SensorDeviceClass.DURATION
     # No state_class: this countdown shifts every poll and resets between
     # outages, so long-term statistics would be a meaningless sawtooth.
-
-    def __init__(
-        self,
-        coordinator: HydroPannesDataUpdateCoordinator,
-        entry: HydroPannesConfigEntry,
-        nom_lieu: str,
-    ) -> None:
-        """Initialize the sensor."""
-        super().__init__(coordinator, entry, nom_lieu)
-        self._attr_unique_id = f"{entry.entry_id}_delai_avant_retablissement"
+    _unique_id_suffix = "delai_avant_retablissement"
 
     @property
     def native_value(self) -> int | None:
@@ -490,16 +368,7 @@ class HydroPannesDerniereMAJSensor(HydroPannesSensorBase):
 
     _attr_translation_key = "derniere_maj"
     _attr_device_class = SensorDeviceClass.TIMESTAMP
-
-    def __init__(
-        self,
-        coordinator: HydroPannesDataUpdateCoordinator,
-        entry: HydroPannesConfigEntry,
-        nom_lieu: str,
-    ) -> None:
-        """Initialize the sensor."""
-        super().__init__(coordinator, entry, nom_lieu)
-        self._attr_unique_id = f"{entry.entry_id}_derniere_maj"
+    _unique_id_suffix = "derniere_maj"
 
     @property
     def native_value(self) -> datetime | None:
@@ -518,16 +387,7 @@ class HydroPannesLieuConsoSensor(HydroPannesSensorBase):
 
     _attr_translation_key = "lieu_consommation"
     _attr_entity_category = EntityCategory.DIAGNOSTIC
-
-    def __init__(
-        self,
-        coordinator: HydroPannesDataUpdateCoordinator,
-        entry: HydroPannesConfigEntry,
-        nom_lieu: str,
-    ) -> None:
-        """Initialize the sensor."""
-        super().__init__(coordinator, entry, nom_lieu)
-        self._attr_unique_id = f"{entry.entry_id}_idlieuconso"
+    _unique_id_suffix = "idlieuconso"
 
     @property
     def native_value(self) -> str | None:

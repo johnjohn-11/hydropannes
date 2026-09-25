@@ -38,11 +38,11 @@
           "panne_majeure": "Major outage in progress",
           "reprise_graduelle": "Gradual service restoration in progress",
           "service_retabli": "Service restored",
-          "aip_en_cours": "Planned interruption in progress",
-          "aip_a_venir": "Planned interruption upcoming",
-          "aip_terminee": "Planned interruption completed",
-          "aip_annulee": "Planned interruption cancelled",
-          "aip_reportee": "Planned interruption postponed"
+          "interruption_planifiee_en_cours": "Planned interruption in progress",
+          "interruption_planifiee_a_venir": "Planned interruption upcoming",
+          "interruption_planifiee_terminee": "Planned interruption completed",
+          "interruption_planifiee_annulee": "Planned interruption cancelled",
+          "interruption_planifiee_reportee": "Planned interruption postponed"
         }
       },
       "niveau_urgence": {
@@ -64,8 +64,8 @@
       "statut_intervention": {
         "name": "Intervention status",
         "state": {
-          "aip_a_venir": "Planned interruption upcoming",
-          "aip_reportee": "Planned interruption postponed",
+          "interruption_planifiee_a_venir": "Planned interruption upcoming",
+          "interruption_planifiee_reportee": "Planned interruption postponed",
           "equipe_designee": "Crew assigned",
           "equipe_en_route": "Crew on the way",
           "evaluation_travaux": "Assessing required work",

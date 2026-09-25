@@ -1,6 +1,6 @@
 """Unit tests for HydroPannesHelperMixin state-transition logic.
 
-These cover the AIP (planned intervention) state machine and outage
+These cover the planned-interruption state machine and outage
 selection priority, which are the subtlest parts of the integration.
 """
 
@@ -72,7 +72,7 @@ def test_outage_not_terminated_when_etat_reportee() -> None:
     assert h._is_outage_terminated(intr) is False
 
 
-def test_aip_reschedule_terminated_uses_date_fin_report() -> None:
+def test_planned_reschedule_terminated_uses_date_fin_report() -> None:
     # codeRemarque 91 => rescheduled; termination follows dateFinReport.
     past = make_interruption(
         etat="A",
@@ -103,33 +103,33 @@ def test_integer_code_remarque_is_handled() -> None:
         dateFinReport=hours_from_now(24),
     )
     h = harness(etat="A")
-    assert h._is_aip_reportee(intr) is True
+    assert h._is_planned_postponed(intr) is True
     assert h._is_outage_terminated(intr) is False
 
 
 # ---------------------------------------------------------------------------
-# _is_aip_annulee / _is_aip_reportee
+# _is_planned_cancelled / _is_planned_postponed
 # ---------------------------------------------------------------------------
 
 
-def test_aip_annulee_via_code_92() -> None:
+def test_planned_cancelled_via_code_92() -> None:
     intr = make_interruption(interruptionPlanifiee=True, codeRemarque="92")
     h = harness(etat="A")
-    assert h._is_aip_annulee(intr) is True
+    assert h._is_planned_cancelled(intr) is True
 
 
-def test_aip_annulee_via_etat_a() -> None:
+def test_planned_cancelled_via_etat_a() -> None:
     intr = make_interruption(interruptionPlanifiee=True, etat="A")
     h = harness(etat="A")
-    assert h._is_aip_annulee(intr) is True
+    assert h._is_planned_cancelled(intr) is True
 
 
 def test_reschedule_code_is_not_a_cancellation() -> None:
     # etat "A" + report code means rescheduled, not cancelled.
     intr = make_interruption(interruptionPlanifiee=True, etat="A", codeRemarque="91")
     h = harness(etat="A")
-    assert h._is_aip_annulee(intr) is False
-    assert h._is_aip_reportee(intr) is True
+    assert h._is_planned_cancelled(intr) is False
+    assert h._is_planned_postponed(intr) is True
 
 
 # ---------------------------------------------------------------------------
@@ -177,26 +177,26 @@ def test_active_outage_selected_over_planned() -> None:
     assert h._get_current_interruption() is outage
 
 
-def test_terminated_outage_yields_to_future_aip() -> None:
+def test_terminated_outage_yields_to_future_planned() -> None:
     terminated = make_interruption(dateFin=hours_from_now(-1))
-    future_aip = make_interruption(
+    future_planned = make_interruption(
         interruptionPlanifiee=True,
         dateDebut=hours_from_now(24),
         dateFin=hours_from_now(26),
     )
-    h = harness(etat="A", interruptions=[terminated, future_aip])
-    assert h._get_current_interruption() is future_aip
+    h = harness(etat="A", interruptions=[terminated, future_planned])
+    assert h._get_current_interruption() is future_planned
 
 
-def test_terminated_outage_kept_when_only_cancelled_aip() -> None:
+def test_terminated_outage_kept_when_only_cancelled_planned() -> None:
     terminated = make_interruption(dateFin=hours_from_now(-1))
-    cancelled_aip = make_interruption(
+    cancelled_planned = make_interruption(
         interruptionPlanifiee=True,
         etat="A",
         codeRemarque="92",
         dateDebut=hours_from_now(24),
     )
-    h = harness(etat="A", interruptions=[terminated, cancelled_aip])
+    h = harness(etat="A", interruptions=[terminated, cancelled_planned])
     assert h._get_current_interruption() is terminated
 
 
@@ -217,7 +217,7 @@ def test_no_interruptions_returns_none() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_planned_supersedes_terminated_true_for_future_aip() -> None:
+def test_planned_supersedes_terminated_true_for_future_planned() -> None:
     planned = make_interruption(
         interruptionPlanifiee=True, dateDebut=hours_from_now(24), dateFin=hours_from_now(26)
     )

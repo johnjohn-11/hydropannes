@@ -3,7 +3,7 @@
 Provides three binary sensors per configured location:
 
 - **État du service** (BinarySensorDeviceClass.PROBLEM): ``True`` when an
-  active unplanned outage or active planned intervention (AIP) is in progress.
+  active unplanned outage or active planned intervention is in progress.
 - **Intervention planifiée** (BinarySensorDeviceClass.RUNNING): ``True``
   when at least one non-terminated planned intervention exists.
 - **Compatibilité API** (EntityCategory.DIAGNOSTIC, BinarySensorDeviceClass.PROBLEM):
@@ -20,16 +20,12 @@ from homeassistant.components.binary_sensor import (
     BinarySensorEntity,
 )
 from homeassistant.const import EntityCategory
-from homeassistant.helpers.device_registry import DeviceInfo
-from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .const import ATTRIBUTION, DOMAIN
-from .coordinator import HydroPannesDataUpdateCoordinator
-from .helpers import HydroPannesHelperMixin
+from .entity import HydroPannesEntity
 
 if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
-    from homeassistant.helpers.entity_platform import AddEntitiesCallback
+    from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
     from . import HydroPannesConfigEntry
 
@@ -52,115 +48,45 @@ INTERVENTION_PLANIFIEE_ATTRIBUTE_KEYS = (
 async def async_setup_entry(
     hass: HomeAssistant,
     entry: HydroPannesConfigEntry,
-    async_add_entities: AddEntitiesCallback,
+    async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
     """Set up Hydro-Pannes binary sensors for a config entry."""
     coordinator = entry.runtime_data
-    nom_lieu = entry.title
 
     async_add_entities(
         [
-            HydroPannesEtatServiceBinarySensor(coordinator, entry, nom_lieu),
-            HydroPannesInterventionPlanifieeBinarySensor(coordinator, entry, nom_lieu),
-            HydroPannesAPICompatibilityBinarySensor(coordinator, entry, nom_lieu),
+            HydroPannesEtatServiceBinarySensor(coordinator, entry),
+            HydroPannesInterventionPlanifieeBinarySensor(coordinator, entry),
+            HydroPannesAPICompatibilityBinarySensor(coordinator, entry),
         ]
     )
 
 
-class HydroPannesBinarySensorBase(
-    HydroPannesHelperMixin,
-    CoordinatorEntity[HydroPannesDataUpdateCoordinator],
-    BinarySensorEntity,
-):
-    """Base class shared by all Hydro-Pannes binary sensors.
-
-    Wires up the coordinator, device info, and the availability guard that
-    prevents entities from reporting stale state when no data has been fetched.
-    """
-
-    _attr_has_entity_name = True
-    _attr_attribution = ATTRIBUTION
-
-    def __init__(
-        self,
-        coordinator: HydroPannesDataUpdateCoordinator,
-        entry: HydroPannesConfigEntry,
-        nom_lieu: str,
-    ) -> None:
-        """Initialize the binary sensor."""
-        super().__init__(coordinator)
-        self._entry = entry
-        self._nom_lieu = nom_lieu
-        # Device identity is fixed for the entity's lifetime; set it once here
-        # rather than rebuilding a DeviceInfo on every property access.
-        # The device is named after the location alone: Home Assistant already shows the integration name around it, and with has_entity_name the device name prefixes every entity name.
-        self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, entry.entry_id)},
-            name=nom_lieu,
-            manufacturer="Hydro-Québec",
-            model="Info-pannes",
-        )
-
-    @property
-    def available(self) -> bool:
-        """Return True only after a successful data fetch."""
-        return super().available and self.coordinator.data is not None
+class HydroPannesBinarySensorBase(HydroPannesEntity, BinarySensorEntity):
+    """Base class for all Hydro-Pannes binary sensors."""
 
 
 class HydroPannesEtatServiceBinarySensor(HydroPannesBinarySensorBase):
     """Binary sensor indicating whether there is an active service problem.
 
-    Maps to the BinarySensorDeviceClass.PROBLEM convention:
-    - ``True``  → problem detected (active outage or active AIP).
-    - ``False`` → service is normal (root etat != "N").
-    - ``None``  → state is unknown (no data yet).
-
-    Note: when ``etat == "N"`` but no specific interruption can be matched,
-    the sensor still returns ``True`` because the API confirms power is out,
-    even if the interruption object cannot be resolved.
+    ``True`` when the root etat is "N" (active outage or planned interruption in progress), ``False`` otherwise, ``None`` before the first fetch.
     """
 
     _attr_translation_key = "etat_service"
     _attr_device_class = BinarySensorDeviceClass.PROBLEM
-
-    def __init__(
-        self,
-        coordinator: HydroPannesDataUpdateCoordinator,
-        entry: HydroPannesConfigEntry,
-        nom_lieu: str,
-    ) -> None:
-        """Initialize the binary sensor."""
-        super().__init__(coordinator, entry, nom_lieu)
-        self._attr_unique_id = f"{entry.entry_id}_etat_service"
+    _unique_id_suffix = "etat_service"
 
     @property
     def is_on(self) -> bool | None:
-        """Return True when power is out or an AIP is actively in progress."""
+        """Return True when power is out or a planned interruption is actively in progress."""
         if not self.coordinator.data:
             return None
-
-        main_etat = self._get_main_etat()
-
-        # Root etat != "N" means the service point is fed normally.
-        if main_etat != "N":
-            return False
-
-        # Active unplanned outage.
-        if self._get_active_outage():
-            return True
-
-        # Active planned intervention (AIP currently in progress).
-        planned = self._get_planned_intervention()
-        if planned and self._is_outage_active(planned):
-            return True
-
-        # etat is "N" (power out) but no specific interruption matched.
-        # The API confirms there is a problem, even without a resolved outage.
-        return True
+        # The root etat alone decides: "N" means the service point is not fed, whether or not an interruption object can be matched to it.
+        return self._get_main_etat() == "N"
 
 
 class HydroPannesInterventionPlanifieeBinarySensor(HydroPannesBinarySensorBase):
-    """Binary sensor indicating whether a planned intervention (AIP) exists.
+    """Binary sensor indicating whether a planned intervention exists.
 
     Returns ``True`` when at least one non-terminated planned interruption is
     present in the API response (active or upcoming).
@@ -168,16 +94,7 @@ class HydroPannesInterventionPlanifieeBinarySensor(HydroPannesBinarySensorBase):
 
     _attr_translation_key = "intervention_planifiee"
     _attr_device_class = BinarySensorDeviceClass.RUNNING
-
-    def __init__(
-        self,
-        coordinator: HydroPannesDataUpdateCoordinator,
-        entry: HydroPannesConfigEntry,
-        nom_lieu: str,
-    ) -> None:
-        """Initialize the binary sensor."""
-        super().__init__(coordinator, entry, nom_lieu)
-        self._attr_unique_id = f"{entry.entry_id}_intervention_planifiee"
+    _unique_id_suffix = "intervention_planifiee"
 
     @property
     def is_on(self) -> bool | None:
@@ -191,7 +108,7 @@ class HydroPannesInterventionPlanifieeBinarySensor(HydroPannesBinarySensorBase):
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
-        """Return key fields from the most relevant non-terminated AIP."""
+        """Return key fields from the most relevant non-terminated planned interruption."""
         if not self.coordinator.data:
             return {}
         interruptions = self._get_interruptions()
@@ -226,16 +143,7 @@ class HydroPannesAPICompatibilityBinarySensor(HydroPannesBinarySensorBase):
     _attr_translation_key = "api_compatibilite"
     _attr_entity_category = EntityCategory.DIAGNOSTIC
     _attr_device_class = BinarySensorDeviceClass.PROBLEM
-
-    def __init__(
-        self,
-        coordinator: HydroPannesDataUpdateCoordinator,
-        entry: HydroPannesConfigEntry,
-        nom_lieu: str,
-    ) -> None:
-        """Initialize the diagnostic sensor."""
-        super().__init__(coordinator, entry, nom_lieu)
-        self._attr_unique_id = f"{entry.entry_id}_api_compatibility"
+    _unique_id_suffix = "api_compatibility"
 
     @property
     def available(self) -> bool:
