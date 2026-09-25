@@ -152,21 +152,31 @@ Les quatre sensors ci-dessous sont des énumérations (`device_class: enum`). Le
 
 ### `sensor.*_cause`
 
-| État | Libellé affiché (fr) |
-|------|----------------------|
-| `accident_ou_incident` | Accident ou incident |
-| `amelioration_entretien_reseau` | Amélioration ou entretien du réseau |
-| `bris_equipement` | Bris d'équipement |
-| `conditions_meteorologiques` | Conditions météorologiques |
-| `dommages_animal` | Dommages dus à un animal |
-| `dommages_vegetation` | Dommages dus à la végétation |
-| `incendie_ou_fuite_gaz` | Incendie ou fuite de gaz |
-| `securite_publique` | Interruption - Sécurité publique |
-| `travaux_renforcement_reseau` | Travaux planifiés - Renforcement de réseau |
-| `travaux_vegetation_elagage` | Travaux sur la végétation ou élagage |
-| `usure_materiel` | Usure ou désagrégation de matériel |
-| `indeterminee` | Indéterminée *(Hydro-Québec ne fournit aucun code)* |
-| `inconnue` | Inconnue *(code non encore reconnu par l'intégration)* |
+| État | Libellé affiché (fr) | Codes Hydro-Québec |
+|------|----------------------|--------------------|
+| `defaillance_equipement` | Défaillance d'un équipement | 11 |
+| `surcharge_reseau` | Surcharge sur le réseau | 12 |
+| `bris_equipement` | Bris d'équipement | 13, 14, 15, 72, 79 |
+| `foudre` | Foudre | 21 |
+| `precipitations` | Précipitations | 22 |
+| `sinistre_naturel` | Sinistre naturel | 24 |
+| `vents_violents` | Vents violents | 25 |
+| `temperature_extreme` | Température extrême | 26 |
+| `accident_ou_incident` | Accident ou incident | 31, 32, 41, 43, 56, 57 |
+| `usure_materiel` | Usure ou désagrégation de matériel | 33 |
+| `incendie_ou_fuite_gaz` | Incendie ou fuite de gaz | 34 |
+| `contact_accidentel` | Contact accidentel avec le réseau | 42, 55 |
+| `securite_publique` | Interruption - Sécurité publique | 44 |
+| `dommages_vegetation` | Dommages causés par la végétation | 51 |
+| `dommages_oiseaux` | Dommages causés par les oiseaux | 52 |
+| `dommages_animaux` | Dommages causés par les animaux | 53 |
+| `collision_poteau` | Collision avec un poteau | 54 |
+| `entretien_urgent` | Entretien urgent du réseau | 60, 70 |
+| `amelioration_entretien_reseau` | Amélioration ou entretien du réseau | 61, 62, 63, 64, 65, 67, 68, 69, 71 |
+| `securite_travaux` | Sécurité pendant les travaux | 66 |
+| `mesure_protection` | Mesure de protection du réseau | 73, 74 |
+| `travaux_vegetation_elagage` | Travaux sur la végétation ou élagage | 77, 78 |
+| `indeterminee` | Indéterminée | aucun code, ou un code absent de cette liste |
 
 Plusieurs codes d'Hydro-Québec partagent un même état. Le code brut reste disponible dans l'attribut `code_cause`.
 
@@ -176,7 +186,6 @@ Plusieurs codes d'Hydro-Québec partagent un même état. Le code brut reste dis
 |------|----------------------|
 | `evaluation_travaux` | Évaluation des travaux requis |
 | `equipe_designee` | Équipe désignée |
-| `equipe_en_route` | Équipe en route |
 | `travaux_en_cours` | Travaux en cours sur le réseau électrique |
 | `travaux_par_priorite` | Réalisation des travaux par ordre de priorité |
 | `retablissement_en_evaluation` | Heure de rétablissement en cours d'évaluation |

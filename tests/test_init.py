@@ -139,7 +139,7 @@ async def test_enum_sensor_states_accepted_by_home_assistant(
 
     assert state_of("info_pannes") == "panne_majeure"
     assert state_of("niveau_urgence") == "panne_majeure"
-    assert state_of("cause") == "bris_equipement"
+    assert state_of("cause") == "defaillance_equipement"
     assert state_of("statut_intervention") == "travaux_par_priorite"
 
     # The raw HQ code survives as an attribute of the cause sensor.

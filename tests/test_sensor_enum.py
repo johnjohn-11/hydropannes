@@ -193,11 +193,16 @@ def test_niveau_urgence_states(niveau, expected) -> None:
 @pytest.mark.parametrize(
     ("code", "expected"),
     [
-        ("11", "bris_equipement"),
-        ("21", "conditions_meteorologiques"),
-        ("52", "dommages_animal"),
-        (11, "bris_equipement"),  # HQ sometimes returns an integer
-        ("99", "inconnue"),  # code the integration does not know yet
+        ("11", "defaillance_equipement"),
+        ("13", "bris_equipement"),
+        ("21", "foudre"),
+        ("52", "dommages_oiseaux"),
+        ("53", "dommages_animaux"),
+        ("70", "entretien_urgent"),
+        ("73", "mesure_protection"),
+        (13, "bris_equipement"),  # HQ sometimes returns an integer
+        ("58", "indeterminee"),  # absent from the site's mapping too
+        ("99", "indeterminee"),  # code the integration does not know
         (None, "indeterminee"),  # HQ reports no code at all
     ],
 )
@@ -209,11 +214,11 @@ def test_cause_states(code, expected) -> None:
 
 def test_cause_exposes_raw_code_as_attribute() -> None:
     """Several codes share one slug, so the raw code stays available."""
-    intr = make_interruption(dateFin=None, codeCause="12")
+    intr = make_interruption(dateFin=None, codeCause="14")
     payload = make_payload(etat="N", interruptions=[intr])
     sensor = build(HydroPannesCauseSensor, payload)
     assert sensor.native_value == "bris_equipement"
-    assert sensor.extra_state_attributes == {"code_cause": "12"}
+    assert sensor.extra_state_attributes == {"code_cause": "14"}
 
 
 def test_cause_without_code_exposes_no_attribute() -> None:
@@ -231,8 +236,8 @@ def test_cause_without_code_exposes_no_attribute() -> None:
     ("overrides", "expected"),
     [
         ({"codeIntervention": "N"}, "evaluation_travaux"),
-        ({"codeIntervention": "A"}, "equipe_designee"),
-        ({"codeIntervention": "R"}, "equipe_en_route"),
+        ({"codeIntervention": "A"}, "evaluation_travaux"),
+        ({"codeIntervention": "R"}, "equipe_designee"),
         ({"codeIntervention": "L"}, "travaux_en_cours"),
         ({"codeIntervention": "L", "niveauUrgence": "P"}, "travaux_par_priorite"),
         ({"codeIntervention": "L", "niveauUrgence": "M"}, "travaux_par_priorite"),
@@ -279,6 +284,7 @@ def _payload_matrix() -> list[dict[str, Any]]:
                             {"codeIntervention": "L"},
                             {"typeFinPrevue": "F"},
                             {"codeCause": "99"},
+                            {"codeCause": "21"},
                             {"niveauUrgence": "N"},
                         ):
                             intr = make_interruption(
