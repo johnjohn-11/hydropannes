@@ -115,7 +115,7 @@ Chaque lieu de consommation configuré crée un appareil avec les entités suiva
 | Entité | Description |
 |--------|-------------|
 | `binary_sensor.*_etat_du_service` | `on` = panne active ou intervention planifiée en cours, `off` = service normal |
-| `binary_sensor.*_intervention_planifiee` | `on` = intervention planifiée active ou à venir |
+| `binary_sensor.*_intervention_planifiee` | `on` = intervention planifiée active ou à venir, et non annulée |
 | `binary_sensor.*_compatibilite_api` | `on` = structure de l'API Hydro-Québec modifiée *(Diagnostic)* |
 
 > 💡 Dans les exemples ci-dessous, `maison` correspond au nom donné au lieu.
@@ -142,6 +142,18 @@ Les quatre sensors ci-dessous sont des énumérations (`device_class: enum`). Le
 | `interruption_planifiee_terminee` | Interruption planifiée terminée | Travaux planifiés complétés |
 | `interruption_planifiee_annulee` | Interruption planifiée annulée | Travaux planifiés annulés par Hydro-Québec |
 | `interruption_planifiee_reportee` | Interruption planifiée reportée | Travaux planifiés reportés à une nouvelle date |
+
+Comme sur le site Info-pannes, l'état d'une interruption planifiée vient du champ `etat` d'Hydro-Québec : `R` pour reportée, `A` pour annulée. Une interruption décalée (`E`) reste à venir ou en cours, avec ses nouvelles dates. Une interruption annulée reste annulée même si Hydro-Québec indique des dates de report.
+
+Quand l'état est `interruption_planifiee_annulee` ou `interruption_planifiee_reportee`, l'attribut `raison_annulation` donne la raison indiquée par Hydro-Québec :
+
+| `raison_annulation` | Raison affichée sur Info-pannes |
+|---------------------|---------------------------------|
+| `planification_modifiee` | Modification de la planification des travaux |
+| `travaux_deja_realises` | Travaux déjà réalisés |
+| `demande_tiers` | Changement à la demande d'un tiers |
+| `conditions_meteorologiques` | Conditions météorologiques |
+| `autres_travaux_urgents` | Autres travaux urgents |
 
 ### `sensor.*_niveau_urgence`
 

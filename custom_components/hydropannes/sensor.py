@@ -16,6 +16,8 @@ from homeassistant.util import dt as dt_util
 from .const import (
     CAUSE_CODES,
     CAUSE_OPTIONS,
+    ETAT_PLANIFIE_DECALE,
+    ETAT_PLANIFIE_REPORTE,
     INFO_PANNES_OPTIONS,
     INTERVENTION_CODES,
     INTERVENTION_CODES_MAJEUR,
@@ -126,6 +128,18 @@ class HydroPannesInfoPannesSensor(HydroPannesSensorBase):
             return "panne_en_cours"
         return None
 
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Expose the reason Hydro-Québec gives for a cancelled or postponed planned interruption."""
+        if self.native_value not in (
+            "interruption_planifiee_annulee",
+            "interruption_planifiee_reportee",
+        ):
+            return {}
+        planned = self._get_planned_intervention()
+        raison = self._raison_annulation(planned) if planned else None
+        return {"raison_annulation": raison} if raison else {}
+
 
 class HydroPannesNiveauUrgenceSensor(HydroPannesSensorBase):
     """Sensor reporting the urgency level."""
@@ -196,11 +210,11 @@ class HydroPannesFinEstimeeSensor(HydroPannesSensorBase):
         outage = self._get_current_interruption()
         if not outage:
             return None, False, False
-        if outage.get("etat") == "R" or self._is_planned_postponed(outage):
-            _, fin_report = self._get_effective_dates(outage)
-            if fin_report:
-                return fin_report, False, True
-            # dateFinReport absent — don't fall through to the cancelled dateFin
+        if outage.get("etat") in (ETAT_PLANIFIE_REPORTE, ETAT_PLANIFIE_DECALE):
+            _, new_fin = self._get_effective_dates(outage)
+            if new_fin:
+                return new_fin, False, True
+            # No new end date: don't fall through to the abandoned dateFin.
             return None, False, True
         date_fin = self._parse_dt(outage.get("dateFin"))
         if date_fin:
@@ -251,8 +265,6 @@ class HydroPannesStatutInterventionSensor(HydroPannesSensorBase):
             return "service_retabli"
         if self._is_planned_postponed(outage):
             return "interruption_planifiee_reportee"
-        if outage.get("etat") == "R":
-            return "interruption_planifiee_a_venir"
         if self._is_reprise_graduelle(outage):
             return "reprise_graduelle"
         code = outage.get("codeIntervention")

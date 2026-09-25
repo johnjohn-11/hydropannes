@@ -176,7 +176,19 @@ STATUT_INTERVENTION_OPTIONS = [
 # Interruption bookkeeping (not sensor states)
 # ---------------------------------------------------------------------------
 
-# Codes that indicate a rescheduled planned interruption (original slot cancelled, new date assigned).
-# codeRemarque meanings (observed empirically): "91" changement à la demande d'un
-# tiers, "92" annulation d'une interruption planifiée, "93" report d'une interruption planifiée ("91" confirmed in prod).
-PLANNED_RESCHEDULE_CODES = {"91", "93"}
+# Planned interruption etat values, as the Info-pannes site names them. The etat alone says whether a planned interruption is confirmed, postponed, shifted or cancelled.
+ETAT_PLANIFIE_REPORTE = "R"  # new window in dateDebutReport/dateFinReport
+ETAT_PLANIFIE_DECALE = "E"  # new window in dateDebutDecalage/dateFinDecalage
+ETAT_PLANIFIE_ANNULE = "A"
+
+# codeRemarque → raison_annulation slug, as the Info-pannes site maps them. It is only the reason shown next to a cancelled or postponed interruption, never its state: dateDebutReport is present even on confirmed ones, and a cancellation with code 91 was followed by no new interruption in recorded payloads. Any other code is "Modification de la planification des travaux" on the site.
+RAISON_ANNULATION_CODES = {
+    "45": "travaux_deja_realises",
+    "50": "demande_tiers",
+    "60": "demande_tiers",
+    "91": "demande_tiers",
+    "92": "conditions_meteorologiques",
+    "93": "autres_travaux_urgents",
+    "94": "autres_travaux_urgents",
+}
+RAISON_ANNULATION_DEFAUT = "planification_modifiee"
