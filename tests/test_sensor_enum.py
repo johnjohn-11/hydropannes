@@ -85,6 +85,13 @@ def test_options_have_no_duplicates(cls, options) -> None:
         (
             make_payload(
                 etat="N",
+                interruptions=[make_interruption(dateFin=None, niveauUrgence="M")],
+            ),
+            "panne_majeure",
+        ),
+        (
+            make_payload(
+                etat="N",
                 interruptions=[make_interruption(dateFin=None)],
                 repriseGraduellePossible=True,
             ),
@@ -169,7 +176,7 @@ def test_info_pannes_states(payload, expected) -> None:
 
 @pytest.mark.parametrize(
     ("niveau", "expected"),
-    [("N", "normal"), ("P", "panne_majeure"), ("Z", None), (None, None)],
+    [("N", "normal"), ("M", "panne_majeure"), ("P", "panne_majeure"), ("Z", None), (None, None)],
 )
 def test_niveau_urgence_states(niveau, expected) -> None:
     """An unrecognized code yields None, never a fabricated state."""
@@ -228,6 +235,7 @@ def test_cause_without_code_exposes_no_attribute() -> None:
         ({"codeIntervention": "R"}, "equipe_en_route"),
         ({"codeIntervention": "L"}, "travaux_en_cours"),
         ({"codeIntervention": "L", "niveauUrgence": "P"}, "travaux_par_priorite"),
+        ({"codeIntervention": "L", "niveauUrgence": "M"}, "travaux_par_priorite"),
         ({"typeFinPrevue": "U"}, "retablissement_en_evaluation"),
         ({"typeFinPrevue": "D"}, "retablissement_prevu"),
         ({"typeFinPrevue": "F"}, "fin_non_determinee"),
@@ -267,6 +275,7 @@ def _payload_matrix() -> list[dict[str, Any]]:
                         for extra in (
                             {},
                             {"niveauUrgence": "P"},
+                            {"niveauUrgence": "M"},
                             {"codeIntervention": "L"},
                             {"typeFinPrevue": "F"},
                             {"codeCause": "99"},

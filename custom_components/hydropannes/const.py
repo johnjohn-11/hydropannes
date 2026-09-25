@@ -40,10 +40,14 @@ INFO_PANNES_OPTIONS = [
 # sensor.*_niveau_urgence
 # ---------------------------------------------------------------------------
 
+# The Info-pannes site names "M" panne majeure and "P" PURS, and handles both the same way. Only "N" and "P" have been observed in the API so far.
 NIVEAU_URGENCE_CODES = {
     "N": "normal",
+    "M": "panne_majeure",
     "P": "panne_majeure",
 }
+
+NIVEAU_URGENCE_MAJEURS = {"M", "P"}
 
 NIVEAU_URGENCE_OPTIONS = ["normal", "panne_majeure"]
 
@@ -117,7 +121,7 @@ INTERVENTION_CODES = {
     "L": "travaux_en_cours",
 }
 
-# Overrides INTERVENTION_CODES["L"] for major outages (niveauUrgence = "P").
+# Overrides INTERVENTION_CODES["L"] for major outages (niveauUrgence in NIVEAU_URGENCE_MAJEURS).
 INTERVENTION_CODES_MAJEUR = {
     "L": "travaux_par_priorite",
 }
