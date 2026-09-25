@@ -11,15 +11,20 @@ from homeassistant.components.sensor import SensorDeviceClass
 import pytest
 
 from custom_components.hydropannes.const import (
+    CAUSE_DESCRIPTIONS,
     CAUSE_OPTIONS,
     INFO_PANNES_OPTIONS,
     NIVEAU_URGENCE_OPTIONS,
+    RETABLISSEMENT_OPTIONS,
+    STATUT_INTERVENTION_DESCRIPTIONS,
+    STATUT_INTERVENTION_DESCRIPTIONS_MAJEUR,
     STATUT_INTERVENTION_OPTIONS,
 )
 from custom_components.hydropannes.sensor import (
     HydroPannesCauseSensor,
     HydroPannesInfoPannesSensor,
     HydroPannesNiveauUrgenceSensor,
+    HydroPannesRetablissementSensor,
     HydroPannesStatutInterventionSensor,
 )
 
@@ -30,6 +35,7 @@ ENUM_SENSORS = [
     (HydroPannesNiveauUrgenceSensor, NIVEAU_URGENCE_OPTIONS),
     (HydroPannesCauseSensor, CAUSE_OPTIONS),
     (HydroPannesStatutInterventionSensor, STATUT_INTERVENTION_OPTIONS),
+    (HydroPannesRetablissementSensor, RETABLISSEMENT_OPTIONS),
 ]
 
 
@@ -79,6 +85,13 @@ def test_options_have_no_duplicates(cls, options) -> None:
             make_payload(
                 etat="N",
                 interruptions=[make_interruption(dateFin=None, niveauUrgence="P")],
+            ),
+            "panne_majeure",
+        ),
+        (
+            make_payload(
+                etat="N",
+                interruptions=[make_interruption(dateFin=None, niveauUrgence="M")],
             ),
             "panne_majeure",
         ),
@@ -145,8 +158,8 @@ def test_options_have_no_duplicates(cls, options) -> None:
                 interruptions=[
                     make_interruption(
                         interruptionPlanifiee=True,
-                        etat="A",
-                        codeRemarque="91",
+                        etat="R",
+                        codeRemarque="93",
                         dateDebut=hours_from_now(-48),
                         dateFin=hours_from_now(-46),
                         dateDebutReport=hours_from_now(24),
@@ -156,10 +169,67 @@ def test_options_have_no_duplicates(cls, options) -> None:
             ),
             "interruption_planifiee_reportee",
         ),
+        (
+            # Recorded payload: cancelled with code 91 although report dates are present.
+            make_payload(
+                etat="A",
+                interruptions=[
+                    make_interruption(
+                        interruptionPlanifiee=True,
+                        etat="A",
+                        codeRemarque="91",
+                        dateDebut=hours_from_now(24),
+                        dateFin=hours_from_now(26),
+                        dateDebutReport=hours_from_now(48),
+                        dateFinReport=hours_from_now(50),
+                    )
+                ],
+            ),
+            "interruption_planifiee_annulee",
+        ),
+        (
+            make_payload(
+                etat="A",
+                interruptions=[
+                    make_interruption(
+                        interruptionPlanifiee=True,
+                        etat="E",
+                        dateDebut=hours_from_now(-48),
+                        dateFin=hours_from_now(-46),
+                        dateDebutDecalage=hours_from_now(24),
+                        dateFinDecalage=hours_from_now(26),
+                    )
+                ],
+            ),
+            "interruption_planifiee_a_venir",
+        ),
     ],
 )
 def test_info_pannes_states(payload, expected) -> None:
     assert build(HydroPannesInfoPannesSensor, payload).native_value == expected
+
+
+@pytest.mark.parametrize(
+    ("etat", "code_remarque", "expected"),
+    [
+        ("A", "92", {"raison_annulation": "conditions_meteorologiques"}),
+        ("R", "93", {"raison_annulation": "autres_travaux_urgents"}),
+        ("A", None, {}),
+        ("P", "92", {}),  # neither cancelled nor postponed: no reason shown
+    ],
+)
+def test_info_pannes_exposes_raison_annulation(etat, code_remarque, expected) -> None:
+    intr = make_interruption(
+        interruptionPlanifiee=True,
+        etat=etat,
+        codeRemarque=code_remarque,
+        dateDebut=hours_from_now(24),
+        dateFin=hours_from_now(26),
+        dateDebutReport=hours_from_now(48),
+        dateFinReport=hours_from_now(50),
+    )
+    payload = make_payload(etat="A", interruptions=[intr])
+    assert build(HydroPannesInfoPannesSensor, payload).extra_state_attributes == expected
 
 
 # ---------------------------------------------------------------------------
@@ -169,7 +239,7 @@ def test_info_pannes_states(payload, expected) -> None:
 
 @pytest.mark.parametrize(
     ("niveau", "expected"),
-    [("N", "normal"), ("P", "panne_majeure"), ("Z", None), (None, None)],
+    [("N", "normal"), ("M", "panne_majeure"), ("P", "panne_majeure"), ("Z", None), (None, None)],
 )
 def test_niveau_urgence_states(niveau, expected) -> None:
     """An unrecognized code yields None, never a fabricated state."""
@@ -186,11 +256,16 @@ def test_niveau_urgence_states(niveau, expected) -> None:
 @pytest.mark.parametrize(
     ("code", "expected"),
     [
-        ("11", "bris_equipement"),
-        ("21", "conditions_meteorologiques"),
-        ("52", "dommages_animal"),
-        (11, "bris_equipement"),  # HQ sometimes returns an integer
-        ("99", "inconnue"),  # code the integration does not know yet
+        ("11", "defaillance_equipement"),
+        ("13", "bris_equipement"),
+        ("21", "foudre"),
+        ("52", "dommages_oiseaux"),
+        ("53", "dommages_animaux"),
+        ("70", "entretien_urgent"),
+        ("73", "mesure_protection"),
+        (13, "bris_equipement"),  # HQ sometimes returns an integer
+        ("58", "indeterminee"),  # absent from the site's mapping too
+        ("99", "indeterminee"),  # code the integration does not know
         (None, "indeterminee"),  # HQ reports no code at all
     ],
 )
@@ -202,17 +277,31 @@ def test_cause_states(code, expected) -> None:
 
 def test_cause_exposes_raw_code_as_attribute() -> None:
     """Several codes share one slug, so the raw code stays available."""
-    intr = make_interruption(dateFin=None, codeCause="12")
+    intr = make_interruption(dateFin=None, codeCause="14")
     payload = make_payload(etat="N", interruptions=[intr])
     sensor = build(HydroPannesCauseSensor, payload)
     assert sensor.native_value == "bris_equipement"
-    assert sensor.extra_state_attributes == {"code_cause": "12"}
+    assert sensor.extra_state_attributes == {
+        "code_cause": "14",
+        "description": CAUSE_DESCRIPTIONS["bris_equipement"],
+    }
 
 
-def test_cause_without_code_exposes_no_attribute() -> None:
+def test_cause_without_code_exposes_only_description() -> None:
     intr = make_interruption(dateFin=None)
     payload = make_payload(etat="N", interruptions=[intr])
-    assert build(HydroPannesCauseSensor, payload).extra_state_attributes == {}
+    assert build(HydroPannesCauseSensor, payload).extra_state_attributes == {
+        "description": CAUSE_DESCRIPTIONS["indeterminee"]
+    }
+
+
+def test_every_cause_has_a_description() -> None:
+    assert CAUSE_DESCRIPTIONS.keys() == set(CAUSE_OPTIONS)
+
+
+def test_description_is_not_recorded() -> None:
+    for cls in (HydroPannesCauseSensor, HydroPannesStatutInterventionSensor):
+        assert "description" in cls._unrecorded_attributes
 
 
 # ---------------------------------------------------------------------------
@@ -224,10 +313,11 @@ def test_cause_without_code_exposes_no_attribute() -> None:
     ("overrides", "expected"),
     [
         ({"codeIntervention": "N"}, "evaluation_travaux"),
-        ({"codeIntervention": "A"}, "equipe_designee"),
-        ({"codeIntervention": "R"}, "equipe_en_route"),
+        ({"codeIntervention": "A"}, "evaluation_travaux"),
+        ({"codeIntervention": "R"}, "equipe_designee"),
         ({"codeIntervention": "L"}, "travaux_en_cours"),
         ({"codeIntervention": "L", "niveauUrgence": "P"}, "travaux_par_priorite"),
+        ({"codeIntervention": "L", "niveauUrgence": "M"}, "travaux_par_priorite"),
         ({"typeFinPrevue": "U"}, "retablissement_en_evaluation"),
         ({"typeFinPrevue": "D"}, "retablissement_prevu"),
         ({"typeFinPrevue": "F"}, "fin_non_determinee"),
@@ -239,6 +329,33 @@ def test_statut_intervention_states(overrides, expected) -> None:
     intr = make_interruption(dateFin=None, **overrides)
     payload = make_payload(etat="N", interruptions=[intr])
     assert build(HydroPannesStatutInterventionSensor, payload).native_value == expected
+
+
+@pytest.mark.parametrize(
+    ("overrides", "expected"),
+    [
+        ({"codeIntervention": "N"}, STATUT_INTERVENTION_DESCRIPTIONS["evaluation_travaux"]),
+        (
+            {"codeIntervention": "N", "niveauUrgence": "P"},
+            STATUT_INTERVENTION_DESCRIPTIONS_MAJEUR["evaluation_travaux"],
+        ),
+        (
+            {"codeIntervention": "L", "niveauUrgence": "P"},
+            STATUT_INTERVENTION_DESCRIPTIONS["travaux_par_priorite"],
+        ),
+        ({}, None),  # no state, no description
+    ],
+)
+def test_statut_intervention_description(overrides, expected) -> None:
+    intr = make_interruption(dateFin=None, **overrides)
+    payload = make_payload(etat="N", interruptions=[intr])
+    attrs = build(HydroPannesStatutInterventionSensor, payload).extra_state_attributes
+    assert attrs.get("description") == expected
+
+
+def test_statut_descriptions_name_declared_states() -> None:
+    assert STATUT_INTERVENTION_DESCRIPTIONS.keys() <= set(STATUT_INTERVENTION_OPTIONS)
+    assert STATUT_INTERVENTION_DESCRIPTIONS_MAJEUR.keys() <= set(STATUT_INTERVENTION_OPTIONS)
 
 
 def test_statut_intervention_reports_restored_service() -> None:
@@ -263,13 +380,16 @@ def _payload_matrix() -> list[dict[str, Any]]:
         for planned in (True, False):
             for date_fin in (None, hours_from_now(-1), hours_from_now(3)):
                 for code_remarque in (None, "91", "92", "93"):
-                    for intr_etat in ("N", "A", "R", "P", "T"):
+                    for intr_etat in ("N", "A", "R", "E", "P", "T"):
                         for extra in (
                             {},
                             {"niveauUrgence": "P"},
+                            {"niveauUrgence": "M"},
                             {"codeIntervention": "L"},
                             {"typeFinPrevue": "F"},
                             {"codeCause": "99"},
+                            {"codeCause": "21"},
+                            {"dateFinEstimeeMax": hours_from_now(2)},
                             {"niveauUrgence": "N"},
                         ):
                             intr = make_interruption(

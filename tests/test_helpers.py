@@ -8,6 +8,8 @@ from __future__ import annotations
 
 from typing import Any
 
+import pytest
+
 from custom_components.hydropannes.helpers import HydroPannesHelperMixin
 
 from .conftest import FakeCoordinator, hours_from_now, make_interruption, make_payload
@@ -65,57 +67,31 @@ def test_outage_terminated_when_date_fin_in_past() -> None:
     assert h._is_outage_terminated(intr) is True
 
 
-def test_outage_not_terminated_when_etat_reportee() -> None:
-    # etat "R" (postponed): original dateFin is past but not completed.
+def test_outage_not_terminated_when_etat_reportee_without_new_end() -> None:
+    # etat "R" (postponed): the original dateFin is the abandoned slot.
     intr = make_interruption(etat="R", dateFin=hours_from_now(-1))
     h = harness(etat="A", interruptions=[intr])
     assert h._is_outage_terminated(intr) is False
 
 
-def test_planned_reschedule_terminated_uses_date_fin_report() -> None:
-    # codeRemarque 91 => rescheduled; termination follows dateFinReport.
-    past = make_interruption(
-        etat="A",
-        interruptionPlanifiee=True,
-        codeRemarque="91",
-        dateFin=hours_from_now(-48),
-        dateFinReport=hours_from_now(-1),
-    )
-    future = make_interruption(
-        etat="A",
-        interruptionPlanifiee=True,
-        codeRemarque="91",
-        dateFin=hours_from_now(-48),
-        dateFinReport=hours_from_now(24),
-    )
-    h = harness(etat="A")
-    assert h._is_outage_terminated(past) is True
-    assert h._is_outage_terminated(future) is False
+@pytest.mark.parametrize(("etat", "suffix"), [("R", "Report"), ("E", "Decalage")])
+def test_postponed_or_shifted_terminated_follows_new_end(etat, suffix) -> None:
+    def planned(new_end: str) -> dict[str, Any]:
+        return make_interruption(
+            etat=etat,
+            interruptionPlanifiee=True,
+            dateFin=hours_from_now(-48),
+            **{f"dateFin{suffix}": new_end},
+        )
 
-
-def test_integer_code_remarque_is_handled() -> None:
-    # HQ sometimes returns codeRemarque as an integer; it must match string codes.
-    intr = make_interruption(
-        etat="A",
-        interruptionPlanifiee=True,
-        codeRemarque=91,
-        dateFin=hours_from_now(-48),
-        dateFinReport=hours_from_now(24),
-    )
     h = harness(etat="A")
-    assert h._is_planned_postponed(intr) is True
-    assert h._is_outage_terminated(intr) is False
+    assert h._is_outage_terminated(planned(hours_from_now(-1))) is True
+    assert h._is_outage_terminated(planned(hours_from_now(24))) is False
 
 
 # ---------------------------------------------------------------------------
-# _is_planned_cancelled / _is_planned_postponed
+# _is_planned_cancelled / _is_planned_postponed / _raison_annulation
 # ---------------------------------------------------------------------------
-
-
-def test_planned_cancelled_via_code_92() -> None:
-    intr = make_interruption(interruptionPlanifiee=True, codeRemarque="92")
-    h = harness(etat="A")
-    assert h._is_planned_cancelled(intr) is True
 
 
 def test_planned_cancelled_via_etat_a() -> None:
@@ -124,12 +100,51 @@ def test_planned_cancelled_via_etat_a() -> None:
     assert h._is_planned_cancelled(intr) is True
 
 
-def test_reschedule_code_is_not_a_cancellation() -> None:
-    # etat "A" + report code means rescheduled, not cancelled.
-    intr = make_interruption(interruptionPlanifiee=True, etat="A", codeRemarque="91")
+def test_code_remarque_alone_is_not_a_state() -> None:
+    # codeRemarque is only the reason: a confirmed interruption carrying 92 stays confirmed.
+    intr = make_interruption(interruptionPlanifiee=True, etat="P", codeRemarque="92")
     h = harness(etat="A")
     assert h._is_planned_cancelled(intr) is False
+    assert h._is_planned_postponed(intr) is False
+
+
+def test_cancellation_with_report_dates_stays_cancelled() -> None:
+    # Recorded payload: etat "A" with code 91 and report dates, followed by no new interruption.
+    intr = make_interruption(
+        interruptionPlanifiee=True,
+        etat="A",
+        codeRemarque="91",
+        dateDebutReport=hours_from_now(24),
+        dateFinReport=hours_from_now(26),
+    )
+    h = harness(etat="A")
+    assert h._is_planned_cancelled(intr) is True
+    assert h._is_planned_postponed(intr) is False
+
+
+def test_planned_postponed_via_etat_r() -> None:
+    intr = make_interruption(interruptionPlanifiee=True, etat="R", codeRemarque="93")
+    h = harness(etat="A")
     assert h._is_planned_postponed(intr) is True
+    assert h._is_planned_cancelled(intr) is False
+
+
+@pytest.mark.parametrize(
+    ("code", "expected"),
+    [
+        ("45", "travaux_deja_realises"),
+        ("91", "demande_tiers"),
+        (91, "demande_tiers"),  # HQ sometimes returns an integer
+        ("92", "conditions_meteorologiques"),
+        ("93", "autres_travaux_urgents"),
+        ("40", "planification_modifiee"),  # any other code
+        ("", None),
+        (None, None),
+    ],
+)
+def test_raison_annulation(code, expected) -> None:
+    intr = make_interruption(interruptionPlanifiee=True, etat="A", codeRemarque=code)
+    assert harness()._raison_annulation(intr) == expected
 
 
 # ---------------------------------------------------------------------------
@@ -147,20 +162,37 @@ def test_effective_dates_default_to_debut_fin() -> None:
     assert eff_fin == h._parse_dt(fin)
 
 
-def test_effective_dates_use_report_window_for_reschedule() -> None:
+@pytest.mark.parametrize(("etat", "suffix"), [("R", "Report"), ("E", "Decalage")])
+def test_effective_dates_use_new_window(etat, suffix) -> None:
     intr = make_interruption(
-        etat="A",
+        etat=etat,
         interruptionPlanifiee=True,
-        codeRemarque="91",
         dateDebut=hours_from_now(-48),
         dateFin=hours_from_now(-46),
-        dateDebutReport=hours_from_now(24),
-        dateFinReport=hours_from_now(26),
+        **{f"dateDebut{suffix}": hours_from_now(24), f"dateFin{suffix}": hours_from_now(26)},
     )
     h = harness()
     eff_debut, eff_fin = h._get_effective_dates(intr)
-    assert eff_debut == h._parse_dt(intr["dateDebutReport"])
-    assert eff_fin == h._parse_dt(intr["dateFinReport"])
+    assert eff_debut == h._parse_dt(intr[f"dateDebut{suffix}"])
+    assert eff_fin == h._parse_dt(intr[f"dateFin{suffix}"])
+
+
+@pytest.mark.parametrize("etat", ["P", "A"])
+def test_effective_dates_ignore_report_dates_unless_postponed(etat) -> None:
+    # Recorded payloads carry dateDebutReport on confirmed and cancelled interruptions too.
+    intr = make_interruption(
+        etat=etat,
+        interruptionPlanifiee=True,
+        dateDebut=hours_from_now(24),
+        dateFin=hours_from_now(26),
+        dateDebutReport=hours_from_now(48),
+        dateFinReport=hours_from_now(50),
+    )
+    h = harness()
+    assert h._get_effective_dates(intr) == (
+        h._parse_dt(intr["dateDebut"]),
+        h._parse_dt(intr["dateFin"]),
+    )
 
 
 # ---------------------------------------------------------------------------

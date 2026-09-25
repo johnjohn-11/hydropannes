@@ -21,6 +21,7 @@ from homeassistant.components.binary_sensor import (
 )
 from homeassistant.const import EntityCategory
 
+from .const import GRAP_DUREE_PREVUE_MINUTES
 from .entity import HydroPannesEntity
 
 if TYPE_CHECKING:
@@ -40,6 +41,8 @@ PARALLEL_UPDATES = 0
 INTERVENTION_PLANIFIEE_ATTRIBUTE_KEYS = (
     "dateDebutReport",
     "dateFinReport",
+    "dateDebutDecalage",
+    "dateFinDecalage",
     "dureePrevu",
     "interruptionPlanifiee",
 )
@@ -88,7 +91,7 @@ class HydroPannesEtatServiceBinarySensor(HydroPannesBinarySensorBase):
 class HydroPannesInterventionPlanifieeBinarySensor(HydroPannesBinarySensorBase):
     """Binary sensor indicating whether a planned intervention exists.
 
-    Returns ``True`` when at least one non-terminated planned interruption is
+    Returns ``True`` when at least one planned interruption that is neither cancelled nor terminated is
     present in the API response (active or upcoming).
     """
 
@@ -98,35 +101,35 @@ class HydroPannesInterventionPlanifieeBinarySensor(HydroPannesBinarySensorBase):
 
     @property
     def is_on(self) -> bool | None:
-        """Return True if a non-terminated planned intervention exists."""
+        """Return True if a planned intervention that is neither cancelled nor terminated exists."""
         if not self.coordinator.data:
             return None
-        for intr in self._get_interruptions():
-            if self._is_planned_intervention(intr) and not self._is_outage_terminated(intr):
-                return True
-        return False
+        return bool(self._get_pending_planned())
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
-        """Return key fields from the most relevant non-terminated planned interruption."""
-        if not self.coordinator.data:
+        """Return key fields from the first planned interruption that is neither cancelled nor terminated."""
+        pending = self._get_pending_planned()
+        if not pending:
             return {}
-        interruptions = self._get_interruptions()
-        if not interruptions:
-            return {}
+        attrs = self._interruption_attributes(pending[0], INTERVENTION_PLANIFIEE_ATTRIBUTE_KEYS)
+        if len(pending) > 1:
+            attrs["interruptions_suivantes"] = [self._suivante(i) for i in pending[1:]]
+        return attrs
 
-        planned = next(
-            (
-                i
-                for i in interruptions
-                if self._is_planned_intervention(i) and not self._is_outage_terminated(i)
-            ),
-            None,
-        )
-        if not planned:
-            return {}
-
-        return self._interruption_attributes(planned, INTERVENTION_PLANIFIEE_ATTRIBUTE_KEYS)
+    def _suivante(self, intr: dict[str, Any]) -> dict[str, Any]:
+        """Summarize one of the other upcoming planned interruptions, as the site lists them."""
+        debut, fin = self._get_effective_dates(intr)
+        duree = intr.get("dureePrevu")
+        item: dict[str, Any] = {
+            "debut": debut.isoformat() if debut else None,
+            "fin": fin.isoformat() if fin else None,
+            "duree_prevue": duree,
+        }
+        # The site warns about a possible gradual restoration from 480 minutes of planned work.
+        if isinstance(duree, int | float) and duree >= GRAP_DUREE_PREVUE_MINUTES:
+            item["reprise_graduelle_possible"] = True
+        return item
 
 
 class HydroPannesAPICompatibilityBinarySensor(HydroPannesBinarySensorBase):

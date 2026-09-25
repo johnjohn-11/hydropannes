@@ -28,6 +28,14 @@
       "statut_intervention": {
         "default": "mdi:account-hard-hat"
       },
+      "retablissement": {
+        "default": "mdi:clock-outline",
+        "state": {
+          "en_evaluation": "mdi:clock-outline",
+          "prevu": "mdi:clock-check-outline",
+          "en_revision": "mdi:clock-alert-outline"
+        }
+      },
       "cause": {
         "default": "mdi:help-circle-outline"
       },

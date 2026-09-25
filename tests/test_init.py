@@ -20,6 +20,7 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.hydropannes.const import (
     API_URL,
+    CAUSE_DESCRIPTIONS,
     CONF_LIEU_CONSO,
     CONF_NOM_LIEU,
     DOMAIN,
@@ -86,6 +87,7 @@ async def test_unique_ids_are_stable(hass: HomeAssistant, aioclient_mock) -> Non
         ("sensor", "date_debut"),
         ("sensor", "datefin"),
         ("sensor", "statut_intervention"),
+        ("sensor", "retablissement"),
         ("sensor", "cause"),
         ("sensor", "duree"),
         ("sensor", "delai_avant_retablissement"),
@@ -139,12 +141,15 @@ async def test_enum_sensor_states_accepted_by_home_assistant(
 
     assert state_of("info_pannes") == "panne_majeure"
     assert state_of("niveau_urgence") == "panne_majeure"
-    assert state_of("cause") == "bris_equipement"
+    assert state_of("cause") == "defaillance_equipement"
     assert state_of("statut_intervention") == "travaux_par_priorite"
+    # No estimated end while the crew is on site: the site shows the time as being revised.
+    assert state_of("retablissement") == "en_revision"
 
     # The raw HQ code survives as an attribute of the cause sensor.
     cause_state = hass.states.get(entity_id_for("cause"))
     assert cause_state.attributes["code_cause"] == "11"
+    assert cause_state.attributes["description"] == CAUSE_DESCRIPTIONS["defaillance_equipement"]
     # Home Assistant advertises the declared options on the entity.
     assert "bris_equipement" in cause_state.attributes["options"]
 
