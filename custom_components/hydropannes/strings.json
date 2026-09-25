@@ -3,6 +3,37 @@
     "step": {
       "user": {
         "title": "Configure Hydro-Pannes",
+        "description": "How do you want to find your consumption location?",
+        "menu_options": {
+          "adresse": "Search by address",
+          "numero": "Enter the consumption location number"
+        }
+      },
+      "adresse": {
+        "title": "Search by address",
+        "description": "Hydro-Pannes looks up the consumption location at this address with Hydro-Québec. The address is not stored.",
+        "data": {
+          "code_postal": "Postal code",
+          "numero_civique": "Civic number",
+          "appartement": "Apartment (optional)"
+        }
+      },
+      "choix": {
+        "title": "Choose the consumption location",
+        "description": "Several consumption locations match this address.",
+        "data": {
+          "lieu_consommation": "Consumption location"
+        }
+      },
+      "nom": {
+        "title": "Name the location",
+        "description": "Consumption location {lieu_consommation} found at {adresse}.",
+        "data": {
+          "nom_lieu": "Location name (e.g., Home, Cottage)"
+        }
+      },
+      "numero": {
+        "title": "Enter the consumption location number",
         "description": "Enter your consumption location information",
         "data": {
           "lieu_consommation": "Consumption location number",
@@ -18,7 +49,10 @@
       }
     },
     "error": {
+      "adresse_ambigue": "Several consumption locations match this address and cannot be told apart. Add the apartment number or enter the consumption location number.",
+      "adresse_introuvable": "No consumption location found at this address. Check the postal code, civic number and apartment.",
       "cannot_connect": "Unable to connect to Hydro-Québec API",
+      "invalid_code_postal": "The postal code must be in the A1A 1A1 form",
       "invalid_format": "The consumption location number must be exactly 10 digits",
       "invalid_lieu": "Invalid consumption location number",
       "unknown": "Unexpected error"
