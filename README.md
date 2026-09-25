@@ -192,6 +192,12 @@ Quand l'état est `interruption_planifiee_annulee` ou `interruption_planifiee_re
 
 Plusieurs codes d'Hydro-Québec partagent un même état. Le code brut reste disponible dans l'attribut `code_cause`.
 
+### Attribut `description`
+
+Les sensors `cause` et `statut_intervention` ont un attribut `description` qui explique en une ou deux phrases la cause ou l'étape en cours, par exemple dans une notification avec `state_attr('sensor.maison_cause', 'description')`. Les textes reprennent dans nos mots les explications du site Info-pannes. Ils sont en français seulement, parce que Home Assistant ne traduit pas les valeurs d'attributs. Pendant une panne majeure, certaines étapes ont une explication adaptée.
+
+Cet attribut n'est pas enregistré dans l'historique de Home Assistant.
+
 ### `sensor.*_statut_intervention`
 
 | État | Libellé affiché (fr) |

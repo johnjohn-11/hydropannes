@@ -15,6 +15,7 @@ from homeassistant.util import dt as dt_util
 
 from .const import (
     CAUSE_CODES,
+    CAUSE_DESCRIPTIONS,
     CAUSE_OPTIONS,
     ETAT_PLANIFIE_DECALE,
     ETAT_PLANIFIE_REPORTE,
@@ -23,6 +24,8 @@ from .const import (
     INTERVENTION_CODES_MAJEUR,
     NIVEAU_URGENCE_CODES,
     NIVEAU_URGENCE_OPTIONS,
+    STATUT_INTERVENTION_DESCRIPTIONS,
+    STATUT_INTERVENTION_DESCRIPTIONS_MAJEUR,
     STATUT_INTERVENTION_OPTIONS,
     TYPE_FIN_PREVUE_CODES,
 )
@@ -37,6 +40,9 @@ if TYPE_CHECKING:
     from . import HydroPannesConfigEntry
 
 _LOGGER = logging.getLogger(__name__)
+
+# The description attribute is fixed text derived from the state, so it is kept out of the recorder.
+_UNRECORDED_DESCRIPTION = frozenset({"description"})
 
 # Entities are updated by the coordinator; no parallel polling needed.
 PARALLEL_UPDATES = 0
@@ -250,6 +256,7 @@ class HydroPannesStatutInterventionSensor(HydroPannesSensorBase):
     _attr_device_class = SensorDeviceClass.ENUM
     _attr_options = STATUT_INTERVENTION_OPTIONS
     _unique_id_suffix = "statut_intervention"
+    _unrecorded_attributes = _UNRECORDED_DESCRIPTION
 
     @property
     def native_value(self) -> str | None:
@@ -277,6 +284,19 @@ class HydroPannesStatutInterventionSensor(HydroPannesSensorBase):
             return TYPE_FIN_PREVUE_CODES.get(type_fin)
         return None
 
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Explain the current step, with the major-outage wording when it applies."""
+        statut = self.native_value
+        if statut is None:
+            return {}
+        outage = self._get_current_interruption()
+        description = None
+        if outage and self._is_panne_majeure(outage):
+            description = STATUT_INTERVENTION_DESCRIPTIONS_MAJEUR.get(statut)
+        description = description or STATUT_INTERVENTION_DESCRIPTIONS.get(statut)
+        return {"description": description} if description else {}
+
 
 class HydroPannesCauseSensor(HydroPannesSensorBase):
     """Sensor reporting the cause of the interruption."""
@@ -284,6 +304,7 @@ class HydroPannesCauseSensor(HydroPannesSensorBase):
     _attr_translation_key = "cause"
     _attr_device_class = SensorDeviceClass.ENUM
     _attr_options = CAUSE_OPTIONS
+    _unrecorded_attributes = _UNRECORDED_DESCRIPTION
     _unique_id_suffix = "cause"
 
     @property
@@ -302,17 +323,19 @@ class HydroPannesCauseSensor(HydroPannesSensorBase):
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
-        """Expose the raw HQ cause code.
+        """Expose the raw HQ cause code and a description of the cause.
 
         Several codes map onto a single slug, so the code is kept as an attribute to preserve the distinction the state no longer carries.
         """
         outage = self._get_current_interruption()
-        if not outage:
+        cause = self.native_value
+        if not outage or cause is None:
             return {}
+        attrs = {"description": CAUSE_DESCRIPTIONS[cause]}
         code = outage.get("codeCause")
-        if code is None:
-            return {}
-        return {"code_cause": str(code)}
+        if code is not None:
+            attrs["code_cause"] = str(code)
+        return attrs
 
 
 class HydroPannesDureeSensor(HydroPannesSensorBase):

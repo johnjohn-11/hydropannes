@@ -11,9 +11,12 @@ from homeassistant.components.sensor import SensorDeviceClass
 import pytest
 
 from custom_components.hydropannes.const import (
+    CAUSE_DESCRIPTIONS,
     CAUSE_OPTIONS,
     INFO_PANNES_OPTIONS,
     NIVEAU_URGENCE_OPTIONS,
+    STATUT_INTERVENTION_DESCRIPTIONS,
+    STATUT_INTERVENTION_DESCRIPTIONS_MAJEUR,
     STATUT_INTERVENTION_OPTIONS,
 )
 from custom_components.hydropannes.sensor import (
@@ -275,13 +278,27 @@ def test_cause_exposes_raw_code_as_attribute() -> None:
     payload = make_payload(etat="N", interruptions=[intr])
     sensor = build(HydroPannesCauseSensor, payload)
     assert sensor.native_value == "bris_equipement"
-    assert sensor.extra_state_attributes == {"code_cause": "14"}
+    assert sensor.extra_state_attributes == {
+        "code_cause": "14",
+        "description": CAUSE_DESCRIPTIONS["bris_equipement"],
+    }
 
 
-def test_cause_without_code_exposes_no_attribute() -> None:
+def test_cause_without_code_exposes_only_description() -> None:
     intr = make_interruption(dateFin=None)
     payload = make_payload(etat="N", interruptions=[intr])
-    assert build(HydroPannesCauseSensor, payload).extra_state_attributes == {}
+    assert build(HydroPannesCauseSensor, payload).extra_state_attributes == {
+        "description": CAUSE_DESCRIPTIONS["indeterminee"]
+    }
+
+
+def test_every_cause_has_a_description() -> None:
+    assert CAUSE_DESCRIPTIONS.keys() == set(CAUSE_OPTIONS)
+
+
+def test_description_is_not_recorded() -> None:
+    for cls in (HydroPannesCauseSensor, HydroPannesStatutInterventionSensor):
+        assert "description" in cls._unrecorded_attributes
 
 
 # ---------------------------------------------------------------------------
@@ -309,6 +326,33 @@ def test_statut_intervention_states(overrides, expected) -> None:
     intr = make_interruption(dateFin=None, **overrides)
     payload = make_payload(etat="N", interruptions=[intr])
     assert build(HydroPannesStatutInterventionSensor, payload).native_value == expected
+
+
+@pytest.mark.parametrize(
+    ("overrides", "expected"),
+    [
+        ({"codeIntervention": "N"}, STATUT_INTERVENTION_DESCRIPTIONS["evaluation_travaux"]),
+        (
+            {"codeIntervention": "N", "niveauUrgence": "P"},
+            STATUT_INTERVENTION_DESCRIPTIONS_MAJEUR["evaluation_travaux"],
+        ),
+        (
+            {"codeIntervention": "L", "niveauUrgence": "P"},
+            STATUT_INTERVENTION_DESCRIPTIONS["travaux_par_priorite"],
+        ),
+        ({}, None),  # no state, no description
+    ],
+)
+def test_statut_intervention_description(overrides, expected) -> None:
+    intr = make_interruption(dateFin=None, **overrides)
+    payload = make_payload(etat="N", interruptions=[intr])
+    attrs = build(HydroPannesStatutInterventionSensor, payload).extra_state_attributes
+    assert attrs.get("description") == expected
+
+
+def test_statut_descriptions_name_declared_states() -> None:
+    assert STATUT_INTERVENTION_DESCRIPTIONS.keys() <= set(STATUT_INTERVENTION_OPTIONS)
+    assert STATUT_INTERVENTION_DESCRIPTIONS_MAJEUR.keys() <= set(STATUT_INTERVENTION_OPTIONS)
 
 
 def test_statut_intervention_reports_restored_service() -> None:
