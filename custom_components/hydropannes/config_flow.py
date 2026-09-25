@@ -1,12 +1,13 @@
 """Config flow for Hydro-Pannes integration.
 
-Handles the initial user setup (lieu de consommation + friendly name) and reconfiguration (change the number). The lieu de consommation number is validated against the Hydro-Québec API before the entry is created so configuration errors surface early.
+Handles the initial user setup and reconfiguration (change the number). Setup offers two paths: look the lieu de consommation up from a postal code and civic number, or type the number directly. A typed number is validated against the Hydro-Québec API before the entry is created so configuration errors surface early.
 
 There is no options flow: the location name is the config entry title, which Home Assistant already lets the user change through the entry's own Rename action. Keeping a second copy in ``entry.data`` only let the two drift apart.
 """
 
 from __future__ import annotations
 
+import html
 import logging
 import re
 from typing import TYPE_CHECKING, Any
@@ -15,9 +16,24 @@ import aiohttp
 from homeassistant import config_entries
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
+from homeassistant.helpers.selector import (
+    SelectOptionDict,
+    SelectSelector,
+    SelectSelectorConfig,
+    SelectSelectorMode,
+)
 import voluptuous as vol
 
-from .const import API_URL, CONF_LIEU_CONSO, CONF_NOM_LIEU, DOMAIN
+from .const import (
+    API_URL,
+    CONF_APPARTEMENT,
+    CONF_CODE_POSTAL,
+    CONF_LIEU_CONSO,
+    CONF_NOM_LIEU,
+    CONF_NUMERO_CIVIQUE,
+    DOMAIN,
+    SEARCH_URL,
+)
 
 if TYPE_CHECKING:
     from homeassistant.config_entries import ConfigFlowResult
@@ -28,9 +44,28 @@ _LOGGER = logging.getLogger(__name__)
 # Hydro-Québec lieu de consommation identifiers are always exactly 10 digits.
 _LIEU_CONSO_RE = re.compile(r"^\d{10}$")
 
-STEP_USER_DATA_SCHEMA = vol.Schema(
+_CODE_POSTAL_RE = re.compile(r"^[A-Z]\d[A-Z]\d[A-Z]\d$")
+
+# Error code the lookup returns with HTTP 400 when one address maps to several locations it cannot tell apart.
+_SEARCH_DUPLICATES_CODE = "BSSP0001"
+
+STEP_NUMERO_DATA_SCHEMA = vol.Schema(
     {
         vol.Required(CONF_LIEU_CONSO): str,
+        vol.Required(CONF_NOM_LIEU): vol.All(str, vol.Length(min=1)),
+    }
+)
+
+STEP_ADRESSE_DATA_SCHEMA = vol.Schema(
+    {
+        vol.Required(CONF_CODE_POSTAL): str,
+        vol.Required(CONF_NUMERO_CIVIQUE): str,
+        vol.Optional(CONF_APPARTEMENT): str,
+    }
+)
+
+STEP_NOM_DATA_SCHEMA = vol.Schema(
+    {
         vol.Required(CONF_NOM_LIEU): vol.All(str, vol.Length(min=1)),
     }
 )
@@ -76,6 +111,84 @@ async def validate_lieu_conso(hass: HomeAssistant, lieu_conso: str) -> None:
         raise CannotConnect from err
 
 
+def normalize_code_postal(code_postal: str) -> str:
+    """Return a postal code as ``A1A 1A1``, the only form the lookup accepts.
+
+    Without the space the lookup answers HTTP 500.
+
+    Raises:
+        InvalidCodePostal: The input is not a Canadian postal code.
+
+    """
+    compact = re.sub(r"\s", "", code_postal).upper()
+    if not _CODE_POSTAL_RE.match(compact):
+        raise InvalidCodePostal
+    return f"{compact[:3]} {compact[3:]}"
+
+
+async def search_lieux_conso(
+    hass: HomeAssistant, code_postal: str, numero_civique: str, appartement: str
+) -> list[dict[str, Any]]:
+    """Look up the consumption locations at an address.
+
+    Args:
+        hass: The Home Assistant instance.
+        code_postal: Postal code already normalized to ``A1A 1A1``.
+        numero_civique: Civic number, already stripped.
+        appartement: Apartment number, empty when there is none.
+
+    Returns:
+        The eligible locations found, one per distinct number, possibly empty.
+
+    Raises:
+        CannotConnect: A network error, a timeout or an unexpected answer.
+        AmbiguousAddress: The API found several locations it cannot tell apart.
+
+    """
+    params = {
+        "codePostal": code_postal,
+        "numeroAppartement": appartement,
+        "numeroCivique": numero_civique,
+        "nomRue": "",
+    }
+    session = async_get_clientsession(hass)
+
+    try:
+        async with session.get(
+            SEARCH_URL, params=params, timeout=aiohttp.ClientTimeout(total=10)
+        ) as response:
+            if response.status == 400:
+                body = await response.json(content_type=None)
+                error = body.get("error") if isinstance(body, dict) else None
+                if isinstance(error, dict) and error.get("code") == _SEARCH_DUPLICATES_CODE:
+                    raise AmbiguousAddress
+                raise CannotConnect
+            if response.status != 200:
+                raise CannotConnect
+            json_data = await response.json(content_type=None)
+    except (TimeoutError, aiohttp.ClientError, ValueError) as err:
+        _LOGGER.debug("HydroPannes address lookup error: %s", err)
+        raise CannotConnect from err
+
+    if not isinstance(json_data, list):
+        raise CannotConnect
+
+    lieux: dict[str, dict[str, Any]] = {}
+    for item in json_data:
+        if not isinstance(item, dict) or item.get("eligible") is False:
+            continue
+        numero = item.get("lieuConsommation")
+        if isinstance(numero, str) and _LIEU_CONSO_RE.match(numero):
+            lieux.setdefault(numero, item)
+    return list(lieux.values())
+
+
+def _format_adresse(lieu: dict[str, Any], key: str) -> str:
+    """Return one of the lookup's address fields as plain text, empty when missing."""
+    # The API embeds HTML entities such as &nbsp; in its formatted addresses.
+    return html.unescape(str(lieu.get(key) or "")).replace("\xa0", " ").strip()
+
+
 class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Handle the initial configuration flow for Hydro-Pannes."""
 
@@ -101,8 +214,109 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             return {"base": "unknown"}
         return {}
 
+    def __init__(self) -> None:
+        """Initialize the flow state shared between the address steps."""
+        self._lieux: dict[str, dict[str, Any]] = {}
+        self._lieu: dict[str, Any] = {}
+
     async def async_step_user(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
-        """Handle the user-initiated setup step.
+        """Let the user find the location by address or type its number."""
+        return self.async_show_menu(step_id="user", menu_options=["adresse", "numero"])
+
+    async def async_step_adresse(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Look the consumption location up from a postal code and civic number.
+
+        The street name is not asked: the lookup returned the same result with or without it. One match goes straight to naming, several go to a choice list.
+        """
+        errors: dict[str, str] = {}
+        if user_input is not None:
+            try:
+                lieux = await search_lieux_conso(
+                    self.hass,
+                    normalize_code_postal(user_input[CONF_CODE_POSTAL]),
+                    user_input[CONF_NUMERO_CIVIQUE].strip(),
+                    user_input.get(CONF_APPARTEMENT, "").strip(),
+                )
+            except InvalidCodePostal:
+                errors = {CONF_CODE_POSTAL: "invalid_code_postal"}
+            except CannotConnect:
+                errors = {"base": "cannot_connect"}
+            except AmbiguousAddress:
+                errors = {"base": "adresse_ambigue"}
+            except Exception:
+                _LOGGER.exception("Unexpected exception while looking up the address")
+                errors = {"base": "unknown"}
+            else:
+                if not lieux:
+                    errors = {"base": "adresse_introuvable"}
+                elif len(lieux) == 1:
+                    return await self._async_select_lieu(lieux[0])
+                else:
+                    self._lieux = {lieu["lieuConsommation"]: lieu for lieu in lieux}
+                    return await self.async_step_choix()
+
+        return self.async_show_form(
+            step_id="adresse",
+            data_schema=self.add_suggested_values_to_schema(
+                STEP_ADRESSE_DATA_SCHEMA, user_input or {}
+            ),
+            errors=errors,
+        )
+
+    async def async_step_choix(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
+        """Pick one location when the address has several, such as apartments."""
+        if user_input is not None:
+            return await self._async_select_lieu(self._lieux[user_input[CONF_LIEU_CONSO]])
+
+        options = [
+            SelectOptionDict(
+                value=numero,
+                label=f"{_format_adresse(lieu, 'adresseFormateePourChoixAppartementFr') or _format_adresse(lieu, 'adresseCompleteFr')} ({numero})",
+            )
+            for numero, lieu in self._lieux.items()
+        ]
+        return self.async_show_form(
+            step_id="choix",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(CONF_LIEU_CONSO): SelectSelector(
+                        SelectSelectorConfig(options=options, mode=SelectSelectorMode.LIST)
+                    )
+                }
+            ),
+        )
+
+    async def _async_select_lieu(self, lieu: dict[str, Any]) -> ConfigFlowResult:
+        """Claim the found number, aborting when it is already configured, then ask for a name."""
+        await self.async_set_unique_id(lieu["lieuConsommation"])
+        self._abort_if_unique_id_configured()
+        self._lieu = lieu
+        return await self.async_step_nom()
+
+    async def async_step_nom(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
+        """Name the location found by address, suggesting its street address."""
+        if user_input is not None:
+            return self.async_create_entry(
+                title=user_input[CONF_NOM_LIEU],
+                data={CONF_LIEU_CONSO: self._lieu["lieuConsommation"]},
+            )
+
+        return self.async_show_form(
+            step_id="nom",
+            data_schema=self.add_suggested_values_to_schema(
+                STEP_NOM_DATA_SCHEMA,
+                {CONF_NOM_LIEU: _format_adresse(self._lieu, "adresseFormateePourChoixRue")},
+            ),
+            description_placeholders={
+                "adresse": _format_adresse(self._lieu, "adresseCompleteFr"),
+                "lieu_consommation": self._lieu["lieuConsommation"],
+            },
+        )
+
+    async def async_step_numero(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
+        """Set the location up from a typed number.
 
         Strips whitespace from the lieu de consommation number before
         validation and storage so that accidental leading/trailing spaces
@@ -121,7 +335,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 )
 
         return self.async_show_form(
-            step_id="user", data_schema=STEP_USER_DATA_SCHEMA, errors=errors
+            step_id="numero", data_schema=STEP_NUMERO_DATA_SCHEMA, errors=errors
         )
 
     async def async_step_reconfigure(
@@ -178,3 +392,11 @@ class InvalidLieuConso(HomeAssistantError):
 
 class InvalidFormat(HomeAssistantError):
     """Raised when the lieu de consommation number is not exactly 10 digits."""
+
+
+class InvalidCodePostal(HomeAssistantError):
+    """Raised when the postal code is not in the Canadian A1A 1A1 form."""
+
+
+class AmbiguousAddress(HomeAssistantError):
+    """Raised when the lookup finds several locations it cannot tell apart."""
