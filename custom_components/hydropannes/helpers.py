@@ -8,16 +8,26 @@ source of truth for outage detection, date parsing, and priority selection.
 
 from __future__ import annotations
 
+from datetime import datetime, timedelta
+import math
 from typing import TYPE_CHECKING, Any
 
 from homeassistant.util import dt as dt_util
 
-from .const import PLANNED_RESCHEDULE_CODES
+from .const import (
+    ETAT_PLANIFIE_ANNULE,
+    ETAT_PLANIFIE_DECALE,
+    ETAT_PLANIFIE_REPORTE,
+    NIVEAU_URGENCE_MAJEURS,
+    RAISON_ANNULATION_CODES,
+    RAISON_ANNULATION_DEFAUT,
+)
 
 if TYPE_CHECKING:
-    from datetime import datetime
-
     from .coordinator import HydroPannesDataUpdateCoordinator
+
+# Suffix of the dateDebut*/dateFin* pair holding the new window of a postponed or shifted planned interruption.
+_NEW_WINDOW_SUFFIX = {ETAT_PLANIFIE_REPORTE: "Report", ETAT_PLANIFIE_DECALE: "Decalage"}
 
 
 class HydroPannesHelperMixin:
@@ -98,23 +108,12 @@ class HydroPannesHelperMixin:
     def _is_outage_terminated(self, intr: dict[str, Any]) -> bool:
         """Return True if the interruption is terminated (power restored).
 
-        An outage is terminated when dateFin is in the past, unless:
-        - etat is "R" (postponed): the original dateFin is past but the intervention
-          is rescheduled, not completed.
-        - codeRemarque is in PLANNED_RESCHEDULE_CODES (rescheduled planned interruption): the original
-          dateFin is the cancelled slot; termination is determined by dateFinReport.
+        A postponed or shifted planned interruption is terminated only once its new end is past, and never without one: its original dateFin is the abandoned slot. Any other interruption is terminated once dateFin is past.
         """
-        etat = intr.get("etat")
-        code_remarque = str(intr.get("codeRemarque", ""))
-        if etat == "R":
-            return False
-        if etat == "A" and code_remarque in PLANNED_RESCHEDULE_CODES:
-            date_fin_report = self._parse_dt(intr.get("dateFinReport"))
-            if date_fin_report:
-                return self._is_date_in_past(date_fin_report)
-            return False
-        date_fin = self._parse_dt(intr.get("dateFin"))
-        return self._is_date_in_past(date_fin)
+        suffix = _NEW_WINDOW_SUFFIX.get(intr.get("etat", ""))
+        if suffix:
+            return self._is_date_in_past(self._parse_dt(intr.get(f"dateFin{suffix}")))
+        return self._is_date_in_past(self._parse_dt(intr.get("dateFin")))
 
     def _is_reprise_graduelle(self, intr: dict[str, Any] | None = None) -> bool:
         """Return True when Hydro-Québec signals a gradual service restoration.
@@ -126,36 +125,32 @@ class HydroPannesHelperMixin:
         data = self.coordinator.data
         return bool(data and data.get("repriseGraduellePossible"))
 
+    def _is_panne_majeure(self, intr: dict[str, Any]) -> bool:
+        """Return True when the interruption carries a major-outage urgency level."""
+        return intr.get("niveauUrgence") in NIVEAU_URGENCE_MAJEURS
+
     def _is_planned_intervention(self, intr: dict[str, Any]) -> bool:
         """Return True if the interruption is a planned intervention."""
         result: bool = intr.get("interruptionPlanifiee", False)
         return result
 
     def _is_planned_postponed(self, intr: dict[str, Any]) -> bool:
-        """Return True if the planned intervention was cancelled but rescheduled.
-
-        Detected via codeRemarque in PLANNED_RESCHEDULE_CODES ("91" confirmed in production,
-        "93" kept as fallback). HydroQuébec sets this code when the original slot is
-        cancelled and a new date is assigned via dateDebutReport/dateFinReport.
-        """
-        return str(intr.get("codeRemarque", "")) in PLANNED_RESCHEDULE_CODES
+        """Return True if the planned intervention was postponed (etat "R")."""
+        return intr.get("etat") == ETAT_PLANIFIE_REPORTE
 
     def _is_planned_cancelled(self, intr: dict[str, Any]) -> bool:
-        """Return True if the planned intervention has been cancelled.
+        """Return True if the planned intervention was cancelled (etat "A").
 
-        Cancellation is detected via:
-        - etat = "A" (annulée), or
-        - codeRemarque = "92" (planned interruption cancellation code, observed empirically).
-
-        PLANNED_RESCHEDULE_CODES (e.g. "91") means rescheduled, not cancelled —
-        even when etat is also "A", the presence of report dates makes the planned interruption
-        still upcoming and must not be treated as a plain cancellation.
+        The Info-pannes site shows etat "A" as cancelled whatever the codeRemarque, even when report dates are present.
         """
-        etat = intr.get("etat")
-        code_remarque = str(intr.get("codeRemarque", ""))
-        if code_remarque in PLANNED_RESCHEDULE_CODES:
-            return False
-        return etat == "A" or code_remarque == "92"
+        return intr.get("etat") == ETAT_PLANIFIE_ANNULE
+
+    def _raison_annulation(self, intr: dict[str, Any]) -> str | None:
+        """Return the cancellation or postponement reason slug, or None without a codeRemarque."""
+        code = intr.get("codeRemarque")
+        if code in (None, ""):
+            return None
+        return RAISON_ANNULATION_CODES.get(str(code), RAISON_ANNULATION_DEFAUT)
 
     # ==========================================================================
     # Date helpers for planned interventions
@@ -164,18 +159,14 @@ class HydroPannesHelperMixin:
     def _get_effective_dates(self, intr: dict[str, Any]) -> tuple[datetime | None, datetime | None]:
         """Return the effective start and end dates for an interruption.
 
-        For postponed (etat = "R") or rescheduled (etat = "A", PLANNED_RESCHEDULE_CODES) planned interruptions,
-        uses dateDebutReport/dateFinReport when present — the API keeps the original
-        dateDebut as the cancelled slot while the report fields carry the new window.
-        Falls back to dateDebut/dateFin otherwise.
+        A postponed planned interruption (etat "R") uses dateDebutReport/dateFinReport and a shifted one (etat "E") uses dateDebutDecalage/dateFinDecalage, as the Info-pannes site does: the API keeps the original dateDebut as the abandoned slot. Any other etat, or a missing new start, falls back to dateDebut/dateFin.
 
         Returns: (effective_debut, effective_fin)
         """
-        etat = intr.get("etat")
-        code_remarque = str(intr.get("codeRemarque", ""))
-        if etat == "R" or (etat == "A" and code_remarque in PLANNED_RESCHEDULE_CODES):
-            debut = self._parse_dt(intr.get("dateDebutReport"))
-            fin = self._parse_dt(intr.get("dateFinReport"))
+        suffix = _NEW_WINDOW_SUFFIX.get(intr.get("etat", ""))
+        if suffix:
+            debut = self._parse_dt(intr.get(f"dateDebut{suffix}"))
+            fin = self._parse_dt(intr.get(f"dateFin{suffix}"))
             if debut:
                 return debut, fin
         return (
@@ -222,18 +213,48 @@ class HydroPannesHelperMixin:
     # Interruption selection (priority logic)
     # ==========================================================================
 
-    def _get_active_outage(self) -> dict[str, Any] | None:
-        """Return the first active non-planned outage, or None.
+    def _round_up_quarter(self, value: datetime) -> datetime:
+        """Round a time up to the next quarter hour, as the Info-pannes site does before comparing it to now.
 
-        An active outage is unplanned, has main etat = "N",
-        and has no dateFin or a dateFin in the future.
+        Only the minutes are rounded, seconds are kept, like the site's dateArrondie pipe.
         """
-        for intr in self._get_interruptions():
-            if self._is_planned_intervention(intr):
+        quarters = math.ceil(value.minute / 15)
+        if quarters == 4:
+            return value.replace(minute=0) + timedelta(hours=1)
+        return value.replace(minute=quarters * 15)
+
+    def _outage_end_for_sort(self, intr: dict[str, Any]) -> datetime:
+        """Return the end used to rank simultaneous outages, far in the future when there is none."""
+        end = self._parse_dt(intr.get("dateFinEstimeeMax")) or self._parse_dt(intr.get("dateFin"))
+        return end or datetime.max.replace(tzinfo=dt_util.UTC)
+
+    def _get_active_outage(self) -> dict[str, Any] | None:
+        """Return the active non-planned outage to display, or None.
+
+        An active outage is unplanned, has main etat = "N", and has no dateFin or a dateFin in the future. Like the Info-pannes site, the unplanned interruptions are ranked major first, then by latest end. The first active one is kept, and any interruption ranked after it that overlaps it moves its dateDebut back. The returned dict is then a copy carrying that earlier dateDebut.
+        """
+        unplanned = [i for i in self._get_interruptions() if not self._is_planned_intervention(i)]
+        # Sort ascending then reverse, like the site, so that ties also come out in reverse payload order.
+        ranked = sorted(
+            unplanned,
+            key=lambda i: (self._is_panne_majeure(i), self._outage_end_for_sort(i)),
+        )[::-1]
+        chosen: dict[str, Any] | None = None
+        for intr in ranked:
+            if chosen is None:
+                if self._is_outage_active(intr):
+                    chosen = intr
                 continue
-            if self._is_outage_active(intr):
-                return intr
-        return None
+            chosen_debut = self._parse_dt(chosen.get("dateDebut"))
+            debut = self._parse_dt(intr.get("dateDebut"))
+            if (
+                chosen_debut
+                and debut
+                and debut < chosen_debut
+                and self._outage_end_for_sort(intr) > chosen_debut
+            ):
+                chosen = {**chosen, "dateDebut": intr["dateDebut"]}
+        return chosen
 
     def _get_terminated_outage(self) -> dict[str, Any] | None:
         """Return the most recently terminated non-planned outage, or None.
@@ -253,14 +274,43 @@ class HydroPannesHelperMixin:
             key=lambda i: self._parse_dt(i.get("dateFin")) or dt_util.utc_from_timestamp(0),
         )
 
+    def _planned_sort_key(self, intr: dict[str, Any]) -> tuple[bool, datetime]:
+        """Rank planned interruptions like the Info-pannes site: cancelled last, then by original dateDebut."""
+        debut = self._parse_dt(intr.get("dateDebut")) or datetime.max.replace(tzinfo=dt_util.UTC)
+        return self._is_planned_cancelled(intr), debut
+
+    def _get_pending_planned(self) -> list[dict[str, Any]]:
+        """Return the planned interruptions that are neither cancelled nor terminated, nearest first."""
+        return sorted(
+            (
+                i
+                for i in self._get_interruptions()
+                if self._is_planned_intervention(i)
+                and not self._is_planned_cancelled(i)
+                and not self._is_outage_terminated(i)
+            ),
+            key=self._planned_sort_key,
+        )
+
+    def _is_planned_in_progress(self, intr: dict[str, Any]) -> bool:
+        """Return True for a planned interruption under way: main etat "N", neither cancelled nor terminated."""
+        return (
+            self._is_planned_intervention(intr)
+            and self._get_main_etat() == "N"
+            and not self._is_planned_cancelled(intr)
+            and not self._is_outage_terminated(intr)
+        )
+
     def _get_planned_intervention(self) -> dict[str, Any] | None:
         """Return the most relevant planned intervention, or None.
 
         Selection priority:
         1. Active planned intervention (main etat = "N", dateFin absent or future).
-        2. Future non-cancelled planned intervention (effective dateDebut in future).
-        3. Any future planned intervention (including rescheduled ones).
+        2. Nearest future non-cancelled planned intervention (effective dateDebut in future).
+        3. Nearest future planned intervention (including rescheduled ones).
         4. Any planned intervention, including terminated (fallback).
+
+        "Nearest" follows the Info-pannes ranking, by original dateDebut.
         """
         interruptions = self._get_interruptions()
         planned = [i for i in interruptions if self._is_planned_intervention(i)]
@@ -271,11 +321,12 @@ class HydroPannesHelperMixin:
             if self._is_outage_active(p):
                 return p
 
-        for p in planned:
+        ranked = sorted(planned, key=self._planned_sort_key)
+        for p in ranked:
             if self._is_future_planned(p) and not self._is_planned_cancelled(p):
                 return p
 
-        for p in planned:
+        for p in ranked:
             if self._is_future_planned(p):
                 return p
 

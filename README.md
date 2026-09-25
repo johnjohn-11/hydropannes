@@ -22,7 +22,7 @@ Suivez en temps réel l'état du service électrique pour un ou plusieurs lieux 
 - ⏱️ **Durée de la panne** : Temps écoulé depuis le début
 - 🕐 **Estimation de rétablissement** : Compte à rebours avant le retour du courant
 - 👥 **Adresses touchées** : Nombre de clients affectés
-- 🔧 **Statut d'intervention** : Évaluation, équipe en route, travaux en cours, etc.
+- 🔧 **Statut d'intervention** : Évaluation, équipe désignée, travaux en cours, etc.
 - 📍 **Multi-lieux** : Surveillance de plusieurs adresses indépendantes
 - ⚡ **Polling adaptatif** : Mise à jour toutes les 60 s pendant une panne, 3 min sinon
 - 📊 **Données post-panne** : Informations conservées après le rétablissement
@@ -105,12 +105,13 @@ Chaque lieu de consommation configuré crée un appareil avec les entités suiva
 |--------|-------------|
 | `sensor.*_info_pannes` | État général du service (voir [tableau des états](#états-des-sensors)) |
 | `sensor.*_niveau_urgence` | Niveau d'urgence : Normal ou Panne majeure |
-| `sensor.*_adresses_touchees` | Nombre de clients affectés |
+| `sensor.*_adresses_touchees` | Nombre de clients affectés (l'attribut `arrondi` donne le libellé du site, par exemple « 150 ou moins ») |
 | `sensor.*_date_debut` | Date et heure de début de la panne ou de l'intervention |
 | `sensor.*_date_fin` | Date et heure de fin réelle ou estimée |
 | `sensor.*_statut_intervention` | Étape de l'intervention (équipe désignée, travaux en cours, etc.) |
 | `sensor.*_cause` | Cause de la panne (le code brut d'Hydro-Québec reste dans l'attribut `code_cause`) |
 | `sensor.*_duree` | Durée de la panne en secondes |
+| `sensor.*_retablissement` | Étape du rétablissement d'une panne ou d'une interruption planifiée en cours : en évaluation, prévu ou en révision |
 | `sensor.*_delai_avant_retablissement` | Temps restant avant le rétablissement estimé |
 | `sensor.*_derniere_maj` | Horodatage de la dernière mise à jour des données |
 | `sensor.*_lieu_de_consommation` | Numéro de lieu de consommation *(Diagnostic)* |
@@ -120,7 +121,7 @@ Chaque lieu de consommation configuré crée un appareil avec les entités suiva
 | Entité | Description |
 |--------|-------------|
 | `binary_sensor.*_etat_du_service` | `on` = panne active ou intervention planifiée en cours, `off` = service normal |
-| `binary_sensor.*_intervention_planifiee` | `on` = intervention planifiée active ou à venir |
+| `binary_sensor.*_intervention_planifiee` | `on` = intervention planifiée active ou à venir, et non annulée. Ses attributs décrivent la plus proche, et `interruptions_suivantes` liste les autres (début, fin, durée prévue en minutes, et `reprise_graduelle_possible` à partir de 8 heures de travaux, comme sur le site) |
 | `binary_sensor.*_compatibilite_api` | `on` = structure de l'API Hydro-Québec modifiée *(Diagnostic)* |
 
 > 💡 Dans les exemples ci-dessous, `maison` correspond au nom donné au lieu.
@@ -131,7 +132,7 @@ Chaque lieu de consommation configuré crée un appareil avec les entités suiva
 
 ## États des sensors
 
-Les quatre sensors ci-dessous sont des énumérations (`device_class: enum`). Leur **état** est un identifiant stable et neutre en langue, celui que renvoie `states()` et qu'il faut utiliser dans les automatisations. Le **libellé** affiché dans l'interface est traduit. On le récupère dans un template avec `state_translated('sensor.xxx')`.
+Les cinq sensors ci-dessous sont des énumérations (`device_class: enum`). Leur **état** est un identifiant stable et neutre en langue, celui que renvoie `states()` et qu'il faut utiliser dans les automatisations. Le **libellé** affiché dans l'interface est traduit. On le récupère dans un template avec `state_translated('sensor.xxx')`.
 
 ### `sensor.*_info_pannes`
 
@@ -148,6 +149,18 @@ Les quatre sensors ci-dessous sont des énumérations (`device_class: enum`). Le
 | `interruption_planifiee_annulee` | Interruption planifiée annulée | Travaux planifiés annulés par Hydro-Québec |
 | `interruption_planifiee_reportee` | Interruption planifiée reportée | Travaux planifiés reportés à une nouvelle date |
 
+Comme sur le site Info-pannes, l'état d'une interruption planifiée vient du champ `etat` d'Hydro-Québec : `R` pour reportée, `A` pour annulée. Une interruption décalée (`E`) reste à venir ou en cours, avec ses nouvelles dates. Une interruption annulée reste annulée même si Hydro-Québec indique des dates de report.
+
+Quand l'état est `interruption_planifiee_annulee` ou `interruption_planifiee_reportee`, l'attribut `raison_annulation` donne la raison indiquée par Hydro-Québec :
+
+| `raison_annulation` | Raison affichée sur Info-pannes |
+|---------------------|---------------------------------|
+| `planification_modifiee` | Modification de la planification des travaux |
+| `travaux_deja_realises` | Travaux déjà réalisés |
+| `demande_tiers` | Changement à la demande d'un tiers |
+| `conditions_meteorologiques` | Conditions météorologiques |
+| `autres_travaux_urgents` | Autres travaux urgents |
+
 ### `sensor.*_niveau_urgence`
 
 | État | Libellé affiché (fr) |
@@ -157,23 +170,39 @@ Les quatre sensors ci-dessous sont des énumérations (`device_class: enum`). Le
 
 ### `sensor.*_cause`
 
-| État | Libellé affiché (fr) |
-|------|----------------------|
-| `accident_ou_incident` | Accident ou incident |
-| `amelioration_entretien_reseau` | Amélioration ou entretien du réseau |
-| `bris_equipement` | Bris d'équipement |
-| `conditions_meteorologiques` | Conditions météorologiques |
-| `dommages_animal` | Dommages dus à un animal |
-| `dommages_vegetation` | Dommages dus à la végétation |
-| `incendie_ou_fuite_gaz` | Incendie ou fuite de gaz |
-| `securite_publique` | Interruption - Sécurité publique |
-| `travaux_renforcement_reseau` | Travaux planifiés - Renforcement de réseau |
-| `travaux_vegetation_elagage` | Travaux sur la végétation ou élagage |
-| `usure_materiel` | Usure ou désagrégation de matériel |
-| `indeterminee` | Indéterminée *(Hydro-Québec ne fournit aucun code)* |
-| `inconnue` | Inconnue *(code non encore reconnu par l'intégration)* |
+| État | Libellé affiché (fr) | Codes Hydro-Québec |
+|------|----------------------|--------------------|
+| `defaillance_equipement` | Défaillance d'un équipement | 11 |
+| `surcharge_reseau` | Surcharge sur le réseau | 12 |
+| `bris_equipement` | Bris d'équipement | 13, 14, 15, 72, 79 |
+| `foudre` | Foudre | 21 |
+| `precipitations` | Précipitations | 22 |
+| `sinistre_naturel` | Sinistre naturel | 24 |
+| `vents_violents` | Vents violents | 25 |
+| `temperature_extreme` | Température extrême | 26 |
+| `accident_ou_incident` | Accident ou incident | 31, 32, 41, 43, 56, 57 |
+| `usure_materiel` | Usure ou désagrégation de matériel | 33 |
+| `incendie_ou_fuite_gaz` | Incendie ou fuite de gaz | 34 |
+| `contact_accidentel` | Contact accidentel avec le réseau | 42, 55 |
+| `securite_publique` | Interruption - Sécurité publique | 44 |
+| `dommages_vegetation` | Dommages causés par la végétation | 51 |
+| `dommages_oiseaux` | Dommages causés par les oiseaux | 52 |
+| `dommages_animaux` | Dommages causés par les animaux | 53 |
+| `collision_poteau` | Collision avec un poteau | 54 |
+| `entretien_urgent` | Entretien urgent du réseau | 60, 70 |
+| `amelioration_entretien_reseau` | Amélioration ou entretien du réseau | 61, 62, 63, 64, 65, 67, 68, 69, 71 |
+| `securite_travaux` | Sécurité pendant les travaux | 66 |
+| `mesure_protection` | Mesure de protection du réseau | 73, 74 |
+| `travaux_vegetation_elagage` | Travaux sur la végétation ou élagage | 77, 78 |
+| `indeterminee` | Indéterminée | aucun code, ou un code absent de cette liste |
 
 Plusieurs codes d'Hydro-Québec partagent un même état. Le code brut reste disponible dans l'attribut `code_cause`.
+
+### Attribut `description`
+
+Les sensors `cause` et `statut_intervention` ont un attribut `description` qui explique en une ou deux phrases la cause ou l'étape en cours, par exemple dans une notification avec `state_attr('sensor.maison_cause', 'description')`. Les textes reprennent dans nos mots les explications du site Info-pannes. Ils sont en français seulement, parce que Home Assistant ne traduit pas les valeurs d'attributs. Pendant une panne majeure, certaines étapes ont une explication adaptée.
+
+Cet attribut n'est pas enregistré dans l'historique de Home Assistant.
 
 ### `sensor.*_statut_intervention`
 
@@ -181,7 +210,6 @@ Plusieurs codes d'Hydro-Québec partagent un même état. Le code brut reste dis
 |------|----------------------|
 | `evaluation_travaux` | Évaluation des travaux requis |
 | `equipe_designee` | Équipe désignée |
-| `equipe_en_route` | Équipe en route |
 | `travaux_en_cours` | Travaux en cours sur le réseau électrique |
 | `travaux_par_priorite` | Réalisation des travaux par ordre de priorité |
 | `retablissement_en_evaluation` | Heure de rétablissement en cours d'évaluation |
@@ -191,6 +219,19 @@ Plusieurs codes d'Hydro-Québec partagent un même état. Le code brut reste dis
 | `service_retabli` | Service rétabli |
 | `interruption_planifiee_a_venir` | Interruption planifiée à venir |
 | `interruption_planifiee_reportee` | Interruption planifiée reportée |
+| `interruption_planifiee_annulee` | Interruption planifiée annulée |
+
+Pour une interruption planifiée qui n'est pas en cours, l'état est `interruption_planifiee_a_venir`, `interruption_planifiee_reportee` ou `interruption_planifiee_annulee`, comme pour `sensor.*_info_pannes`. Une interruption annulée reste annulée même une fois sa date passée. Pendant une interruption planifiée en cours, l'étape est `retablissement_prevu` dès que l'heure de fin est connue, sinon `travaux_en_cours`, comme sur le site.
+
+### `sensor.*_retablissement`
+
+| État | Libellé affiché (fr) | Quand |
+|------|----------------------|-------|
+| `en_evaluation` | Heure de rétablissement en cours d'évaluation | Aucune heure estimée |
+| `prevu` | Rétablissement prévu | Heure estimée, pas encore dépassée |
+| `en_revision` | Heure de rétablissement en cours de révision | Heure estimée dépassée (arrondie au quart d'heure supérieur), ou aucune heure estimée alors que l'équipe est en route ou sur place |
+
+Ce sensor suit la règle du site Info-pannes. Pendant une interruption planifiée en cours, il vaut `prevu` dès que l'heure de fin est connue, sans passer en révision, comme sur le site. Il n'a pas de valeur en dehors d'une panne ou d'une interruption planifiée en cours. Il a aussi un attribut `description`, non enregistré dans l'historique.
 
 ---
 
@@ -198,7 +239,7 @@ Plusieurs codes d'Hydro-Québec partagent un même état. Le code brut reste dis
 
 Lorsqu'une panne et une intervention planifiée coexistent, l'intégration sélectionne l'interruption à afficher selon cet ordre de priorité :
 
-1. **Panne active** (non planifiée, courant coupé): priorité absolue
+1. **Panne active** (non planifiée, courant coupé): priorité absolue. Si plusieurs pannes sont actives, l'intégration fait comme le site Info-pannes : elle garde d'abord une panne majeure, sinon celle qui finit le plus tard, et reprend l'heure de début la plus tôt parmi les pannes qui la chevauchent.
 2. **Panne terminée** (courant rétabli), sauf si une interruption planifiée non annulée est également présente
 3. **Intervention planifiée** (active, à venir, ou terminée)
 4. **Première interruption de la liste**: dernier recours
