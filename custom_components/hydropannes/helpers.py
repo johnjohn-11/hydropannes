@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING, Any
 
 from homeassistant.util import dt as dt_util
 
-from .const import PLANNED_RESCHEDULE_CODES
+from .const import NIVEAU_URGENCE_MAJEURS, PLANNED_RESCHEDULE_CODES
 
 if TYPE_CHECKING:
     from datetime import datetime
@@ -125,6 +125,10 @@ class HydroPannesHelperMixin:
             return True
         data = self.coordinator.data
         return bool(data and data.get("repriseGraduellePossible"))
+
+    def _is_panne_majeure(self, intr: dict[str, Any]) -> bool:
+        """Return True when the interruption carries a major-outage urgency level."""
+        return intr.get("niveauUrgence") in NIVEAU_URGENCE_MAJEURS
 
     def _is_planned_intervention(self, intr: dict[str, Any]) -> bool:
         """Return True if the interruption is a planned intervention."""

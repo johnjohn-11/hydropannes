@@ -101,7 +101,7 @@ class HydroPannesInfoPannesSensor(HydroPannesSensorBase):
             return "reprise_graduelle"
 
         if active_outage:
-            if active_outage.get("niveauUrgence") == "P":
+            if self._is_panne_majeure(active_outage):
                 return "panne_majeure"
             return "panne_en_cours"
 
@@ -256,10 +256,9 @@ class HydroPannesStatutInterventionSensor(HydroPannesSensorBase):
         if self._is_reprise_graduelle(outage):
             return "reprise_graduelle"
         code = outage.get("codeIntervention")
-        niveau = outage.get("niveauUrgence")
         type_fin = outage.get("typeFinPrevue")
-        if code == "L":
-            return INTERVENTION_CODES_MAJEUR["L"] if niveau == "P" else INTERVENTION_CODES["L"]
+        if code == "L" and self._is_panne_majeure(outage):
+            return INTERVENTION_CODES_MAJEUR["L"]
         if code in INTERVENTION_CODES:
             return INTERVENTION_CODES[code]
         if type_fin:
