@@ -292,6 +292,10 @@ class HydroPannesStatutInterventionSensor(HydroPannesSensorBase):
         outage = self._get_current_interruption()
         if not outage:
             return None
+        planned = self._is_planned_intervention(outage)
+        # Checked before termination: the site shows a cancelled planned interruption as cancelled even once its slot is past.
+        if planned and self._is_planned_cancelled(outage):
+            return "interruption_planifiee_annulee"
         if self._is_outage_terminated(outage):
             return "service_retabli"
         if self._is_planned_postponed(outage):
@@ -302,6 +306,9 @@ class HydroPannesStatutInterventionSensor(HydroPannesSensorBase):
             # The site's planned-interruption tracker shows restoration as the current step once an end is known.
             _, fin = self._get_effective_dates(outage)
             return "retablissement_prevu" if fin else "travaux_en_cours"
+        if planned:
+            # Planned but not under way (main etat not "N"), as the info-pannes sensor reports it. The site shows no step for it.
+            return "interruption_planifiee_a_venir"
         code = outage.get("codeIntervention")
         type_fin = outage.get("typeFinPrevue")
         if code == "L" and self._is_panne_majeure(outage):
