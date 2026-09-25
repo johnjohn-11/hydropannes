@@ -20,6 +20,7 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.hydropannes.const import (
     API_URL,
+    CAUSE_DESCRIPTIONS,
     CONF_LIEU_CONSO,
     CONF_NOM_LIEU,
     DOMAIN,
@@ -145,6 +146,7 @@ async def test_enum_sensor_states_accepted_by_home_assistant(
     # The raw HQ code survives as an attribute of the cause sensor.
     cause_state = hass.states.get(entity_id_for("cause"))
     assert cause_state.attributes["code_cause"] == "11"
+    assert cause_state.attributes["description"] == CAUSE_DESCRIPTIONS["defaillance_equipement"]
     # Home Assistant advertises the declared options on the entity.
     assert "bris_equipement" in cause_state.attributes["options"]
 

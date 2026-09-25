@@ -173,6 +173,56 @@ STATUT_INTERVENTION_OPTIONS = [
 ]
 
 # ---------------------------------------------------------------------------
+# Descriptions (the unrecorded "description" attribute)
+# ---------------------------------------------------------------------------
+
+# One sentence or two per cause, restating in our own words the explanation the Info-pannes site gives. French only: attribute values are not translated.
+CAUSE_DESCRIPTIONS = {
+    "defaillance_equipement": "Un équipement du réseau de distribution a mal fonctionné à cause de son usure normale, sans cause externe.",
+    "surcharge_reseau": "La demande d'électricité a dépassé ce que l'équipement touché peut supporter.",
+    "bris_equipement": "Un équipement a été endommagé ou a mal fonctionné à cause d'un défaut de fabrication d'une de ses pièces.",
+    "foudre": "La foudre est tombée pendant un orage, a coupé le service et a pu endommager un équipement du réseau.",
+    "precipitations": "De la neige, de la pluie ou du verglas a coupé le service et a pu endommager un équipement du réseau.",
+    "sinistre_naturel": "Un phénomène naturel, comme une inondation, un glissement de terrain, de l'érosion, un séisme ou des glaces, a touché le réseau.",
+    "vents_violents": "Des vents forts ont coupé le service et ont pu endommager un équipement du réseau.",
+    "temperature_extreme": "Une chaleur ou un froid extrême a coupé le service et a pu endommager un équipement du réseau.",
+    "accident_ou_incident": "Un événement imprévu est survenu sur le réseau, par exemple une erreur pendant l'essai d'un équipement ou une isolation abîmée par des produits chimiques ou du sel.",
+    "usure_materiel": "Une pièce du réseau s'est détériorée avec le temps, la pourriture ou une réaction chimique, au point de briser ou de nuire au fonctionnement de l'équipement.",
+    "incendie_ou_fuite_gaz": "Un incendie, une fuite de gaz ou un autre événement a amené les autorités à demander d'urgence la coupure du service dans le secteur.",
+    "contact_accidentel": "Une personne ou un objet a touché par accident un équipement du réseau.",
+    "securite_publique": "Les autorités ont demandé une coupure d'urgence pour protéger le public ou le personnel.",
+    "dommages_vegetation": "Un arbre ou une branche, cassé, plié ou non élagué, a touché un équipement du réseau et l'a endommagé.",
+    "dommages_oiseaux": "Un oiseau a touché un équipement du réseau et causé un court-circuit ou une mise à la terre.",
+    "dommages_animaux": "Un animal autre qu'un oiseau, comme un écureuil ou un rongeur, a touché un équipement du réseau et causé un court-circuit ou une mise à la terre.",
+    "collision_poteau": "Un véhicule a heurté un poteau ou un autre équipement du réseau.",
+    "entretien_urgent": "Hydro-Québec a coupé le service pour faire d'urgence, en toute sécurité, des travaux d'entretien, de réparation ou de modification du réseau.",
+    "amelioration_entretien_reseau": "Hydro-Québec a coupé le service pour faire, en toute sécurité, des travaux d'entretien, de réparation ou de modification du réseau.",
+    "securite_travaux": "Le service est coupé pour protéger le public pendant des travaux, comme le déplacement d'une maison ou des travaux faits par d'autres.",
+    "mesure_protection": "Hydro-Québec a coupé le service d'urgence pour éviter des bris importants qui pourraient causer une panne majeure.",
+    "travaux_vegetation_elagage": "Le service est coupé pour permettre d'abattre ou d'élaguer des arbres près du réseau en toute sécurité.",
+    "indeterminee": "L'origine de l'interruption n'est pas encore connue.",
+}
+
+# Same idea for the intervention steps. States without an entry expose no description.
+STATUT_INTERVENTION_DESCRIPTIONS = {
+    "evaluation_travaux": "Hydro-Québec tente de rétablir le service à distance, évalue les dommages et les travaux à faire, puis envoie les équipes selon les priorités. La durée de cette évaluation varie d'une panne à l'autre.",
+    "equipe_designee": "Une équipe est chargée des travaux. Elle peut s'occuper de plusieurs pannes à la fois et être envoyée ailleurs si une panne plus urgente survient.",
+    "travaux_en_cours": "L'équipe constate l'ampleur des travaux une fois sur place. L'heure de rétablissement peut changer selon ce qu'elle observe.",
+    "travaux_par_priorite": "Pendant une panne majeure, les travaux suivent un ordre de priorité : les dangers signalés au 911, les hôpitaux et les services d'urgence passent en premier.",
+    "retablissement_en_evaluation": "Il faut de 15 à 20 minutes pour estimer le temps nécessaire au rétablissement du service.",
+    "retablissement_prevu": "Hydro-Québec estime l'heure de rétablissement avec l'information dont elle dispose et peut l'ajuster selon ce que l'équipe constate sur place.",
+    "fin_non_determinee": "Quand un événement cause beaucoup de pannes, l'heure de rétablissement peut prendre plus de temps à estimer.",
+    "reprise_graduelle": "Hydro-Québec rétablit le service graduellement dans le secteur pour protéger ses équipements et éviter d'autres pannes. Le courant peut revenir quelques minutes, puis être coupé de nouveau pendant 30 minutes à 5 heures.",
+    "service_retabli": "Si le courant n'est toujours pas revenu, il faut signaler la panne de nouveau à Hydro-Québec.",
+}
+
+# Overrides STATUT_INTERVENTION_DESCRIPTIONS during a major outage (niveauUrgence in NIVEAU_URGENCE_MAJEURS).
+STATUT_INTERVENTION_DESCRIPTIONS_MAJEUR = {
+    "evaluation_travaux": "Hydro-Québec tente de rétablir le service à distance, évalue les dommages et envoie les équipes selon les priorités. Pendant une panne majeure, cette évaluation peut être plus longue.",
+    "retablissement_en_evaluation": STATUT_INTERVENTION_DESCRIPTIONS["fin_non_determinee"],
+}
+
+# ---------------------------------------------------------------------------
 # Interruption bookkeeping (not sensor states)
 # ---------------------------------------------------------------------------
 
