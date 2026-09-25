@@ -80,6 +80,8 @@ KNOWN_INTERRUPTION_FIELDS = {
     "dateFinEstimeeMax",
     "dateDebutReport",
     "dateFinReport",
+    "dateDebutDecalage",
+    "dateFinDecalage",
     "codeIntervention",
     "niveauUrgence",
     "nbClient",

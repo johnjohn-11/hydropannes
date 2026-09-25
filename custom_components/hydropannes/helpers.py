@@ -12,12 +12,22 @@ from typing import TYPE_CHECKING, Any
 
 from homeassistant.util import dt as dt_util
 
-from .const import NIVEAU_URGENCE_MAJEURS, PLANNED_RESCHEDULE_CODES
+from .const import (
+    ETAT_PLANIFIE_ANNULE,
+    ETAT_PLANIFIE_DECALE,
+    ETAT_PLANIFIE_REPORTE,
+    NIVEAU_URGENCE_MAJEURS,
+    RAISON_ANNULATION_CODES,
+    RAISON_ANNULATION_DEFAUT,
+)
 
 if TYPE_CHECKING:
     from datetime import datetime
 
     from .coordinator import HydroPannesDataUpdateCoordinator
+
+# Suffix of the dateDebut*/dateFin* pair holding the new window of a postponed or shifted planned interruption.
+_NEW_WINDOW_SUFFIX = {ETAT_PLANIFIE_REPORTE: "Report", ETAT_PLANIFIE_DECALE: "Decalage"}
 
 
 class HydroPannesHelperMixin:
@@ -98,23 +108,12 @@ class HydroPannesHelperMixin:
     def _is_outage_terminated(self, intr: dict[str, Any]) -> bool:
         """Return True if the interruption is terminated (power restored).
 
-        An outage is terminated when dateFin is in the past, unless:
-        - etat is "R" (postponed): the original dateFin is past but the intervention
-          is rescheduled, not completed.
-        - codeRemarque is in PLANNED_RESCHEDULE_CODES (rescheduled planned interruption): the original
-          dateFin is the cancelled slot; termination is determined by dateFinReport.
+        A postponed or shifted planned interruption is terminated only once its new end is past, and never without one: its original dateFin is the abandoned slot. Any other interruption is terminated once dateFin is past.
         """
-        etat = intr.get("etat")
-        code_remarque = str(intr.get("codeRemarque", ""))
-        if etat == "R":
-            return False
-        if etat == "A" and code_remarque in PLANNED_RESCHEDULE_CODES:
-            date_fin_report = self._parse_dt(intr.get("dateFinReport"))
-            if date_fin_report:
-                return self._is_date_in_past(date_fin_report)
-            return False
-        date_fin = self._parse_dt(intr.get("dateFin"))
-        return self._is_date_in_past(date_fin)
+        suffix = _NEW_WINDOW_SUFFIX.get(intr.get("etat", ""))
+        if suffix:
+            return self._is_date_in_past(self._parse_dt(intr.get(f"dateFin{suffix}")))
+        return self._is_date_in_past(self._parse_dt(intr.get("dateFin")))
 
     def _is_reprise_graduelle(self, intr: dict[str, Any] | None = None) -> bool:
         """Return True when Hydro-Québec signals a gradual service restoration.
@@ -136,30 +135,22 @@ class HydroPannesHelperMixin:
         return result
 
     def _is_planned_postponed(self, intr: dict[str, Any]) -> bool:
-        """Return True if the planned intervention was cancelled but rescheduled.
-
-        Detected via codeRemarque in PLANNED_RESCHEDULE_CODES ("91" confirmed in production,
-        "93" kept as fallback). HydroQuébec sets this code when the original slot is
-        cancelled and a new date is assigned via dateDebutReport/dateFinReport.
-        """
-        return str(intr.get("codeRemarque", "")) in PLANNED_RESCHEDULE_CODES
+        """Return True if the planned intervention was postponed (etat "R")."""
+        return intr.get("etat") == ETAT_PLANIFIE_REPORTE
 
     def _is_planned_cancelled(self, intr: dict[str, Any]) -> bool:
-        """Return True if the planned intervention has been cancelled.
+        """Return True if the planned intervention was cancelled (etat "A").
 
-        Cancellation is detected via:
-        - etat = "A" (annulée), or
-        - codeRemarque = "92" (planned interruption cancellation code, observed empirically).
-
-        PLANNED_RESCHEDULE_CODES (e.g. "91") means rescheduled, not cancelled —
-        even when etat is also "A", the presence of report dates makes the planned interruption
-        still upcoming and must not be treated as a plain cancellation.
+        The Info-pannes site shows etat "A" as cancelled whatever the codeRemarque, even when report dates are present.
         """
-        etat = intr.get("etat")
-        code_remarque = str(intr.get("codeRemarque", ""))
-        if code_remarque in PLANNED_RESCHEDULE_CODES:
-            return False
-        return etat == "A" or code_remarque == "92"
+        return intr.get("etat") == ETAT_PLANIFIE_ANNULE
+
+    def _raison_annulation(self, intr: dict[str, Any]) -> str | None:
+        """Return the cancellation or postponement reason slug, or None without a codeRemarque."""
+        code = intr.get("codeRemarque")
+        if code in (None, ""):
+            return None
+        return RAISON_ANNULATION_CODES.get(str(code), RAISON_ANNULATION_DEFAUT)
 
     # ==========================================================================
     # Date helpers for planned interventions
@@ -168,18 +159,14 @@ class HydroPannesHelperMixin:
     def _get_effective_dates(self, intr: dict[str, Any]) -> tuple[datetime | None, datetime | None]:
         """Return the effective start and end dates for an interruption.
 
-        For postponed (etat = "R") or rescheduled (etat = "A", PLANNED_RESCHEDULE_CODES) planned interruptions,
-        uses dateDebutReport/dateFinReport when present — the API keeps the original
-        dateDebut as the cancelled slot while the report fields carry the new window.
-        Falls back to dateDebut/dateFin otherwise.
+        A postponed planned interruption (etat "R") uses dateDebutReport/dateFinReport and a shifted one (etat "E") uses dateDebutDecalage/dateFinDecalage, as the Info-pannes site does: the API keeps the original dateDebut as the abandoned slot. Any other etat, or a missing new start, falls back to dateDebut/dateFin.
 
         Returns: (effective_debut, effective_fin)
         """
-        etat = intr.get("etat")
-        code_remarque = str(intr.get("codeRemarque", ""))
-        if etat == "R" or (etat == "A" and code_remarque in PLANNED_RESCHEDULE_CODES):
-            debut = self._parse_dt(intr.get("dateDebutReport"))
-            fin = self._parse_dt(intr.get("dateFinReport"))
+        suffix = _NEW_WINDOW_SUFFIX.get(intr.get("etat", ""))
+        if suffix:
+            debut = self._parse_dt(intr.get(f"dateDebut{suffix}"))
+            fin = self._parse_dt(intr.get(f"dateFin{suffix}"))
             if debut:
                 return debut, fin
         return (

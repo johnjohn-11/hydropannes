@@ -152,8 +152,8 @@ def test_options_have_no_duplicates(cls, options) -> None:
                 interruptions=[
                     make_interruption(
                         interruptionPlanifiee=True,
-                        etat="A",
-                        codeRemarque="91",
+                        etat="R",
+                        codeRemarque="93",
                         dateDebut=hours_from_now(-48),
                         dateFin=hours_from_now(-46),
                         dateDebutReport=hours_from_now(24),
@@ -163,10 +163,67 @@ def test_options_have_no_duplicates(cls, options) -> None:
             ),
             "interruption_planifiee_reportee",
         ),
+        (
+            # Recorded payload: cancelled with code 91 although report dates are present.
+            make_payload(
+                etat="A",
+                interruptions=[
+                    make_interruption(
+                        interruptionPlanifiee=True,
+                        etat="A",
+                        codeRemarque="91",
+                        dateDebut=hours_from_now(24),
+                        dateFin=hours_from_now(26),
+                        dateDebutReport=hours_from_now(48),
+                        dateFinReport=hours_from_now(50),
+                    )
+                ],
+            ),
+            "interruption_planifiee_annulee",
+        ),
+        (
+            make_payload(
+                etat="A",
+                interruptions=[
+                    make_interruption(
+                        interruptionPlanifiee=True,
+                        etat="E",
+                        dateDebut=hours_from_now(-48),
+                        dateFin=hours_from_now(-46),
+                        dateDebutDecalage=hours_from_now(24),
+                        dateFinDecalage=hours_from_now(26),
+                    )
+                ],
+            ),
+            "interruption_planifiee_a_venir",
+        ),
     ],
 )
 def test_info_pannes_states(payload, expected) -> None:
     assert build(HydroPannesInfoPannesSensor, payload).native_value == expected
+
+
+@pytest.mark.parametrize(
+    ("etat", "code_remarque", "expected"),
+    [
+        ("A", "92", {"raison_annulation": "conditions_meteorologiques"}),
+        ("R", "93", {"raison_annulation": "autres_travaux_urgents"}),
+        ("A", None, {}),
+        ("P", "92", {}),  # neither cancelled nor postponed: no reason shown
+    ],
+)
+def test_info_pannes_exposes_raison_annulation(etat, code_remarque, expected) -> None:
+    intr = make_interruption(
+        interruptionPlanifiee=True,
+        etat=etat,
+        codeRemarque=code_remarque,
+        dateDebut=hours_from_now(24),
+        dateFin=hours_from_now(26),
+        dateDebutReport=hours_from_now(48),
+        dateFinReport=hours_from_now(50),
+    )
+    payload = make_payload(etat="A", interruptions=[intr])
+    assert build(HydroPannesInfoPannesSensor, payload).extra_state_attributes == expected
 
 
 # ---------------------------------------------------------------------------
@@ -276,7 +333,7 @@ def _payload_matrix() -> list[dict[str, Any]]:
         for planned in (True, False):
             for date_fin in (None, hours_from_now(-1), hours_from_now(3)):
                 for code_remarque in (None, "91", "92", "93"):
-                    for intr_etat in ("N", "A", "R", "P", "T"):
+                    for intr_etat in ("N", "A", "R", "E", "P", "T"):
                         for extra in (
                             {},
                             {"niveauUrgence": "P"},

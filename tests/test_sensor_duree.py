@@ -57,11 +57,11 @@ def test_future_planned_intervention_returns_none_not_negative() -> None:
 
 
 def test_rescheduled_planned_interruption_measured_against_report_window() -> None:
-    # Cancelled original slot 48h ago; rescheduled to start 1h ago, end in 1h.
+    # Postponed original slot 48h ago; new window started 1h ago, ends in 1h.
     intr = make_interruption(
         interruptionPlanifiee=True,
-        etat="A",
-        codeRemarque="91",
+        etat="R",
+        codeRemarque="93",
         dateDebut=hours_from_now(-48),
         dateFin=hours_from_now(-46),
         dateDebutReport=hours_from_now(-1),

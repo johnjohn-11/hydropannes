@@ -40,6 +40,8 @@ PARALLEL_UPDATES = 0
 INTERVENTION_PLANIFIEE_ATTRIBUTE_KEYS = (
     "dateDebutReport",
     "dateFinReport",
+    "dateDebutDecalage",
+    "dateFinDecalage",
     "dureePrevu",
     "interruptionPlanifiee",
 )
@@ -88,7 +90,7 @@ class HydroPannesEtatServiceBinarySensor(HydroPannesBinarySensorBase):
 class HydroPannesInterventionPlanifieeBinarySensor(HydroPannesBinarySensorBase):
     """Binary sensor indicating whether a planned intervention exists.
 
-    Returns ``True`` when at least one non-terminated planned interruption is
+    Returns ``True`` when at least one planned interruption that is neither cancelled nor terminated is
     present in the API response (active or upcoming).
     """
 
@@ -98,35 +100,31 @@ class HydroPannesInterventionPlanifieeBinarySensor(HydroPannesBinarySensorBase):
 
     @property
     def is_on(self) -> bool | None:
-        """Return True if a non-terminated planned intervention exists."""
+        """Return True if a planned intervention that is neither cancelled nor terminated exists."""
         if not self.coordinator.data:
             return None
-        for intr in self._get_interruptions():
-            if self._is_planned_intervention(intr) and not self._is_outage_terminated(intr):
-                return True
-        return False
+        return self._get_pending_planned() is not None
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
-        """Return key fields from the most relevant non-terminated planned interruption."""
-        if not self.coordinator.data:
+        """Return key fields from the first planned interruption that is neither cancelled nor terminated."""
+        planned = self._get_pending_planned()
+        if not planned:
             return {}
-        interruptions = self._get_interruptions()
-        if not interruptions:
-            return {}
+        return self._interruption_attributes(planned, INTERVENTION_PLANIFIEE_ATTRIBUTE_KEYS)
 
-        planned = next(
+    def _get_pending_planned(self) -> dict[str, Any] | None:
+        """Return the first planned interruption that is neither cancelled nor terminated."""
+        return next(
             (
                 i
-                for i in interruptions
-                if self._is_planned_intervention(i) and not self._is_outage_terminated(i)
+                for i in self._get_interruptions()
+                if self._is_planned_intervention(i)
+                and not self._is_planned_cancelled(i)
+                and not self._is_outage_terminated(i)
             ),
             None,
         )
-        if not planned:
-            return {}
-
-        return self._interruption_attributes(planned, INTERVENTION_PLANIFIEE_ATTRIBUTE_KEYS)
 
 
 class HydroPannesAPICompatibilityBinarySensor(HydroPannesBinarySensorBase):
