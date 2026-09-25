@@ -223,6 +223,23 @@ STATUT_INTERVENTION_DESCRIPTIONS_MAJEUR = {
 }
 
 # ---------------------------------------------------------------------------
+# sensor.*_retablissement
+# ---------------------------------------------------------------------------
+
+# The restoration step of the Info-pannes outage tracker, separate from the intervention step.
+RETABLISSEMENT_OPTIONS = ["en_evaluation", "prevu", "en_revision"]
+
+RETABLISSEMENT_DESCRIPTIONS = {
+    "en_evaluation": STATUT_INTERVENTION_DESCRIPTIONS["retablissement_en_evaluation"],
+    "prevu": STATUT_INTERVENTION_DESCRIPTIONS["retablissement_prevu"],
+    "en_revision": "L'heure de rétablissement prévue est dépassée ou doit être revue selon les nouveaux renseignements sur la panne.",
+}
+
+RETABLISSEMENT_DESCRIPTIONS_MAJEUR = {
+    "en_evaluation": STATUT_INTERVENTION_DESCRIPTIONS_MAJEUR["retablissement_en_evaluation"],
+}
+
+# ---------------------------------------------------------------------------
 # Interruption bookkeeping (not sensor states)
 # ---------------------------------------------------------------------------
 

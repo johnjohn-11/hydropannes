@@ -100,12 +100,13 @@ Chaque lieu de consommation configuré crée un appareil avec les entités suiva
 |--------|-------------|
 | `sensor.*_info_pannes` | État général du service (voir [tableau des états](#états-des-sensors)) |
 | `sensor.*_niveau_urgence` | Niveau d'urgence : Normal ou Panne majeure |
-| `sensor.*_adresses_touchees` | Nombre de clients affectés |
+| `sensor.*_adresses_touchees` | Nombre de clients affectés (l'attribut `arrondi` donne le libellé du site, par exemple « 150 ou moins ») |
 | `sensor.*_date_debut` | Date et heure de début de la panne ou de l'intervention |
 | `sensor.*_date_fin` | Date et heure de fin réelle ou estimée |
 | `sensor.*_statut_intervention` | Étape de l'intervention (équipe désignée, travaux en cours, etc.) |
 | `sensor.*_cause` | Cause de la panne (le code brut d'Hydro-Québec reste dans l'attribut `code_cause`) |
 | `sensor.*_duree` | Durée de la panne en secondes |
+| `sensor.*_retablissement` | Étape du rétablissement d'une panne en cours : en évaluation, prévu ou en révision |
 | `sensor.*_delai_avant_retablissement` | Temps restant avant le rétablissement estimé |
 | `sensor.*_derniere_maj` | Horodatage de la dernière mise à jour des données |
 | `sensor.*_lieu_de_consommation` | Numéro de lieu de consommation *(Diagnostic)* |
@@ -126,7 +127,7 @@ Chaque lieu de consommation configuré crée un appareil avec les entités suiva
 
 ## États des sensors
 
-Les quatre sensors ci-dessous sont des énumérations (`device_class: enum`). Leur **état** est un identifiant stable et neutre en langue, celui que renvoie `states()` et qu'il faut utiliser dans les automatisations. Le **libellé** affiché dans l'interface est traduit. On le récupère dans un template avec `state_translated('sensor.xxx')`.
+Les cinq sensors ci-dessous sont des énumérations (`device_class: enum`). Leur **état** est un identifiant stable et neutre en langue, celui que renvoie `states()` et qu'il faut utiliser dans les automatisations. Le **libellé** affiché dans l'interface est traduit. On le récupère dans un template avec `state_translated('sensor.xxx')`.
 
 ### `sensor.*_info_pannes`
 
@@ -214,13 +215,23 @@ Cet attribut n'est pas enregistré dans l'historique de Home Assistant.
 | `interruption_planifiee_a_venir` | Interruption planifiée à venir |
 | `interruption_planifiee_reportee` | Interruption planifiée reportée |
 
+### `sensor.*_retablissement`
+
+| État | Libellé affiché (fr) | Quand |
+|------|----------------------|-------|
+| `en_evaluation` | Heure de rétablissement en cours d'évaluation | Aucune heure estimée |
+| `prevu` | Rétablissement prévu | Heure estimée, pas encore dépassée |
+| `en_revision` | Heure de rétablissement en cours de révision | Heure estimée dépassée (arrondie au quart d'heure supérieur), ou aucune heure estimée alors que l'équipe est en route ou sur place |
+
+Ce sensor suit la règle du site Info-pannes et n'a de valeur que pendant une panne non planifiée. Il a aussi un attribut `description`, non enregistré dans l'historique.
+
 ---
 
 ## Logique de priorité
 
 Lorsqu'une panne et une intervention planifiée coexistent, l'intégration sélectionne l'interruption à afficher selon cet ordre de priorité :
 
-1. **Panne active** (non planifiée, courant coupé): priorité absolue
+1. **Panne active** (non planifiée, courant coupé): priorité absolue. Si plusieurs pannes sont actives, l'intégration fait comme le site Info-pannes : elle garde d'abord une panne majeure, sinon celle qui finit le plus tard, et reprend l'heure de début la plus tôt parmi les pannes qui la chevauchent.
 2. **Panne terminée** (courant rétabli), sauf si une interruption planifiée non annulée est également présente
 3. **Intervention planifiée** (active, à venir, ou terminée)
 4. **Première interruption de la liste**: dernier recours

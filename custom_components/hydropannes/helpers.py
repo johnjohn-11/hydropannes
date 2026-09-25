@@ -8,6 +8,8 @@ source of truth for outage detection, date parsing, and priority selection.
 
 from __future__ import annotations
 
+from datetime import datetime, timedelta
+import math
 from typing import TYPE_CHECKING, Any
 
 from homeassistant.util import dt as dt_util
@@ -22,8 +24,6 @@ from .const import (
 )
 
 if TYPE_CHECKING:
-    from datetime import datetime
-
     from .coordinator import HydroPannesDataUpdateCoordinator
 
 # Suffix of the dateDebut*/dateFin* pair holding the new window of a postponed or shifted planned interruption.
@@ -213,18 +213,48 @@ class HydroPannesHelperMixin:
     # Interruption selection (priority logic)
     # ==========================================================================
 
-    def _get_active_outage(self) -> dict[str, Any] | None:
-        """Return the first active non-planned outage, or None.
+    def _round_up_quarter(self, value: datetime) -> datetime:
+        """Round a time up to the next quarter hour, as the Info-pannes site does before comparing it to now.
 
-        An active outage is unplanned, has main etat = "N",
-        and has no dateFin or a dateFin in the future.
+        Only the minutes are rounded, seconds are kept, like the site's dateArrondie pipe.
         """
-        for intr in self._get_interruptions():
-            if self._is_planned_intervention(intr):
+        quarters = math.ceil(value.minute / 15)
+        if quarters == 4:
+            return value.replace(minute=0) + timedelta(hours=1)
+        return value.replace(minute=quarters * 15)
+
+    def _outage_end_for_sort(self, intr: dict[str, Any]) -> datetime:
+        """Return the end used to rank simultaneous outages, far in the future when there is none."""
+        end = self._parse_dt(intr.get("dateFinEstimeeMax")) or self._parse_dt(intr.get("dateFin"))
+        return end or datetime.max.replace(tzinfo=dt_util.UTC)
+
+    def _get_active_outage(self) -> dict[str, Any] | None:
+        """Return the active non-planned outage to display, or None.
+
+        An active outage is unplanned, has main etat = "N", and has no dateFin or a dateFin in the future. Like the Info-pannes site, the unplanned interruptions are ranked major first, then by latest end. The first active one is kept, and any interruption ranked after it that overlaps it moves its dateDebut back. The returned dict is then a copy carrying that earlier dateDebut.
+        """
+        unplanned = [i for i in self._get_interruptions() if not self._is_planned_intervention(i)]
+        # Sort ascending then reverse, like the site, so that ties also come out in reverse payload order.
+        ranked = sorted(
+            unplanned,
+            key=lambda i: (self._is_panne_majeure(i), self._outage_end_for_sort(i)),
+        )[::-1]
+        chosen: dict[str, Any] | None = None
+        for intr in ranked:
+            if chosen is None:
+                if self._is_outage_active(intr):
+                    chosen = intr
                 continue
-            if self._is_outage_active(intr):
-                return intr
-        return None
+            chosen_debut = self._parse_dt(chosen.get("dateDebut"))
+            debut = self._parse_dt(intr.get("dateDebut"))
+            if (
+                chosen_debut
+                and debut
+                and debut < chosen_debut
+                and self._outage_end_for_sort(intr) > chosen_debut
+            ):
+                chosen = {**chosen, "dateDebut": intr["dateDebut"]}
+        return chosen
 
     def _get_terminated_outage(self) -> dict[str, Any] | None:
         """Return the most recently terminated non-planned outage, or None.

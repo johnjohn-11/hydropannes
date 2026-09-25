@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import math
 from typing import TYPE_CHECKING, Any
 
 from homeassistant.components.sensor import (
@@ -24,6 +25,9 @@ from .const import (
     INTERVENTION_CODES_MAJEUR,
     NIVEAU_URGENCE_CODES,
     NIVEAU_URGENCE_OPTIONS,
+    RETABLISSEMENT_DESCRIPTIONS,
+    RETABLISSEMENT_DESCRIPTIONS_MAJEUR,
+    RETABLISSEMENT_OPTIONS,
     STATUT_INTERVENTION_DESCRIPTIONS,
     STATUT_INTERVENTION_DESCRIPTIONS_MAJEUR,
     STATUT_INTERVENTION_OPTIONS,
@@ -43,6 +47,16 @@ _LOGGER = logging.getLogger(__name__)
 
 # The description attribute is fixed text derived from the state, so it is kept out of the recorder.
 _UNRECORDED_DESCRIPTION = frozenset({"description"})
+
+
+def _nb_client_arrondi(nb_client: int) -> str:
+    """Return the affected-address count the way the Info-pannes site words it."""
+    if nb_client < 500:
+        return f"{50 * math.ceil(nb_client / 50)} ou moins"
+    if nb_client < 1000:
+        return "plus de 500"
+    return "plus de 1000"
+
 
 # Entities are updated by the coordinator; no parallel polling needed.
 PARALLEL_UPDATES = 0
@@ -64,6 +78,7 @@ async def async_setup_entry(
             HydroPannesDebutSensor(coordinator, entry),
             HydroPannesFinEstimeeSensor(coordinator, entry),
             HydroPannesStatutInterventionSensor(coordinator, entry),
+            HydroPannesRetablissementSensor(coordinator, entry),
             HydroPannesCauseSensor(coordinator, entry),
             HydroPannesDureeSensor(coordinator, entry),
             HydroPannesDureeAvantRetablissementSensor(coordinator, entry),
@@ -177,6 +192,7 @@ class HydroPannesNombreClientSensor(HydroPannesSensorBase):
     _attr_native_unit_of_measurement = "clients"
     _attr_state_class = SensorStateClass.MEASUREMENT
     _unique_id_suffix = "nbclient"
+    _unrecorded_attributes = frozenset({"arrondi"})
 
     @property
     def native_value(self) -> int | None:
@@ -185,6 +201,14 @@ class HydroPannesNombreClientSensor(HydroPannesSensorBase):
         if not outage:
             return None
         return outage.get("nbClient")
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Expose the rounded wording the Info-pannes site shows instead of the exact count."""
+        nb_client = self.native_value
+        if not isinstance(nb_client, int) or nb_client <= 0:
+            return {}
+        return {"arrondi": _nb_client_arrondi(nb_client)}
 
 
 class HydroPannesDebutSensor(HydroPannesSensorBase):
@@ -296,6 +320,46 @@ class HydroPannesStatutInterventionSensor(HydroPannesSensorBase):
             description = STATUT_INTERVENTION_DESCRIPTIONS_MAJEUR.get(statut)
         description = description or STATUT_INTERVENTION_DESCRIPTIONS.get(statut)
         return {"description": description} if description else {}
+
+
+class HydroPannesRetablissementSensor(HydroPannesSensorBase):
+    """Sensor reporting the restoration step of an active outage, as the Info-pannes tracker shows it."""
+
+    _attr_translation_key = "retablissement"
+    _attr_device_class = SensorDeviceClass.ENUM
+    _attr_options = RETABLISSEMENT_OPTIONS
+    _unique_id_suffix = "retablissement"
+    _unrecorded_attributes = _UNRECORDED_DESCRIPTION
+
+    @property
+    def native_value(self) -> str | None:
+        """Return the restoration step, or None without an active unplanned outage.
+
+        Mirrors the site's rule. The estimated end is rounded up to the quarter hour before being compared to now. Without an estimate, a crew on the way or on site means the time is being revised. The site also tests a typeFinPrevu field the API never sends (it sends typeFinPrevue), so that test never changes the outcome and is left out.
+        """
+        outage = self._get_active_outage()
+        if not outage:
+            return None
+        fin_estimee = self._parse_dt(outage.get("dateFinEstimeeMax"))
+        if fin_estimee:
+            if self._is_date_in_past(self._round_up_quarter(fin_estimee)):
+                return "en_revision"
+            return "prevu"
+        if outage.get("codeIntervention") in ("L", "R"):
+            return "en_revision"
+        return "en_evaluation"
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Explain the restoration step, with the major-outage wording when it applies."""
+        etape = self.native_value
+        if etape is None:
+            return {}
+        outage = self._get_active_outage()
+        description = None
+        if outage and self._is_panne_majeure(outage):
+            description = RETABLISSEMENT_DESCRIPTIONS_MAJEUR.get(etape)
+        return {"description": description or RETABLISSEMENT_DESCRIPTIONS[etape]}
 
 
 class HydroPannesCauseSensor(HydroPannesSensorBase):

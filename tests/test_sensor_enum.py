@@ -15,6 +15,7 @@ from custom_components.hydropannes.const import (
     CAUSE_OPTIONS,
     INFO_PANNES_OPTIONS,
     NIVEAU_URGENCE_OPTIONS,
+    RETABLISSEMENT_OPTIONS,
     STATUT_INTERVENTION_DESCRIPTIONS,
     STATUT_INTERVENTION_DESCRIPTIONS_MAJEUR,
     STATUT_INTERVENTION_OPTIONS,
@@ -23,6 +24,7 @@ from custom_components.hydropannes.sensor import (
     HydroPannesCauseSensor,
     HydroPannesInfoPannesSensor,
     HydroPannesNiveauUrgenceSensor,
+    HydroPannesRetablissementSensor,
     HydroPannesStatutInterventionSensor,
 )
 
@@ -33,6 +35,7 @@ ENUM_SENSORS = [
     (HydroPannesNiveauUrgenceSensor, NIVEAU_URGENCE_OPTIONS),
     (HydroPannesCauseSensor, CAUSE_OPTIONS),
     (HydroPannesStatutInterventionSensor, STATUT_INTERVENTION_OPTIONS),
+    (HydroPannesRetablissementSensor, RETABLISSEMENT_OPTIONS),
 ]
 
 
@@ -386,6 +389,7 @@ def _payload_matrix() -> list[dict[str, Any]]:
                             {"typeFinPrevue": "F"},
                             {"codeCause": "99"},
                             {"codeCause": "21"},
+                            {"dateFinEstimeeMax": hours_from_now(2)},
                             {"niveauUrgence": "N"},
                         ):
                             intr = make_interruption(

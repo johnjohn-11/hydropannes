@@ -77,6 +77,14 @@
           "travaux_par_priorite": "Réalisation des travaux par ordre de priorité"
         }
       },
+      "retablissement": {
+        "name": "Rétablissement",
+        "state": {
+          "en_evaluation": "Heure de rétablissement en cours d'évaluation",
+          "prevu": "Rétablissement prévu",
+          "en_revision": "Heure de rétablissement en cours de révision"
+        }
+      },
       "cause": {
         "name": "Cause",
         "state": {

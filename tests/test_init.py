@@ -87,6 +87,7 @@ async def test_unique_ids_are_stable(hass: HomeAssistant, aioclient_mock) -> Non
         ("sensor", "date_debut"),
         ("sensor", "datefin"),
         ("sensor", "statut_intervention"),
+        ("sensor", "retablissement"),
         ("sensor", "cause"),
         ("sensor", "duree"),
         ("sensor", "delai_avant_retablissement"),
@@ -142,6 +143,8 @@ async def test_enum_sensor_states_accepted_by_home_assistant(
     assert state_of("niveau_urgence") == "panne_majeure"
     assert state_of("cause") == "defaillance_equipement"
     assert state_of("statut_intervention") == "travaux_par_priorite"
+    # No estimated end while the crew is on site: the site shows the time as being revised.
+    assert state_of("retablissement") == "en_revision"
 
     # The raw HQ code survives as an attribute of the cause sensor.
     cause_state = hass.states.get(entity_id_for("cause"))

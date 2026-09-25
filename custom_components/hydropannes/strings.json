@@ -77,6 +77,14 @@
           "travaux_par_priorite": "Work carried out in priority order"
         }
       },
+      "retablissement": {
+        "name": "Restoration",
+        "state": {
+          "en_evaluation": "Restoration time being assessed",
+          "prevu": "Restoration expected",
+          "en_revision": "Restoration time under review"
+        }
+      },
       "cause": {
         "name": "Cause",
         "state": {
