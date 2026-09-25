@@ -274,14 +274,43 @@ class HydroPannesHelperMixin:
             key=lambda i: self._parse_dt(i.get("dateFin")) or dt_util.utc_from_timestamp(0),
         )
 
+    def _planned_sort_key(self, intr: dict[str, Any]) -> tuple[bool, datetime]:
+        """Rank planned interruptions like the Info-pannes site: cancelled last, then by original dateDebut."""
+        debut = self._parse_dt(intr.get("dateDebut")) or datetime.max.replace(tzinfo=dt_util.UTC)
+        return self._is_planned_cancelled(intr), debut
+
+    def _get_pending_planned(self) -> list[dict[str, Any]]:
+        """Return the planned interruptions that are neither cancelled nor terminated, nearest first."""
+        return sorted(
+            (
+                i
+                for i in self._get_interruptions()
+                if self._is_planned_intervention(i)
+                and not self._is_planned_cancelled(i)
+                and not self._is_outage_terminated(i)
+            ),
+            key=self._planned_sort_key,
+        )
+
+    def _is_planned_in_progress(self, intr: dict[str, Any]) -> bool:
+        """Return True for a planned interruption under way: main etat "N", neither cancelled nor terminated."""
+        return (
+            self._is_planned_intervention(intr)
+            and self._get_main_etat() == "N"
+            and not self._is_planned_cancelled(intr)
+            and not self._is_outage_terminated(intr)
+        )
+
     def _get_planned_intervention(self) -> dict[str, Any] | None:
         """Return the most relevant planned intervention, or None.
 
         Selection priority:
         1. Active planned intervention (main etat = "N", dateFin absent or future).
-        2. Future non-cancelled planned intervention (effective dateDebut in future).
-        3. Any future planned intervention (including rescheduled ones).
+        2. Nearest future non-cancelled planned intervention (effective dateDebut in future).
+        3. Nearest future planned intervention (including rescheduled ones).
         4. Any planned intervention, including terminated (fallback).
+
+        "Nearest" follows the Info-pannes ranking, by original dateDebut.
         """
         interruptions = self._get_interruptions()
         planned = [i for i in interruptions if self._is_planned_intervention(i)]
@@ -292,11 +321,12 @@ class HydroPannesHelperMixin:
             if self._is_outage_active(p):
                 return p
 
-        for p in planned:
+        ranked = sorted(planned, key=self._planned_sort_key)
+        for p in ranked:
             if self._is_future_planned(p) and not self._is_planned_cancelled(p):
                 return p
 
-        for p in planned:
+        for p in ranked:
             if self._is_future_planned(p):
                 return p
 

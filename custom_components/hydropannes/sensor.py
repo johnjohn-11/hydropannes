@@ -298,6 +298,10 @@ class HydroPannesStatutInterventionSensor(HydroPannesSensorBase):
             return "interruption_planifiee_reportee"
         if self._is_reprise_graduelle(outage):
             return "reprise_graduelle"
+        if self._is_planned_in_progress(outage):
+            # The site's planned-interruption tracker shows restoration as the current step once an end is known.
+            _, fin = self._get_effective_dates(outage)
+            return "retablissement_prevu" if fin else "travaux_en_cours"
         code = outage.get("codeIntervention")
         type_fin = outage.get("typeFinPrevue")
         if code == "L" and self._is_panne_majeure(outage):
@@ -339,6 +343,11 @@ class HydroPannesRetablissementSensor(HydroPannesSensorBase):
         """
         outage = self._get_active_outage()
         if not outage:
+            planned = self._get_planned_intervention()
+            if planned and self._is_planned_in_progress(planned):
+                # A planned interruption has a known end: the site shows it as expected, without revision.
+                _, fin = self._get_effective_dates(planned)
+                return "prevu" if fin else None
             return None
         fin_estimee = self._parse_dt(outage.get("dateFinEstimeeMax"))
         if fin_estimee:
