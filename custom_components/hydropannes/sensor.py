@@ -482,6 +482,8 @@ class HydroPannesDerniereMAJSensor(HydroPannesSensorBase):
 
     _attr_translation_key = "derniere_maj"
     _attr_device_class = SensorDeviceClass.TIMESTAMP
+    # Outside an outage the state is the poll time, which changes every few minutes and fills the recorder.
+    _attr_entity_registry_enabled_default = False
     _unique_id_suffix = "derniere_maj"
 
     @property
@@ -501,6 +503,7 @@ class HydroPannesLieuConsoSensor(HydroPannesSensorBase):
 
     _attr_translation_key = "lieu_consommation"
     _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_entity_registry_enabled_default = False
     _unique_id_suffix = "idlieuconso"
 
     @property
