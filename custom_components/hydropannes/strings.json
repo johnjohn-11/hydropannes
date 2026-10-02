@@ -34,15 +34,15 @@
         "name": "Outage info",
         "state": {
           "aucune_panne": "No outage detected",
-          "panne_en_cours": "Outage in progress",
-          "panne_majeure": "Major outage in progress",
-          "reprise_graduelle": "Gradual service restoration in progress",
-          "service_retabli": "Service restored",
-          "interruption_planifiee_en_cours": "Planned interruption in progress",
-          "interruption_planifiee_a_venir": "Planned interruption upcoming",
-          "interruption_planifiee_terminee": "Planned interruption completed",
-          "interruption_planifiee_annulee": "Planned interruption cancelled",
-          "interruption_planifiee_reportee": "Planned interruption postponed"
+          "panne_en_cours": "Ongoing outage",
+          "panne_majeure": "Ongoing major outage",
+          "reprise_graduelle": "Gradual service restoration underway",
+          "service_retabli": "Power restored",
+          "interruption_planifiee_en_cours": "Planned service interruption under way",
+          "interruption_planifiee_a_venir": "Upcoming planned service interruption",
+          "interruption_planifiee_terminee": "Planned service interruption completed",
+          "interruption_planifiee_annulee": "Planned service interruption cancelled",
+          "interruption_planifiee_reportee": "Planned service interruption postponed"
         }
       },
       "niveau_urgence": {
@@ -53,7 +53,7 @@
         }
       },
       "adresses_touchees": {
-        "name": "Affected addresses"
+        "name": "Addresses affected"
       },
       "date_debut": {
         "name": "Start date"
@@ -64,53 +64,53 @@
       "statut_intervention": {
         "name": "Intervention status",
         "state": {
-          "interruption_planifiee_a_venir": "Planned interruption upcoming",
-          "interruption_planifiee_reportee": "Planned interruption postponed",
-          "interruption_planifiee_annulee": "Planned interruption cancelled",
+          "interruption_planifiee_a_venir": "Upcoming planned service interruption",
+          "interruption_planifiee_reportee": "Planned service interruption postponed",
+          "interruption_planifiee_annulee": "Planned service interruption cancelled",
           "equipe_designee": "Crew assigned",
-          "evaluation_travaux": "Assessing required work",
+          "evaluation_travaux": "Assessment of work required",
           "fin_non_determinee": "End time undetermined",
-          "reprise_graduelle": "Gradual service restoration in progress",
-          "retablissement_en_evaluation": "Restoration time being assessed",
-          "retablissement_prevu": "Restoration expected",
-          "service_retabli": "Service restored",
+          "reprise_graduelle": "Gradual service restoration underway",
+          "retablissement_en_evaluation": "Estimated restoration time under analysis",
+          "retablissement_prevu": "Power restoration expected",
+          "service_retabli": "Power restored",
           "travaux_en_cours": "Work in progress on the power grid",
-          "travaux_par_priorite": "Work carried out in priority order"
+          "travaux_par_priorite": "Work proceeding in order of priority"
         }
       },
       "retablissement": {
         "name": "Restoration",
         "state": {
-          "en_evaluation": "Restoration time being assessed",
-          "prevu": "Restoration expected",
-          "en_revision": "Restoration time under review"
+          "en_evaluation": "Estimated restoration time under analysis",
+          "prevu": "Power restoration expected",
+          "en_revision": "Estimated restoration time under review"
         }
       },
       "cause": {
         "name": "Cause",
         "state": {
           "accident_ou_incident": "Accident or incident",
-          "amelioration_entretien_reseau": "Grid improvement or maintenance",
+          "amelioration_entretien_reseau": "Power system repair or improvement",
           "bris_equipement": "Equipment failure",
-          "collision_poteau": "Pole collision",
-          "contact_accidentel": "Accidental contact with the grid",
+          "collision_poteau": "Collision with a pole",
+          "contact_accidentel": "Accidental contact with the power system",
           "defaillance_equipement": "Equipment malfunction",
-          "dommages_animaux": "Animal damage",
-          "dommages_oiseaux": "Bird damage",
-          "dommages_vegetation": "Vegetation damage",
-          "entretien_urgent": "Urgent grid maintenance",
+          "dommages_animaux": "Damage caused by animals",
+          "dommages_oiseaux": "Damage caused by birds",
+          "dommages_vegetation": "Damage caused by vegetation",
+          "entretien_urgent": "Emergency work on the power system",
           "foudre": "Lightning",
           "incendie_ou_fuite_gaz": "Fire or gas leak",
-          "indeterminee": "Undetermined",
-          "mesure_protection": "Grid protection measure",
+          "indeterminee": "Unknown",
+          "mesure_protection": "System protection measure",
           "precipitations": "Precipitation",
-          "securite_publique": "Interruption - Public safety",
+          "securite_publique": "Protection of public safety",
           "securite_travaux": "Safety during work",
           "sinistre_naturel": "Natural disaster",
           "surcharge_reseau": "Grid overload",
-          "temperature_extreme": "Extreme temperature",
-          "travaux_vegetation_elagage": "Vegetation work or pruning",
-          "usure_materiel": "Material wear or degradation",
+          "temperature_extreme": "Extreme temperatures",
+          "travaux_vegetation_elagage": "Vegetation control work",
+          "usure_materiel": "Material wear and tear or breakdown",
           "vents_violents": "High winds"
         }
       },
