@@ -416,3 +416,16 @@ def test_every_produced_state_is_a_declared_option(cls, options) -> None:
             seen.add(value)
     # The matrix is only useful if it actually exercises several states.
     assert len(seen) >= 2
+
+
+def test_english_descriptions_cover_the_same_states() -> None:
+    from custom_components.hydropannes import const
+
+    for name in (
+        "CAUSE_DESCRIPTIONS",
+        "STATUT_INTERVENTION_DESCRIPTIONS",
+        "STATUT_INTERVENTION_DESCRIPTIONS_MAJEUR",
+        "RETABLISSEMENT_DESCRIPTIONS",
+        "RETABLISSEMENT_DESCRIPTIONS_MAJEUR",
+    ):
+        assert getattr(const, name).keys() == getattr(const, f"{name}_EN").keys(), name

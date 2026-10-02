@@ -179,7 +179,7 @@ STATUT_INTERVENTION_OPTIONS = [
 # Descriptions (the unrecorded "description" attribute)
 # ---------------------------------------------------------------------------
 
-# One sentence or two per cause, restating in our own words the explanation the Info-pannes site gives. French only: attribute values are not translated.
+# One sentence or two per cause, restating in our own words the explanation the Info-pannes site gives. Home Assistant does not translate attribute values, so each text has an English counterpart (the *_EN maps) picked from the configured language.
 CAUSE_DESCRIPTIONS = {
     "defaillance_equipement": "Un équipement du réseau de distribution a mal fonctionné à cause de son usure normale, sans cause externe.",
     "surcharge_reseau": "La demande d'électricité a dépassé ce que l'équipement touché peut supporter.",
@@ -206,6 +206,32 @@ CAUSE_DESCRIPTIONS = {
     "indeterminee": "L'origine de l'interruption n'est pas encore connue.",
 }
 
+CAUSE_DESCRIPTIONS_EN = {
+    "defaillance_equipement": "A piece of distribution equipment malfunctioned through normal wear, with no external cause.",
+    "surcharge_reseau": "Electricity demand exceeded what the affected equipment can handle.",
+    "bris_equipement": "A piece of equipment was damaged or malfunctioned because of a manufacturing defect in one of its parts.",
+    "foudre": "Lightning struck during a storm, cut the power and may have damaged grid equipment.",
+    "precipitations": "Snow, rain or freezing rain cut the power and may have damaged grid equipment.",
+    "sinistre_naturel": "A natural event, such as a flood, landslide, erosion, earthquake or ice, affected the grid.",
+    "vents_violents": "High winds cut the power and may have damaged grid equipment.",
+    "temperature_extreme": "Extreme heat or cold cut the power and may have damaged grid equipment.",
+    "accident_ou_incident": "An unexpected event occurred on the grid, for example an error while testing equipment or insulation damaged by chemicals or salt.",
+    "usure_materiel": "A part of the grid deteriorated over time, through rot or a chemical reaction, until it broke or impaired the equipment.",
+    "incendie_ou_fuite_gaz": "A fire, a gas leak or another event led the authorities to request an emergency power cut in the area.",
+    "contact_accidentel": "A person or an object accidentally touched grid equipment.",
+    "securite_publique": "The authorities requested an emergency power cut to protect the public or workers.",
+    "dommages_vegetation": "A tree or branch, broken, bent or not pruned, touched grid equipment and damaged it.",
+    "dommages_oiseaux": "A bird touched grid equipment and caused a short circuit or a ground fault.",
+    "dommages_animaux": "An animal other than a bird, such as a squirrel or a rodent, touched grid equipment and caused a short circuit or a ground fault.",
+    "collision_poteau": "A vehicle hit a pole or other grid equipment.",
+    "entretien_urgent": "Hydro-Québec cut the power to carry out urgent maintenance, repair or modification work on the grid safely.",
+    "amelioration_entretien_reseau": "Hydro-Québec cut the power to carry out maintenance, repair or modification work on the grid safely.",
+    "securite_travaux": "The power is cut to protect the public during work, such as moving a house or work done by others.",
+    "mesure_protection": "Hydro-Québec cut the power urgently to prevent major damage that could cause a major outage.",
+    "travaux_vegetation_elagage": "The power is cut so that trees near the grid can be felled or pruned safely.",
+    "indeterminee": "The origin of the interruption is not known yet.",
+}
+
 # Same idea for the intervention steps. States without an entry expose no description.
 STATUT_INTERVENTION_DESCRIPTIONS = {
     "evaluation_travaux": "Hydro-Québec tente de rétablir le service à distance, évalue les dommages et les travaux à faire, puis envoie les équipes selon les priorités. La durée de cette évaluation varie d'une panne à l'autre.",
@@ -219,10 +245,27 @@ STATUT_INTERVENTION_DESCRIPTIONS = {
     "service_retabli": "Si le courant n'est toujours pas revenu, il faut signaler la panne de nouveau à Hydro-Québec.",
 }
 
+STATUT_INTERVENTION_DESCRIPTIONS_EN = {
+    "evaluation_travaux": "Hydro-Québec tries to restore service remotely, assesses the damage and the work required, then dispatches crews by priority. How long this assessment takes varies from one outage to another.",
+    "equipe_designee": "A crew is assigned to the work. It may handle several outages at once and be sent elsewhere if a more urgent outage occurs.",
+    "travaux_en_cours": "The crew sees the extent of the work once on site. The restoration time may change based on what it finds.",
+    "travaux_par_priorite": "During a major outage, work follows an order of priority: hazards reported to 911, hospitals and emergency services come first.",
+    "retablissement_en_evaluation": "It takes 15 to 20 minutes to estimate the time needed to restore service.",
+    "retablissement_prevu": "Hydro-Québec estimates the restoration time from the information available and may adjust it based on what the crew finds on site.",
+    "fin_non_determinee": "When an event causes many outages, the restoration time may take longer to estimate.",
+    "reprise_graduelle": "Hydro-Québec is restoring service gradually in the area to protect its equipment and avoid further outages. Power may come back for a few minutes, then be cut again for 30 minutes to 5 hours.",
+    "service_retabli": "If the power is still not back, report the outage to Hydro-Québec again.",
+}
+
 # Overrides STATUT_INTERVENTION_DESCRIPTIONS during a major outage (niveauUrgence in NIVEAU_URGENCE_MAJEURS).
 STATUT_INTERVENTION_DESCRIPTIONS_MAJEUR = {
     "evaluation_travaux": "Hydro-Québec tente de rétablir le service à distance, évalue les dommages et envoie les équipes selon les priorités. Pendant une panne majeure, cette évaluation peut être plus longue.",
     "retablissement_en_evaluation": STATUT_INTERVENTION_DESCRIPTIONS["fin_non_determinee"],
+}
+
+STATUT_INTERVENTION_DESCRIPTIONS_MAJEUR_EN = {
+    "evaluation_travaux": "Hydro-Québec tries to restore service remotely, assesses the damage and dispatches crews by priority. During a major outage, this assessment may take longer.",
+    "retablissement_en_evaluation": STATUT_INTERVENTION_DESCRIPTIONS_EN["fin_non_determinee"],
 }
 
 # ---------------------------------------------------------------------------
@@ -240,6 +283,16 @@ RETABLISSEMENT_DESCRIPTIONS = {
 
 RETABLISSEMENT_DESCRIPTIONS_MAJEUR = {
     "en_evaluation": STATUT_INTERVENTION_DESCRIPTIONS_MAJEUR["retablissement_en_evaluation"],
+}
+
+RETABLISSEMENT_DESCRIPTIONS_EN = {
+    "en_evaluation": STATUT_INTERVENTION_DESCRIPTIONS_EN["retablissement_en_evaluation"],
+    "prevu": STATUT_INTERVENTION_DESCRIPTIONS_EN["retablissement_prevu"],
+    "en_revision": "The expected restoration time has passed or must be revised based on new information about the outage.",
+}
+
+RETABLISSEMENT_DESCRIPTIONS_MAJEUR_EN = {
+    "en_evaluation": STATUT_INTERVENTION_DESCRIPTIONS_MAJEUR_EN["retablissement_en_evaluation"],
 }
 
 # ---------------------------------------------------------------------------

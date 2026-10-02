@@ -195,7 +195,7 @@ Plusieurs codes d'Hydro-Québec partagent un même état. Le code brut reste dis
 
 ### Attribut `description`
 
-Les sensors `cause` et `statut_intervention` ont un attribut `description` qui explique en une ou deux phrases la cause ou l'étape en cours, par exemple dans une notification avec `state_attr('sensor.maison_cause', 'description')`. Les textes reprennent dans nos mots les explications du site Info-pannes. Ils sont en français seulement, parce que Home Assistant ne traduit pas les valeurs d'attributs. Pendant une panne majeure, certaines étapes ont une explication adaptée.
+Les sensors `cause` et `statut_intervention` ont un attribut `description` qui explique en une ou deux phrases la cause ou l'étape en cours, par exemple dans une notification avec `state_attr('sensor.maison_cause', 'description')`. Les textes reprennent dans nos mots les explications du site Info-pannes. Home Assistant ne traduit pas les valeurs d'attributs, alors l'intégration les donne en français quand Home Assistant est configuré en français, et en anglais sinon. L'attribut `arrondi` des adresses touchées suit la même règle, avec les libellés anglais du site (« 150 or less »). Pendant une panne majeure, certaines étapes ont une explication adaptée.
 
 Cet attribut n'est pas enregistré dans l'historique de Home Assistant.
 

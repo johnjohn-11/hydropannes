@@ -413,3 +413,12 @@ def test_fin_estimee_min_absent_without_a_range(same_as_max) -> None:
     )
     sensor = build(HydroPannesFinEstimeeSensor, make_payload(etat="N", interruptions=[intr]))
     assert sensor.extra_state_attributes == {}
+
+
+@pytest.mark.parametrize(
+    ("nb_client", "expected"), [(120, "150 or less"), (600, "Over 500"), (1500, "Over 1000")]
+)
+def test_nb_client_arrondi_english(nb_client, expected) -> None:
+    from custom_components.hydropannes.sensor import _nb_client_arrondi
+
+    assert _nb_client_arrondi(nb_client, english=True) == expected

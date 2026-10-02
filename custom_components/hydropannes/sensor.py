@@ -17,6 +17,7 @@ from homeassistant.util import dt as dt_util
 from .const import (
     CAUSE_CODES,
     CAUSE_DESCRIPTIONS,
+    CAUSE_DESCRIPTIONS_EN,
     CAUSE_OPTIONS,
     ETAT_PLANIFIE_DECALE,
     ETAT_PLANIFIE_REPORTE,
@@ -26,10 +27,14 @@ from .const import (
     NIVEAU_URGENCE_CODES,
     NIVEAU_URGENCE_OPTIONS,
     RETABLISSEMENT_DESCRIPTIONS,
+    RETABLISSEMENT_DESCRIPTIONS_EN,
     RETABLISSEMENT_DESCRIPTIONS_MAJEUR,
+    RETABLISSEMENT_DESCRIPTIONS_MAJEUR_EN,
     RETABLISSEMENT_OPTIONS,
     STATUT_INTERVENTION_DESCRIPTIONS,
+    STATUT_INTERVENTION_DESCRIPTIONS_EN,
     STATUT_INTERVENTION_DESCRIPTIONS_MAJEUR,
+    STATUT_INTERVENTION_DESCRIPTIONS_MAJEUR_EN,
     STATUT_INTERVENTION_OPTIONS,
     TYPE_FIN_PREVUE_CODES,
 )
@@ -49,13 +54,14 @@ _LOGGER = logging.getLogger(__name__)
 _UNRECORDED_DESCRIPTION = frozenset({"description"})
 
 
-def _nb_client_arrondi(nb_client: int) -> str:
-    """Return the affected-address count the way the Info-pannes site words it."""
+def _nb_client_arrondi(nb_client: int, *, english: bool = False) -> str:
+    """Return the affected-address count the way the Info-pannes site words it, in French or in the site's English."""
     if nb_client < 500:
-        return f"{50 * math.ceil(nb_client / 50)} ou moins"
+        n = 50 * math.ceil(nb_client / 50)
+        return f"{n} or less" if english else f"{n} ou moins"
     if nb_client < 1000:
-        return "plus de 500"
-    return "plus de 1000"
+        return "Over 500" if english else "plus de 500"
+    return "Over 1000" if english else "plus de 1000"
 
 
 # Entities are updated by the coordinator; no parallel polling needed.
@@ -211,7 +217,7 @@ class HydroPannesNombreClientSensor(HydroPannesSensorBase):
         nb_client = self.native_value
         if not isinstance(nb_client, int) or nb_client <= 0:
             return {}
-        return {"arrondi": _nb_client_arrondi(nb_client)}
+        return {"arrondi": _nb_client_arrondi(nb_client, english=self._english)}
 
 
 class HydroPannesDebutSensor(HydroPannesSensorBase):
@@ -343,8 +349,18 @@ class HydroPannesStatutInterventionSensor(HydroPannesSensorBase):
         outage = self._get_current_interruption()
         description = None
         if outage and self._is_panne_majeure(outage):
-            description = STATUT_INTERVENTION_DESCRIPTIONS_MAJEUR.get(statut)
-        description = description or STATUT_INTERVENTION_DESCRIPTIONS.get(statut)
+            majeur = (
+                STATUT_INTERVENTION_DESCRIPTIONS_MAJEUR_EN
+                if self._english
+                else STATUT_INTERVENTION_DESCRIPTIONS_MAJEUR
+            )
+            description = majeur.get(statut)
+        normal = (
+            STATUT_INTERVENTION_DESCRIPTIONS_EN
+            if self._english
+            else STATUT_INTERVENTION_DESCRIPTIONS
+        )
+        description = description or normal.get(statut)
         return {"description": description} if description else {}
 
 
@@ -391,8 +407,14 @@ class HydroPannesRetablissementSensor(HydroPannesSensorBase):
         outage = self._get_active_outage()
         description = None
         if outage and self._is_panne_majeure(outage):
-            description = RETABLISSEMENT_DESCRIPTIONS_MAJEUR.get(etape)
-        return {"description": description or RETABLISSEMENT_DESCRIPTIONS[etape]}
+            majeur = (
+                RETABLISSEMENT_DESCRIPTIONS_MAJEUR_EN
+                if self._english
+                else RETABLISSEMENT_DESCRIPTIONS_MAJEUR
+            )
+            description = majeur.get(etape)
+        normal = RETABLISSEMENT_DESCRIPTIONS_EN if self._english else RETABLISSEMENT_DESCRIPTIONS
+        return {"description": description or normal[etape]}
 
 
 class HydroPannesCauseSensor(HydroPannesSensorBase):
@@ -428,7 +450,8 @@ class HydroPannesCauseSensor(HydroPannesSensorBase):
         cause = self.native_value
         if not outage or cause is None:
             return {}
-        attrs = {"description": CAUSE_DESCRIPTIONS[cause]}
+        descriptions = CAUSE_DESCRIPTIONS_EN if self._english else CAUSE_DESCRIPTIONS
+        attrs = {"description": descriptions[cause]}
         code = outage.get("codeCause")
         if code is not None:
             attrs["code_cause"] = str(code)

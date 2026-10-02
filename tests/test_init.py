@@ -21,6 +21,7 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 from custom_components.hydropannes.const import (
     API_URL,
     CAUSE_DESCRIPTIONS,
+    CAUSE_DESCRIPTIONS_EN,
     CONF_LIEU_CONSO,
     CONF_NOM_LIEU,
     DOMAIN,
@@ -106,6 +107,7 @@ async def test_enum_sensor_states_accepted_by_home_assistant(
 
     Home Assistant rejects any state outside a sensor's ``options`` and logs an error, so this drives the real state machine rather than the sensor classes alone.
     """
+    hass.config.language = "fr"
     outage = [
         {
             "etat": "N",
@@ -351,3 +353,42 @@ async def test_api_compatibility_sensor_survives_a_broken_payload(
 
     assert issue_registry.async_get_issue(DOMAIN, issue_id) is None
     assert hass.states.get(compat_id).state == "off"
+
+
+def _state(hass: HomeAssistant, entry: MockConfigEntry, domain: str, key: str):
+    entity_id = er.async_get(hass).async_get_entity_id(domain, DOMAIN, f"{entry.entry_id}_{key}")
+    assert entity_id is not None, f"no {domain} registered for {key}"
+    return hass.states.get(entity_id)
+
+
+async def test_attribute_texts_follow_the_configured_language(
+    hass: HomeAssistant, aioclient_mock
+) -> None:
+    """Attribute texts are in English when Home Assistant is not configured in French."""
+    hass.config.language = "en"
+    outage = [
+        {
+            "etat": "N",
+            "idLieuConso": LIEU,
+            "interruptions": [
+                {
+                    "dateDebut": "2024-01-01T00:00:00-05:00",
+                    "etat": "C",
+                    "interruptionPlanifiee": False,
+                    "codeCause": "11",
+                    "codeIntervention": "N",
+                    "nbClient": 120,
+                }
+            ],
+        }
+    ]
+    aioclient_mock.get(API_URL.format(LIEU), json=outage)
+    entry = _entry()
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    cause = _state(hass, entry, "sensor", "cause")
+    assert cause.attributes["description"] == CAUSE_DESCRIPTIONS_EN["defaillance_equipement"]
+    assert _state(hass, entry, "sensor", "nbclient").attributes["arrondi"] == "150 or less"
+
