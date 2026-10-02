@@ -167,9 +167,9 @@ Quand l'état est `interruption_planifiee_annulee` ou `interruption_planifiee_re
 
 | État | Libellé affiché (fr) | Codes Hydro-Québec |
 |------|----------------------|--------------------|
-| `defaillance_equipement` | Défaillance d'un équipement | 11 |
+| `defaillance_equipement` | Défaillance d’un équipement | 11 |
 | `surcharge_reseau` | Surcharge sur le réseau | 12 |
-| `bris_equipement` | Bris d'équipement | 13, 14, 15, 72, 79 |
+| `bris_equipement` | Bris d’équipement | 13, 14, 15, 72, 79 |
 | `foudre` | Foudre | 21 |
 | `precipitations` | Précipitations | 22 |
 | `sinistre_naturel` | Sinistre naturel | 24 |
@@ -179,7 +179,7 @@ Quand l'état est `interruption_planifiee_annulee` ou `interruption_planifiee_re
 | `usure_materiel` | Usure ou désagrégation de matériel | 33 |
 | `incendie_ou_fuite_gaz` | Incendie ou fuite de gaz | 34 |
 | `contact_accidentel` | Contact accidentel avec le réseau | 42, 55 |
-| `securite_publique` | Interruption - Sécurité publique | 44 |
+| `securite_publique` | Interruption – Sécurité publique | 44 |
 | `dommages_vegetation` | Dommages causés par la végétation | 51 |
 | `dommages_oiseaux` | Dommages causés par les oiseaux | 52 |
 | `dommages_animaux` | Dommages causés par les animaux | 53 |
@@ -207,7 +207,7 @@ Cet attribut n'est pas enregistré dans l'historique de Home Assistant.
 | `equipe_designee` | Équipe désignée |
 | `travaux_en_cours` | Travaux en cours sur le réseau électrique |
 | `travaux_par_priorite` | Réalisation des travaux par ordre de priorité |
-| `retablissement_en_evaluation` | Heure de rétablissement en cours d'évaluation |
+| `retablissement_en_evaluation` | Heure de rétablissement en cours d’évaluation |
 | `retablissement_prevu` | Rétablissement prévu |
 | `fin_non_determinee` | Fin non déterminée |
 | `reprise_graduelle` | Rétablissement graduel du service en cours |
@@ -222,7 +222,7 @@ Pour une interruption planifiée qui n'est pas en cours, l'état est `interrupti
 
 | État | Libellé affiché (fr) | Quand |
 |------|----------------------|-------|
-| `en_evaluation` | Heure de rétablissement en cours d'évaluation | Aucune heure estimée |
+| `en_evaluation` | Heure de rétablissement en cours d’évaluation | Aucune heure estimée |
 | `prevu` | Rétablissement prévu | Heure estimée, pas encore dépassée |
 | `en_revision` | Heure de rétablissement en cours de révision | Heure estimée dépassée (arrondie au quart d'heure supérieur), ou aucune heure estimée alors que l'équipe est en route ou sur place |
 
