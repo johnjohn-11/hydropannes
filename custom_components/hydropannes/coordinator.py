@@ -185,7 +185,7 @@ class HydroPannesDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             return self._process_payload(payload)
         except (AttributeError, KeyError, TypeError, ValueError) as err:
             _LOGGER.debug("Unparseable payload for lieu %s", self.lieu_conso, exc_info=True)
-            self._raise_failure(f"Unexpected payload: {err}")
+            self._raise_failure(f"Unexpected payload: {err}", "unexpected_payload")
 
     async def _async_fetch(self) -> Any:
         """Return the decoded API response, retrying 5xx errors, timeouts and connection errors.
@@ -201,15 +201,24 @@ class HydroPannesDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     if response.status == 200:
                         return await response.json()
                     if not 500 <= response.status < 600:
-                        self._raise_failure(f"API returned status {response.status}")
+                        self._raise_failure(
+                            f"API returned status {response.status}",
+                            "api_status",
+                            status=str(response.status),
+                        )
                     reason = f"API returned {response.status}"
+                    key, extra = "api_server_error", {"status": str(response.status)}
             except TimeoutError:
                 reason = "Timeout"
+                key, extra = "api_timeout", {}
             except aiohttp.ClientError as err:
                 reason = f"Connection error: {err}"
+                key, extra = "connection_error", {}
 
             if attempt > MAX_RETRIES:
-                self._raise_failure(f"{reason} after {attempt} attempts")
+                self._raise_failure(
+                    f"{reason} after {attempt} attempts", key, attempts=str(attempt), **extra
+                )
             _LOGGER.debug(
                 "%s for lieu %s, retry %s/%s", reason, self.lieu_conso, attempt, MAX_RETRIES
             )
@@ -223,7 +232,9 @@ class HydroPannesDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         if not data or not isinstance(data, list) or not isinstance(data[0], dict):
             # Surface this through Repairs too: the update fails, so entities other than the API-compatibility sensor go unavailable and cannot report it.
             self._flag_invalid_response()
-            self._raise_failure("API returned invalid data format (expected a list of objects)")
+            self._raise_failure(
+                "API returned invalid data format (expected a list of objects)", "invalid_response"
+            )
 
         result: dict[str, Any] = data[0]
         self._clear_invalid_response()
@@ -323,7 +334,7 @@ class HydroPannesDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     # Failure handling
     # -----------------------------------------------------------------------
 
-    def _raise_failure(self, error_msg: str) -> NoReturn:
+    def _raise_failure(self, error_msg: str, translation_key: str, **placeholders: str) -> NoReturn:
         """Record error details for diagnostics and raise UpdateFailed.
 
         Raising UpdateFailed is the standard HA pattern: the coordinator
@@ -331,6 +342,8 @@ class HydroPannesDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         becomes False, entities go unavailable, and the next scheduled
         refresh retries automatically.  Transient hiccups are already
         absorbed by the in-loop retry logic (MAX_RETRIES).
+
+        The English ``error_msg`` goes to the log and diagnostics. The UI shows the translation of ``translation_key``, so the user never sees the English cause inside a French message.
         """
         self.total_errors += 1
         self.last_error = {
@@ -340,8 +353,8 @@ class HydroPannesDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         raise UpdateFailed(
             f"Error communicating with API: {error_msg}",
             translation_domain=DOMAIN,
-            translation_key="update_failed",
-            translation_placeholders={"error": error_msg},
+            translation_key=translation_key,
+            translation_placeholders=placeholders,
         )
 
     # -----------------------------------------------------------------------
