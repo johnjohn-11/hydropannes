@@ -67,6 +67,7 @@ async def async_get_config_entry_diagnostics(
         "entry": {
             "entry_id": entry.entry_id,
             "version": entry.version,
+            "minor_version": entry.minor_version,
             "domain": entry.domain,
             # User-chosen, so it can be a street address.
             "title": "**REDACTED**",
