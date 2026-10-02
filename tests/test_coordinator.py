@@ -348,3 +348,36 @@ async def test_failure_carries_a_translation_key(
 
     assert err.value.translation_key == key
     assert err.value.translation_placeholders == placeholders
+
+
+async def test_unknown_root_field_warns_once(hass: HomeAssistant, aioclient_mock, caplog) -> None:
+    """A root field such as etatReprise, which the site reads for a gradual restoration, is reported once."""
+    payload = [{**IDLE_PAYLOAD[0], "etatReprise": "E"}]
+    aioclient_mock.get(API_URL.format(LIEU), json=payload)
+    coordinator = _coordinator(hass)
+
+    with caplog.at_level(logging.WARNING):
+        for _ in range(3):
+            await coordinator._async_update_data()
+
+    warnings = [r for r in caplog.records if "payload root" in r.message]
+    assert len(warnings) == 1
+    assert "etatReprise" in warnings[0].message
+
+
+async def test_known_root_fields_do_not_warn(hass: HomeAssistant, aioclient_mock, caplog) -> None:
+    payload = [
+        {
+            **IDLE_PAYLOAD[0],
+            "date": "2026-10-02T00:00:00.000+00:00",
+            "repriseGraduellePossible": False,
+            "declencheurReprise": False,
+        }
+    ]
+    aioclient_mock.get(API_URL.format(LIEU), json=payload)
+    coordinator = _coordinator(hass)
+
+    with caplog.at_level(logging.WARNING):
+        await coordinator._async_update_data()
+
+    assert "payload root" not in caplog.text
