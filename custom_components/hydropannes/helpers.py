@@ -102,6 +102,12 @@ class HydroPannesHelperMixin:
         if main_etat != "N":
             return False
 
+        # A postponed or shifted planned interruption is active only inside its new window: its dateDebut/dateFin are the abandoned slot, and the root etat can be "N" because of another outage before the new window starts.
+        suffix = _NEW_WINDOW_SUFFIX.get(intr.get("etat", ""))
+        if suffix and self._is_planned_intervention(intr):
+            debut = self._parse_dt(intr.get(f"dateDebut{suffix}"))
+            fin = self._parse_dt(intr.get(f"dateFin{suffix}"))
+            return self._is_date_in_past(debut) and (not fin or self._is_date_in_future(fin))
         date_fin = self._parse_dt(intr.get("dateFin"))
         return not date_fin or self._is_date_in_future(date_fin)
 

@@ -56,6 +56,50 @@ def test_outage_not_active_when_date_fin_in_past() -> None:
     assert h._is_outage_active(intr) is False
 
 
+@pytest.mark.parametrize(("etat", "suffix"), [("R", "Report"), ("E", "Decalage")])
+def test_postponed_planned_active_follows_new_end(etat, suffix) -> None:
+    """The abandoned dateFin of a postponed planned interruption does not keep it active."""
+    intr = make_interruption(
+        interruptionPlanifiee=True,
+        etat=etat,
+        dateFin=hours_from_now(3),
+        **{f"dateDebut{suffix}": hours_from_now(-5), f"dateFin{suffix}": hours_from_now(-1)},
+    )
+    h = harness(etat="N", interruptions=[intr])
+    assert h._is_outage_active(intr) is False
+
+
+@pytest.mark.parametrize(("etat", "suffix"), [("R", "Report"), ("E", "Decalage")])
+def test_postponed_planned_not_active_before_new_window(etat, suffix) -> None:
+    """Root etat "N" from another outage does not make a postponed interruption active before its new window.
+
+    Replays a real payload: an unplanned outage under way while the postponed planned interruption starts later the same day.
+    """
+    planned = make_interruption(
+        interruptionPlanifiee=True,
+        etat=etat,
+        dateDebut=hours_from_now(-120),
+        dateFin=hours_from_now(-116),
+        **{f"dateDebut{suffix}": hours_from_now(2), f"dateFin{suffix}": hours_from_now(5)},
+    )
+    outage = make_interruption(etat="C", dateFin=None)
+    h = harness(etat="N", interruptions=[planned, outage])
+    assert h._is_outage_active(planned) is False
+    assert h._get_current_interruption() is outage
+
+
+@pytest.mark.parametrize(("etat", "suffix"), [("R", "Report"), ("E", "Decalage")])
+def test_postponed_planned_active_inside_new_window(etat, suffix) -> None:
+    intr = make_interruption(
+        interruptionPlanifiee=True,
+        etat=etat,
+        dateFin=hours_from_now(-100),
+        **{f"dateDebut{suffix}": hours_from_now(-1), f"dateFin{suffix}": hours_from_now(2)},
+    )
+    h = harness(etat="N", interruptions=[intr])
+    assert h._is_outage_active(intr) is True
+
+
 # ---------------------------------------------------------------------------
 # _is_outage_terminated
 # ---------------------------------------------------------------------------
