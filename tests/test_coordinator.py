@@ -107,12 +107,12 @@ async def test_change_detection_and_history(hass: HomeAssistant, aioclient_mock)
     aioclient_mock.get(API_URL.format(LIEU), json=IDLE_PAYLOAD)
     coordinator = _coordinator(hass)
 
-    await coordinator._async_update_data()
+    await coordinator.async_refresh()
     assert coordinator.total_changes == 1
     assert len(coordinator.api_history) == 1
 
     # Same payload again: no new change recorded, history unchanged.
-    await coordinator._async_update_data()
+    await coordinator.async_refresh()
     assert coordinator.total_changes == 1
     assert len(coordinator.api_history) == 1
     assert coordinator.total_polls == 2
@@ -124,13 +124,19 @@ async def test_change_fires_event_with_payload(hass: HomeAssistant, aioclient_mo
     aioclient_mock.get(API_URL.format(LIEU), json=IDLE_PAYLOAD)
     coordinator = _coordinator(hass)
 
-    await coordinator._async_update_data()
+    # The first payload after a start is not a change.
+    await coordinator.async_refresh()
+    assert events == []
+
+    aioclient_mock.clear_requests()
+    aioclient_mock.get(API_URL.format(LIEU), json=ACTIVE_PAYLOAD)
+    await coordinator.async_refresh()
     assert len(events) == 1
     assert events[0].data["lieu_consommation"] == LIEU
     assert events[0].data["data"]["idLieuConso"] == LIEU
 
     # Unchanged payload on the next poll fires no further event.
-    await coordinator._async_update_data()
+    await coordinator.async_refresh()
     assert len(events) == 1
 
 

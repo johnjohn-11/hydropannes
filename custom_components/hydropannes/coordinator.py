@@ -22,8 +22,6 @@ from __future__ import annotations
 import asyncio
 from collections import deque
 from datetime import timedelta
-import hashlib
-import json
 import logging
 from typing import TYPE_CHECKING, Any, NoReturn
 
@@ -130,9 +128,6 @@ class HydroPannesDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         # Whether missing root fields have been logged since the schema was last seen intact.  Kept apart from api_compatible, which an invalid payload also clears, so that path cannot suppress this log.
         self._missing_root_logged: bool = False
 
-        # Hash of the last payload, used for change detection.
-        self._last_hash: str | None = None
-
         # Ring buffer of the most recent distinct API payloads with timestamps,
         # exposed to the diagnostics module.
         self.api_history: deque[dict[str, Any]] = deque(maxlen=API_HISTORY_SIZE)
@@ -230,15 +225,12 @@ class HydroPannesDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._check_root_fields(result)
         self._warn_unknown_interruption_fields(result)
 
-        current_hash = hashlib.md5(
-            json.dumps(result, sort_keys=True).encode(),
-            usedforsecurity=False,
-        ).hexdigest()
-        if self._last_hash != current_hash:
-            self._last_hash = current_hash
+        if result != self.data:
             self.total_changes += 1
             self._append_history(result)
-            self._fire_change_event(result)
+            # The first payload after a start or reload is not a change, so no event: an automation logging changes would otherwise get one on every restart.
+            if self.data is not None:
+                self._fire_change_event(result)
 
         self._adjust_update_interval(result)
         self.last_success_time = dt_util.utcnow()
