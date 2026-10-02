@@ -264,6 +264,18 @@ class HydroPannesFinEstimeeSensor(HydroPannesSensorBase):
         return end_time
 
     @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Expose the earliest estimated end when Hydro-Québec gives a range, as the site shows "between" the two."""
+        end_time, is_actual, is_postponed = self._get_end_time_info()
+        outage = self._get_current_interruption()
+        if end_time is None or is_actual or is_postponed or not outage:
+            return {}
+        fin_min = self._parse_dt(outage.get("dateFinEstimeeMin"))
+        if fin_min and fin_min < end_time:
+            return {"fin_estimee_min": fin_min.isoformat()}
+        return {}
+
+    @property
     def icon(self) -> str:
         """Return an icon reflecting the type of end time."""
         end_time, is_actual, is_postponed = self._get_end_time_info()
