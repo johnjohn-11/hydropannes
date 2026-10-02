@@ -119,6 +119,9 @@ class HydroPannesInfoPannesSensor(HydroPannesSensorBase):
                 return "panne_en_cours"
             return None
 
+        if self._is_non_synchronise():
+            return "panne_en_cours"
+
         active_outage = self._get_active_outage()
         if active_outage and self._is_reprise_graduelle(active_outage):
             return "reprise_graduelle"
@@ -348,6 +351,8 @@ class HydroPannesRetablissementSensor(HydroPannesSensorBase):
 
         Mirrors the site's rule. The estimated end is rounded up to the quarter hour before being compared to now. Without an estimate, a crew on the way or on site means the time is being revised. The site also tests a typeFinPrevu field the API never sends (it sends typeFinPrevue), so that test never changes the outcome and is left out.
         """
+        if self._is_non_synchronise():
+            return None
         outage = self._get_active_outage()
         if not outage:
             planned = self._get_planned_intervention()

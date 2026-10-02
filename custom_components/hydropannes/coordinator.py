@@ -34,7 +34,14 @@ from homeassistant.helpers.update_coordinator import (
 )
 from homeassistant.util import dt as dt_util
 
-from .const import API_URL, CONF_LIEU_CONSO, DOMAIN, EVENT_DATA_CHANGED, UPDATE_INTERVAL
+from .const import (
+    API_URL,
+    CONF_LIEU_CONSO,
+    DOMAIN,
+    ETATS_PANNE_EN_COURS,
+    EVENT_DATA_CHANGED,
+    UPDATE_INTERVAL,
+)
 
 if TYPE_CHECKING:
     from datetime import datetime
@@ -391,10 +398,16 @@ class HydroPannesDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         This is intentionally separate from the helper mixin used by sensors,
         because it operates on a raw dict rather than through coordinator.data.
         """
+        interruptions = data.get("interruptions", [])
+        if any(
+            not i.get("interruptionPlanifiee") and i.get("etat") in ETATS_PANNE_EN_COURS
+            for i in interruptions
+        ):
+            return True
         if data.get("etat") != "N":
             return False
         now = dt_util.now()
-        for intr in data.get("interruptions", []):
+        for intr in interruptions:
             date_fin_str = intr.get("dateFin")
             if not date_fin_str:
                 # No end date → outage is still ongoing.

@@ -249,6 +249,10 @@ ETAT_PLANIFIE_REPORTE = "R"  # new window in dateDebutReport/dateFinReport
 ETAT_PLANIFIE_DECALE = "E"  # new window in dateDebutDecalage/dateFinDecalage
 ETAT_PLANIFIE_ANNULE = "A"
 
+# Unplanned interruption etat values. The site takes C (courante), I (non confirmée isolée) and N (non confirmée) as an outage under way whatever the root etat, and T as terminated.
+ETATS_PANNE_EN_COURS = frozenset({"C", "I", "N"})
+ETAT_PANNE_TERMINEE = "T"
+
 # codeRemarque → raison_annulation slug, as the Info-pannes site maps them. It is only the reason shown next to a cancelled or postponed interruption, never its state: dateDebutReport is present even on confirmed ones, and a cancellation with code 91 was followed by no new interruption in recorded payloads. Any other code is "Modification de la planification des travaux" on the site.
 RAISON_ANNULATION_CODES = {
     "45": "travaux_deja_realises",

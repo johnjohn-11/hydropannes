@@ -45,7 +45,7 @@ def test_outage_active_when_date_fin_in_future() -> None:
 
 
 def test_outage_not_active_when_main_etat_alimente() -> None:
-    intr = make_interruption(dateFin=None)
+    intr = make_interruption(interruptionPlanifiee=True, dateFin=None)
     h = harness(etat="A", interruptions=[intr])
     assert h._is_outage_active(intr) is False
 
