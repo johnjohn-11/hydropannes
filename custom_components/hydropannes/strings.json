@@ -143,6 +143,11 @@
     "api_schema_changed": {
       "title": "Hydro-Québec API structure changed",
       "description": "Hydro-Pannes received an unexpected response from the Hydro-Québec API (missing fields: {missing_fields}). The integration may need to be updated to match a new API structure. If this persists after updating, please report it on the issue tracker."
+  "exceptions": {
+    "update_failed": {
+      "message": "Error communicating with the Hydro-Québec API: {error}"
+    }
+  },
     },
     "api_invalid_response": {
       "title": "Unexpected Hydro-Québec API response",

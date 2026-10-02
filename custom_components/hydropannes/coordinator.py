@@ -330,7 +330,12 @@ class HydroPannesDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             "timestamp": dt_util.utcnow().isoformat(),
             "message": error_msg,
         }
-        raise UpdateFailed(f"Error communicating with API: {error_msg}")
+        raise UpdateFailed(
+            f"Error communicating with API: {error_msg}",
+            translation_domain=DOMAIN,
+            translation_key="update_failed",
+            translation_placeholders={"error": error_msg},
+        )
 
     # -----------------------------------------------------------------------
     # History and polling management
