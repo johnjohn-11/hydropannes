@@ -3,6 +3,8 @@
 Enumerated sensors expose language-neutral slugs as their state, following the Home Assistant ``SensorDeviceClass.ENUM`` convention. The code-to-slug maps live here; the human-readable labels live in ``strings.json`` under ``entity.sensor.<translation_key>.state`` and are translated per language.
 """
 
+from datetime import timedelta
+
 DOMAIN = "hydropannes"
 
 CONF_LIEU_CONSO = "lieu_consommation"
@@ -267,3 +269,6 @@ RAISON_ANNULATION_DEFAUT = "planification_modifiee"
 
 # dureePrevu (minutes) from which the Info-pannes site warns that a planned interruption may end with a gradual restoration.
 GRAP_DUREE_PREVUE_MINUTES = 480
+
+# For such an interruption the site shows the end as a window from dateFin to this much later.
+GRAP_FIN_MARGE = timedelta(hours=5)
