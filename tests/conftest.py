@@ -54,6 +54,11 @@ def make_interruption(**overrides: Any) -> dict[str, Any]:
         "interruptionPlanifiee": False,
     }
     interruption.update(overrides)
+    if not interruption["interruptionPlanifiee"] and "etat" not in overrides:
+        # Like real payloads: an unplanned interruption is "C" while under way and "T" once its dateFin is past.
+        date_fin = interruption.get("dateFin")
+        ended = date_fin is not None and dt_util.parse_datetime(date_fin) <= dt_util.now()
+        interruption["etat"] = "T" if ended else "C"
     return {k: v for k, v in interruption.items() if v is not None}
 
 

@@ -10,6 +10,7 @@ from homeassistant.util import dt as dt_util
 import pytest
 
 from custom_components.hydropannes.binary_sensor import (
+    HydroPannesEtatServiceBinarySensor,
     HydroPannesInterventionPlanifieeBinarySensor,
 )
 from custom_components.hydropannes.const import (
@@ -308,3 +309,35 @@ def test_cancelled_planned_stays_cancelled_once_its_slot_is_past() -> None:
         build(HydroPannesStatutInterventionSensor, payload).native_value
         == "interruption_planifiee_annulee"
     )
+
+
+# ---------------------------------------------------------------------------
+# Root etat and interruptions disagreeing (the site's nonSynchronise)
+# ---------------------------------------------------------------------------
+
+
+def test_fed_root_with_outage_under_way_shows_outage_without_details() -> None:
+    """Replays real payloads: root etat "A" while an unplanned interruption "C" without dateFin is listed."""
+    payload = make_payload(etat="A", interruptions=[make_interruption(etat="C", dateFin=None)])
+    assert build(HydroPannesInfoPannesSensor, payload).native_value == "panne_en_cours"
+    assert build(HydroPannesStatutInterventionSensor, payload).native_value is None
+    assert build(HydroPannesRetablissementSensor, payload).native_value is None
+    assert build(HydroPannesEtatServiceBinarySensor, payload).is_on is True
+
+
+def test_unfed_root_with_only_terminated_outages_shows_outage_under_way() -> None:
+    """Replays real payloads: root etat "N" while the only interruption is "T" with a past dateFin."""
+    payload = make_payload(
+        etat="N", interruptions=[make_interruption(etat="T", dateFin=hours_from_now(-10))]
+    )
+    assert build(HydroPannesInfoPannesSensor, payload).native_value == "panne_en_cours"
+    assert build(HydroPannesStatutInterventionSensor, payload).native_value is None
+    assert build(HydroPannesEtatServiceBinarySensor, payload).is_on is True
+
+
+def test_terminated_outage_with_fed_root_is_restored() -> None:
+    payload = make_payload(
+        etat="A", interruptions=[make_interruption(etat="T", dateFin=hours_from_now(-1))]
+    )
+    assert build(HydroPannesInfoPannesSensor, payload).native_value == "service_retabli"
+    assert build(HydroPannesEtatServiceBinarySensor, payload).is_on is False

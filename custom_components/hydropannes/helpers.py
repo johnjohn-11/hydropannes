@@ -15,9 +15,11 @@ from typing import TYPE_CHECKING, Any
 from homeassistant.util import dt as dt_util
 
 from .const import (
+    ETAT_PANNE_TERMINEE,
     ETAT_PLANIFIE_ANNULE,
     ETAT_PLANIFIE_DECALE,
     ETAT_PLANIFIE_REPORTE,
+    ETATS_PANNE_EN_COURS,
     NIVEAU_URGENCE_MAJEURS,
     RAISON_ANNULATION_CODES,
     RAISON_ANNULATION_DEFAUT,
@@ -98,6 +100,14 @@ class HydroPannesHelperMixin:
         The interruption's own 'etat' field is intentionally ignored here,
         as it does not reliably indicate whether power is currently restored.
         """
+        if not self._is_planned_intervention(intr):
+            # The site goes by the interruption's own etat: a C with root etat "A" is still shown as an outage under way.
+            etat = intr.get("etat")
+            if etat in ETATS_PANNE_EN_COURS:
+                return True
+            if etat == ETAT_PANNE_TERMINEE:
+                return False
+
         main_etat = self._get_main_etat()
         if main_etat != "N":
             return False
@@ -352,6 +362,20 @@ class HydroPannesHelperMixin:
             and not self._is_outage_terminated(planned)
         )
 
+    def _is_non_synchronise(self) -> bool:
+        """Return True when the root etat and the listed interruptions disagree, as the site's nonSynchronise flag.
+
+        Either the root etat is "A" while an unplanned interruption is under way, or it is "N" while no unplanned outage is under way and no planned interruption is in progress. The site then shows an outage under way without any detail ("Des précisions suivront dès que l'information sur la panne sera disponible").
+        """
+        main_etat = self._get_main_etat()
+        active = self._get_active_outage()
+        if main_etat == "A":
+            return active is not None
+        if main_etat != "N" or active:
+            return False
+        planned = self._get_planned_intervention()
+        return not (planned and self._is_planned_in_progress(planned))
+
     def _get_current_interruption(self) -> dict[str, Any] | None:
         """Return the most relevant interruption for sensor display.
 
@@ -363,6 +387,9 @@ class HydroPannesHelperMixin:
         3. Planned intervention (active, future, or terminated).
         4. First interruption in list (fallback).
         """
+        if self._is_non_synchronise():
+            return None
+
         interruption = self._get_active_outage()
         if interruption:
             return interruption

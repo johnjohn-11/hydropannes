@@ -72,7 +72,7 @@ class HydroPannesBinarySensorBase(HydroPannesEntity, BinarySensorEntity):
 class HydroPannesEtatServiceBinarySensor(HydroPannesBinarySensorBase):
     """Binary sensor indicating whether there is an active service problem.
 
-    ``True`` when the root etat is "N" (active outage or planned interruption in progress), ``False`` otherwise, ``None`` before the first fetch.
+    ``True`` when the root etat is "N" (active outage or planned interruption in progress) or an unplanned interruption is under way, ``False`` otherwise, ``None`` before the first fetch.
     """
 
     _attr_translation_key = "etat_service"
@@ -84,8 +84,8 @@ class HydroPannesEtatServiceBinarySensor(HydroPannesBinarySensorBase):
         """Return True when power is out or a planned interruption is actively in progress."""
         if not self.coordinator.data:
             return None
-        # The root etat alone decides: "N" means the service point is not fed, whether or not an interruption object can be matched to it.
-        return self._get_main_etat() == "N"
+        # "N" means the service point is not fed, whether or not an interruption object can be matched to it. An unplanned interruption under way also counts, as the site shows it as an outage even while the root etat still says "A".
+        return self._get_main_etat() == "N" or self._get_active_outage() is not None
 
 
 class HydroPannesInterventionPlanifieeBinarySensor(HydroPannesBinarySensorBase):
