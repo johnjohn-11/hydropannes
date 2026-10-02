@@ -103,6 +103,16 @@ KNOWN_INTERRUPTION_FIELDS = {
     "repriseGraduellePossible",
 }
 
+# Root fields seen in recorded payloads. The Info-pannes site also reads etatReprise, dureePrevueDelestage, dureeResiduelleDelestage, remiseEnServicePrevue and remiseEnServiceConfirmee to compute a gradual restoration, which the integration does not do yet: none of them appeared in recorded payloads, so the warning below flags their arrival.
+KNOWN_ROOT_FIELDS = {
+    "etat",
+    "idLieuConso",
+    "interruptions",
+    "date",
+    "repriseGraduellePossible",
+    "declencheurReprise",
+}
+
 
 class HydroPannesDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     """Coordinator managing data fetching, caching, and change notification."""
@@ -161,6 +171,7 @@ class HydroPannesDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         # Interruption field names already reported as unknown, so a schema change is logged once instead of on every poll.
         self._warned_unknown_fields: set[str] = set()
+        self._warned_unknown_root_fields: set[str] = set()
 
         super().__init__(
             hass,
@@ -239,6 +250,7 @@ class HydroPannesDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         result: dict[str, Any] = data[0]
         self._clear_invalid_response()
         self._check_root_fields(result)
+        self._warn_unknown_root_fields(result)
         self._warn_unknown_interruption_fields(result)
 
         if result != self.data:
@@ -283,6 +295,18 @@ class HydroPannesDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             translation_key="api_schema_changed",
             translation_placeholders={"missing_fields": ", ".join(sorted(missing_root))},
         )
+
+    def _warn_unknown_root_fields(self, result: dict[str, Any]) -> None:
+        """Log root fields the integration does not know yet, once per field name."""
+        new_fields = result.keys() - KNOWN_ROOT_FIELDS - self._warned_unknown_root_fields
+        if new_fields:
+            self._warned_unknown_root_fields |= new_fields
+            _LOGGER.warning(
+                "New API fields detected at the payload root (lieu %s): "
+                "%s — the Hydro-Québec schema may have evolved.",
+                self.lieu_conso,
+                new_fields,
+            )
 
     def _warn_unknown_interruption_fields(self, result: dict[str, Any]) -> None:
         """Log interruption fields the integration does not know yet.
