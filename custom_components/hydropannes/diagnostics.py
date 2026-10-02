@@ -68,8 +68,8 @@ async def async_get_config_entry_diagnostics(
             "entry_id": entry.entry_id,
             "version": entry.version,
             "domain": entry.domain,
-            "title": entry.title,
-            # The location name is the entry title, reported above.
+            # User-chosen, so it can be a street address.
+            "title": "**REDACTED**",
             "data": {"lieu_consommation": _mask(coordinator.lieu_conso)},
             "options": dict(entry.options),
         },
