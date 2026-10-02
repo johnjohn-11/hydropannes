@@ -116,7 +116,7 @@ Chaque lieu de consommation configuré crée un appareil avec les entités suiva
 | Entité | Description |
 |--------|-------------|
 | `binary_sensor.*_etat_du_service` | `on` = panne active ou intervention planifiée en cours, `off` = service normal |
-| `binary_sensor.*_intervention_planifiee` | `on` = intervention planifiée active ou à venir, et non annulée. Ses attributs décrivent la plus proche, et `interruptions_suivantes` liste les autres (début, fin, durée prévue en minutes, et `reprise_graduelle_possible` à partir de 8 heures de travaux, comme sur le site) |
+| `binary_sensor.*_intervention_planifiee` | `on` = intervention planifiée active ou à venir, et non annulée. Ses attributs décrivent la plus proche : `debut` et `fin` du créneau en vigueur, `duree_prevue` en minutes, `report_debut` et `report_fin` pour le créneau de remplacement que le site affiche sous « En cas de report » (absents une fois l'interruption reportée), et à partir de 8 heures de travaux `reprise_graduelle_possible` et `fin_au_plus_tard`, 5 heures après la fin, comme la fourchette du site. `interruptions_suivantes` liste les autres avec les mêmes champs |
 | `binary_sensor.*_compatibilite_api` | `on` = structure de l'API Hydro-Québec modifiée *(Diagnostic)* |
 
 > 💡 Dans les exemples ci-dessous, `maison` correspond au nom donné au lieu.

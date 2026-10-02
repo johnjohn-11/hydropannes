@@ -21,7 +21,7 @@ from homeassistant.components.binary_sensor import (
 )
 from homeassistant.const import EntityCategory
 
-from .const import GRAP_DUREE_PREVUE_MINUTES
+from .const import ETAT_PLANIFIE_REPORTE, GRAP_DUREE_PREVUE_MINUTES, GRAP_FIN_MARGE
 from .entity import HydroPannesEntity
 
 if TYPE_CHECKING:
@@ -113,12 +113,13 @@ class HydroPannesInterventionPlanifieeBinarySensor(HydroPannesBinarySensorBase):
         if not pending:
             return {}
         attrs = self._interruption_attributes(pending[0], INTERVENTION_PLANIFIEE_ATTRIBUTE_KEYS)
+        attrs.update(self._resume(pending[0]))
         if len(pending) > 1:
-            attrs["interruptions_suivantes"] = [self._suivante(i) for i in pending[1:]]
+            attrs["interruptions_suivantes"] = [self._resume(i) for i in pending[1:]]
         return attrs
 
-    def _suivante(self, intr: dict[str, Any]) -> dict[str, Any]:
-        """Summarize one of the other upcoming planned interruptions, as the site lists them."""
+    def _resume(self, intr: dict[str, Any]) -> dict[str, Any]:
+        """Summarize a planned interruption the way the site's planned-interruption card shows it."""
         debut, fin = self._get_effective_dates(intr)
         duree = intr.get("dureePrevu")
         item: dict[str, Any] = {
@@ -126,9 +127,18 @@ class HydroPannesInterventionPlanifieeBinarySensor(HydroPannesBinarySensorBase):
             "fin": fin.isoformat() if fin else None,
             "duree_prevue": duree,
         }
-        # The site warns about a possible gradual restoration from 480 minutes of planned work.
+        # From 480 minutes of planned work the site warns about a gradual restoration and shows the end as a window up to 5 hours later.
         if isinstance(duree, int | float) and duree >= GRAP_DUREE_PREVUE_MINUTES:
             item["reprise_graduelle_possible"] = True
+            if fin:
+                item["fin_au_plus_tard"] = (fin + GRAP_FIN_MARGE).isoformat()
+        # On an interruption not yet postponed, the report dates are the fallback slot the site lists under "En cas de report".
+        if intr.get("etat") != ETAT_PLANIFIE_REPORTE:
+            report_debut = self._parse_dt(intr.get("dateDebutReport"))
+            if report_debut:
+                report_fin = self._parse_dt(intr.get("dateFinReport"))
+                item["report_debut"] = report_debut.isoformat()
+                item["report_fin"] = report_fin.isoformat() if report_fin else None
         return item
 
 

@@ -341,3 +341,49 @@ def test_terminated_outage_with_fed_root_is_restored() -> None:
     )
     assert build(HydroPannesInfoPannesSensor, payload).native_value == "service_retabli"
     assert build(HydroPannesEtatServiceBinarySensor, payload).is_on is False
+
+
+def _iso_local(value: str) -> str:
+    return dt_util.as_local(dt_util.parse_datetime(value)).isoformat()
+
+
+def test_planned_sensor_lists_the_fallback_slot() -> None:
+    """Replays a real payload: a confirmed interruption carries the slot the site lists under "En cas de report"."""
+    intr = _planned(
+        24,
+        dureePrevu=270,
+        dateDebutReport=hours_from_now(24 * 14),
+        dateFinReport=hours_from_now(24 * 14 + 4),
+    )
+    attrs = build(
+        HydroPannesInterventionPlanifieeBinarySensor, make_payload(etat="A", interruptions=[intr])
+    ).extra_state_attributes
+    assert attrs["debut"] == _iso_local(intr["dateDebut"])
+    assert attrs["fin"] == _iso_local(intr["dateFin"])
+    assert attrs["report_debut"] == _iso_local(intr["dateDebutReport"])
+    assert attrs["report_fin"] == _iso_local(intr["dateFinReport"])
+    assert "fin_au_plus_tard" not in attrs
+
+
+def test_postponed_planned_has_no_fallback_slot() -> None:
+    intr = _planned(
+        -100,
+        etat="R",
+        dateDebutReport=hours_from_now(24),
+        dateFinReport=hours_from_now(28),
+    )
+    attrs = build(
+        HydroPannesInterventionPlanifieeBinarySensor, make_payload(etat="A", interruptions=[intr])
+    ).extra_state_attributes
+    assert attrs["debut"] == _iso_local(intr["dateDebutReport"])
+    assert "report_debut" not in attrs
+
+
+def test_long_planned_ends_within_five_hours() -> None:
+    intr = _planned(24, dureePrevu=480)
+    attrs = build(
+        HydroPannesInterventionPlanifieeBinarySensor, make_payload(etat="A", interruptions=[intr])
+    ).extra_state_attributes
+    fin = dt_util.as_local(dt_util.parse_datetime(intr["dateFin"]))
+    assert attrs["fin_au_plus_tard"] == (fin + timedelta(hours=5)).isoformat()
+    assert attrs["reprise_graduelle_possible"] is True
