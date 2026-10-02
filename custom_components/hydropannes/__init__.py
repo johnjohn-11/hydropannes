@@ -29,7 +29,6 @@ PLATFORMS: list[Platform] = [Platform.SENSOR, Platform.BINARY_SENSOR]
 
 type HydroPannesConfigEntry = ConfigEntry[HydroPannesDataUpdateCoordinator]
 
-# Reject YAML configuration: this integration is set up via config entries only.
 CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 
 
@@ -42,7 +41,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: HydroPannesConfigEntry) 
     """
     coordinator = HydroPannesDataUpdateCoordinator(hass, entry)
 
-    # Raises ConfigEntryNotReady on failure, which HA will retry automatically.
     await coordinator.async_config_entry_first_refresh()
 
     entry.runtime_data = coordinator
