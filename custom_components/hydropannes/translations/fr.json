@@ -132,22 +132,26 @@
         "name": "État du service"
       },
       "intervention_planifiee": {
-        "name": "Intervention planifiée"
+        "name": "Intervention planifiée",
+        "state": {
+          "on": "Prévue",
+          "off": "Aucune"
+        }
       },
       "api_compatibilite": {
         "name": "Compatibilité API"
       }
     }
   },
-  "issues": {
-    "api_schema_changed": {
-      "title": "La structure de l'API Hydro-Québec a changé",
-      "description": "Hydro-Pannes a reçu une réponse inattendue de l'API Hydro-Québec (champs manquants : {missing_fields}). L'intégration doit peut-être être mise à jour pour correspondre à une nouvelle structure d'API. Si le problème persiste après la mise à jour, veuillez le signaler sur le suivi des problèmes."
   "exceptions": {
     "update_failed": {
       "message": "Erreur de communication avec l'API d'Hydro-Québec : {error}"
     }
   },
+  "issues": {
+    "api_schema_changed": {
+      "title": "La structure de l'API Hydro-Québec a changé",
+      "description": "Hydro-Pannes a reçu une réponse inattendue de l'API Hydro-Québec (champs manquants : {missing_fields}). L'intégration doit peut-être être mise à jour pour correspondre à une nouvelle structure d'API. Si le problème persiste après la mise à jour, veuillez le signaler sur le suivi des problèmes."
     },
     "api_invalid_response": {
       "title": "Réponse inattendue de l'API Hydro-Québec",
