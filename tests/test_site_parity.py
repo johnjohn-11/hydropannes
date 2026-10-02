@@ -18,6 +18,7 @@ from custom_components.hydropannes.const import (
     RETABLISSEMENT_DESCRIPTIONS_MAJEUR,
 )
 from custom_components.hydropannes.sensor import (
+    HydroPannesFinEstimeeSensor,
     HydroPannesInfoPannesSensor,
     HydroPannesNombreClientSensor,
     HydroPannesRetablissementSensor,
@@ -387,3 +388,28 @@ def test_long_planned_ends_within_five_hours() -> None:
     fin = dt_util.as_local(dt_util.parse_datetime(intr["dateFin"]))
     assert attrs["fin_au_plus_tard"] == (fin + timedelta(hours=5)).isoformat()
     assert attrs["reprise_graduelle_possible"] is True
+
+
+def test_fin_estimee_min_exposed_for_a_range() -> None:
+    intr = make_interruption(
+        dateFin=None, dateFinEstimeeMin=hours_from_now(1), dateFinEstimeeMax=hours_from_now(3)
+    )
+    sensor = build(HydroPannesFinEstimeeSensor, make_payload(etat="N", interruptions=[intr]))
+    assert sensor.native_value == dt_util.as_local(
+        dt_util.parse_datetime(intr["dateFinEstimeeMax"])
+    )
+    assert sensor.extra_state_attributes == {
+        "fin_estimee_min": _iso_local(intr["dateFinEstimeeMin"])
+    }
+
+
+@pytest.mark.parametrize("same_as_max", [False, True])
+def test_fin_estimee_min_absent_without_a_range(same_as_max) -> None:
+    fin_max = hours_from_now(3)
+    intr = make_interruption(
+        dateFin=None,
+        dateFinEstimeeMin=fin_max if same_as_max else None,
+        dateFinEstimeeMax=fin_max,
+    )
+    sensor = build(HydroPannesFinEstimeeSensor, make_payload(etat="N", interruptions=[intr]))
+    assert sensor.extra_state_attributes == {}

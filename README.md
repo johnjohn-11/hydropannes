@@ -102,7 +102,7 @@ Chaque lieu de consommation configuré crée un appareil avec les entités suiva
 | `sensor.*_niveau_urgence` | Niveau d'urgence : Normal ou Panne majeure |
 | `sensor.*_adresses_touchees` | Nombre de clients affectés (l'attribut `arrondi` donne le libellé du site, par exemple « 150 ou moins ») |
 | `sensor.*_date_debut` | Date et heure de début de la panne ou de l'intervention |
-| `sensor.*_date_fin` | Date et heure de fin réelle ou estimée |
+| `sensor.*_date_fin` | Date et heure de fin réelle ou estimée. Quand Hydro-Québec donne une fourchette, l'attribut `fin_estimee_min` donne la fin la plus tôt, comme le « entre » du site |
 | `sensor.*_statut_intervention` | Étape de l'intervention (équipe désignée, travaux en cours, etc.) |
 | `sensor.*_cause` | Cause de la panne (le code brut d'Hydro-Québec reste dans l'attribut `code_cause`) |
 | `sensor.*_duree` | Durée de la panne en secondes |
