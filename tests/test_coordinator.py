@@ -322,3 +322,29 @@ async def test_missing_fields_logged_after_invalid_response(
 
     errors = [r for r in caplog.records if "missing fields" in r.message]
     assert len(errors) == 1
+
+
+@pytest.mark.parametrize(
+    ("mock_kwargs", "key", "placeholders"),
+    [
+        ({"status": 404}, "api_status", {"status": "404"}),
+        ({"status": 503}, "api_server_error", {"status": "503", "attempts": str(MAX_RETRIES + 1)}),
+        ({"exc": TimeoutError()}, "api_timeout", {"attempts": str(MAX_RETRIES + 1)}),
+        ({"json": {"not": "a list"}}, "invalid_response", {}),
+    ],
+)
+async def test_failure_carries_a_translation_key(
+    hass: HomeAssistant, aioclient_mock, mock_kwargs, key, placeholders
+) -> None:
+    """Each failure cause has its own translated message instead of an English cause in a translated sentence."""
+    aioclient_mock.get(API_URL.format(LIEU), **mock_kwargs)
+    coordinator = _coordinator(hass)
+
+    with (
+        patch("custom_components.hydropannes.coordinator.RETRY_DELAY", 0),
+        pytest.raises(UpdateFailed) as err,
+    ):
+        await coordinator._async_update_data()
+
+    assert err.value.translation_key == key
+    assert err.value.translation_placeholders == placeholders
