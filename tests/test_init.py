@@ -392,3 +392,65 @@ async def test_attribute_texts_follow_the_configured_language(
     assert cause.attributes["description"] == CAUSE_DESCRIPTIONS_EN["defaillance_equipement"]
     assert _state(hass, entry, "sensor", "nbclient").attributes["arrondi"] == "150 or less"
 
+
+async def test_disagreeing_root_shows_an_outage_without_details(
+    hass: HomeAssistant, aioclient_mock
+) -> None:
+    """Through the real update cycle: root etat "A" with an unplanned interruption under way."""
+    payload = [
+        {
+            "etat": "A",
+            "idLieuConso": LIEU,
+            "interruptions": [
+                {
+                    "dateDebut": "2024-01-01T00:00:00-05:00",
+                    "etat": "C",
+                    "interruptionPlanifiee": False,
+                    "codeIntervention": "N",
+                }
+            ],
+        }
+    ]
+    aioclient_mock.get(API_URL.format(LIEU), json=payload)
+    entry = _entry()
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    assert _state(hass, entry, "sensor", "info_pannes").state == "panne_en_cours"
+    assert _state(hass, entry, "binary_sensor", "etat_service").state == "on"
+    assert _state(hass, entry, "sensor", "statut_intervention").state == "unknown"
+
+
+async def test_planned_attributes_through_home_assistant(
+    hass: HomeAssistant, aioclient_mock
+) -> None:
+    """Through the real update cycle: a confirmed planned interruption exposes its fallback slot."""
+    payload = [
+        {
+            "etat": "A",
+            "idLieuConso": LIEU,
+            "interruptions": [
+                {
+                    "dateDebut": "2099-10-05T13:00:00.000+00:00",
+                    "dateFin": "2099-10-05T19:00:00.000+00:00",
+                    "dateDebutReport": "2099-10-13T13:00:00.000+00:00",
+                    "dateFinReport": "2099-10-13T19:00:00.000+00:00",
+                    "etat": "P",
+                    "dureePrevu": 360,
+                    "interruptionPlanifiee": True,
+                }
+            ],
+        }
+    ]
+    aioclient_mock.get(API_URL.format(LIEU), json=payload)
+    entry = _entry()
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    planned = _state(hass, entry, "binary_sensor", "intervention_planifiee")
+    assert planned.state == "on"
+    assert planned.attributes["duree_prevue"] == 360
+    assert planned.attributes["report_debut"].startswith("2099-10-13")
+    assert "fin_au_plus_tard" not in planned.attributes
