@@ -44,6 +44,15 @@ class HydroPannesEntity(
         )
 
     @property
+    def _english(self) -> bool:
+        """Return True when attribute texts should be in English.
+
+        Home Assistant translates states and names but not attribute values, so the integration picks the French or English text itself from the configured language. French by default, also when the entity is not attached to Home Assistant.
+        """
+        hass = getattr(self, "hass", None)
+        return hass is not None and not (hass.config.language or "fr").startswith("fr")
+
+    @property
     def available(self) -> bool:
         """Return True only when the coordinator has successfully fetched data."""
         return super().available and self.coordinator.data is not None
