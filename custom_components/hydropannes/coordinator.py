@@ -173,14 +173,12 @@ class HydroPannesDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         On persistent failure, raises UpdateFailed; HA then marks entities unavailable and keeps retrying on the normal schedule.
         """
         self.total_polls += 1
+        payload = await self._async_fetch()
         try:
-            payload = await self._async_fetch()
             return self._process_payload(payload)
-        except UpdateFailed:
-            raise
-        except Exception as err:
-            _LOGGER.exception("Unexpected error for lieu %s", self.lieu_conso)
-            self._raise_failure(f"Unexpected error: {err}")
+        except (AttributeError, KeyError, TypeError, ValueError) as err:
+            _LOGGER.debug("Unparseable payload for lieu %s", self.lieu_conso, exc_info=True)
+            self._raise_failure(f"Unexpected payload: {err}")
 
     async def _async_fetch(self) -> Any:
         """Return the decoded API response, retrying 5xx errors, timeouts and connection errors.
