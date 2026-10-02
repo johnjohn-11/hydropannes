@@ -7,6 +7,7 @@ There is no options flow: the location name is the config entry title, which Hom
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import re
 from typing import TYPE_CHECKING, Any
@@ -27,6 +28,8 @@ _LOGGER = logging.getLogger(__name__)
 
 # Hydro-Québec lieu de consommation identifiers are always exactly 10 digits.
 _LIEU_CONSO_RE = re.compile(r"^\d{10}$")
+
+VALIDATION_TIMEOUT = 10  # seconds
 
 STEP_USER_DATA_SCHEMA = vol.Schema(
     {
@@ -63,15 +66,14 @@ async def validate_lieu_conso(hass: HomeAssistant, lieu_conso: str) -> None:
     session = async_get_clientsession(hass)
 
     try:
-        async with session.get(url, timeout=aiohttp.ClientTimeout(total=10)) as response:
+        async with asyncio.timeout(VALIDATION_TIMEOUT), session.get(url) as response:
             if response.status != 200:
                 raise CannotConnect
             json_data = await response.json()
             if not json_data:
                 raise InvalidLieuConso
     except (TimeoutError, aiohttp.ClientError) as err:
-        # aiohttp total timeouts raise asyncio.TimeoutError, which is NOT a
-        # ClientError subclass — both must be mapped to "cannot_connect".
+        # TimeoutError is not a ClientError subclass, so both are listed.
         _LOGGER.debug("HydroPannes config_flow network error: %s", err)
         raise CannotConnect from err
 
@@ -111,10 +113,11 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         errors: dict[str, str] = {}
         if user_input is not None:
             lieu = user_input[CONF_LIEU_CONSO].strip()
+            # Before validating, so a duplicate aborts without calling the API.
+            await self.async_set_unique_id(lieu)
+            self._abort_if_unique_id_configured()
             errors = await self._async_validate(lieu)
             if not errors:
-                await self.async_set_unique_id(lieu)
-                self._abort_if_unique_id_configured()
                 return self.async_create_entry(
                     title=user_input[CONF_NOM_LIEU],
                     data={CONF_LIEU_CONSO: lieu},
