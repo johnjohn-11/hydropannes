@@ -64,7 +64,6 @@ def _nb_client_arrondi(nb_client: int, *, english: bool = False) -> str:
     return "Over 1000" if english else "plus de 1000"
 
 
-# Entities are updated by the coordinator; no parallel polling needed.
 PARALLEL_UPDATES = 0
 
 

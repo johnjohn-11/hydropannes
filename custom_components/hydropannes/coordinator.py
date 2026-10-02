@@ -127,43 +127,26 @@ class HydroPannesDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         """
         self.lieu_conso: str = entry.data[CONF_LIEU_CONSO]
 
-        # Captured here so the change event doesn't rely on self.config_entry
-        # (typed Optional by the base coordinator).
+        # Captured here so the change event doesn't rely on self.config_entry, typed Optional by the base coordinator.
         self._entry_id: str = entry.entry_id
 
-        # Tracks whether the last successful API response had the expected
-        # root-level schema.  True until proven otherwise.
         self.api_compatible: bool = True
 
         # Stable ids for the repair issues raised for this location: one for a payload whose shape is not the expected list, one for a payload that is a list but no longer carries the expected root fields.
         self._api_issue_id: str = f"api_incompatible_{entry.entry_id}"
         self._invalid_response_issue_id: str = f"api_invalid_response_{entry.entry_id}"
 
-        # Whether the invalid-response repair issue is currently raised.
         self._invalid_response_flagged: bool = False
 
         # Whether missing root fields have been logged since the schema was last seen intact.  Kept apart from api_compatible, which an invalid payload also clears, so that path cannot suppress this log.
         self._missing_root_logged: bool = False
 
-        # Ring buffer of the most recent distinct API payloads with timestamps,
-        # exposed to the diagnostics module.
         self.api_history: deque[dict[str, Any]] = deque(maxlen=API_HISTORY_SIZE)
 
-        # ---------------------------------------------------------------------------
-        # Diagnostic counters — reset on each HA restart (in-memory only).
-        # ---------------------------------------------------------------------------
-
-        # Total number of API calls attempted (including retries).
+        # Diagnostic counters, in memory only: they restart at zero with Home Assistant. One poll is one update, whatever the number of retries it took.
         self.total_polls: int = 0
-
-        # Number of calls that resulted in a payload change.
         self.total_changes: int = 0
-
-        # Number of calls that ended in a non-recoverable error
-        # (after all retries were exhausted).
         self.total_errors: int = 0
-
-        # Details of the most recent error, or None if no error has occurred.
         self.last_error: dict[str, str] | None = None
 
         # UTC timestamp of the most recent successful fetch. Consumed by the "Dernière MAJ" sensor and the diagnostics report; the base DataUpdateCoordinator exposes no such attribute.
@@ -425,15 +408,9 @@ class HydroPannesDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             )
 
     def _is_active_outage_in_data(self, data: dict[str, Any]) -> bool:
-        """Return True if the payload contains at least one active outage.
+        """Return True if the payload contains at least one active outage, which switches to fast polling.
 
-        An outage is considered active when:
-        - The root-level ``etat`` is ``"N"`` (non-alimenté), AND
-        - At least one interruption has no ``dateFin`` or a ``dateFin`` in
-          the future.
-
-        This is intentionally separate from the helper mixin used by sensors,
-        because it operates on a raw dict rather than through coordinator.data.
+        An unplanned interruption whose own etat is under way counts whatever the root etat, as on the site. Otherwise the root etat must be "N" with an interruption that has no dateFin or one in the future. It works on the raw payload, before coordinator.data is set, so it does not use the helper mixin.
         """
         interruptions = data.get("interruptions", [])
         if any(

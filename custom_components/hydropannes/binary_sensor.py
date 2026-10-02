@@ -30,7 +30,6 @@ if TYPE_CHECKING:
 
     from . import HydroPannesConfigEntry
 
-# Entities are updated by the coordinator; no parallel polling needed.
 PARALLEL_UPDATES = 0
 
 # The service-status binary sensor exposes no extra attributes — its on/off
