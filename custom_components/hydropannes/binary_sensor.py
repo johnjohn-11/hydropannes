@@ -4,7 +4,7 @@ Provides three binary sensors per configured location:
 
 - **État du service** (BinarySensorDeviceClass.PROBLEM): ``True`` when an
   active unplanned outage or active planned intervention is in progress.
-- **Intervention planifiée** (BinarySensorDeviceClass.RUNNING): ``True``
+- **Intervention planifiée** (no device class): ``True``
   when at least one non-terminated planned intervention exists.
 - **Compatibilité API** (EntityCategory.DIAGNOSTIC, BinarySensorDeviceClass.PROBLEM):
   ``True`` when the Hydro-Québec API response no longer contains the expected
@@ -95,8 +95,8 @@ class HydroPannesInterventionPlanifieeBinarySensor(HydroPannesBinarySensorBase):
     present in the API response (active or upcoming).
     """
 
+    # No device class: RUNNING would read "Running" while the intervention is only upcoming. The on/off labels come from the translations.
     _attr_translation_key = "intervention_planifiee"
-    _attr_device_class = BinarySensorDeviceClass.RUNNING
     _unique_id_suffix = "intervention_planifiee"
 
     @property
