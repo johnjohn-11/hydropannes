@@ -25,7 +25,7 @@ _LOGGER = logging.getLogger(__name__)
 PLATFORMS: list[Platform] = [Platform.SENSOR, Platform.BINARY_SENSOR, Platform.CALENDAR]
 
 # Unique-id suffixes of entities the integration no longer provides. Their registry entries are removed at setup so they do not linger as unavailable.
-REMOVED_ENTITY_SUFFIXES = ("idlieuconso", "api_compatibility")
+REMOVED_ENTITY_SUFFIXES = ("api_compatibility",)
 
 type HydroPannesConfigEntry = ConfigEntry[HydroPannesDataUpdateCoordinator]
 

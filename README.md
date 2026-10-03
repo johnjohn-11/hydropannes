@@ -58,6 +58,7 @@ Dans les exemples, `maison` est le nom donné au lieu.
 | `sensor.maison_delai_avant_retablissement` | Temps restant avant le rétablissement estimé |
 | `sensor.maison_duree` | Durée de la panne en secondes |
 | `sensor.maison_derniere_maj` | Dernière mise à jour des données *(désactivé par défaut)* |
+| `sensor.maison_lieu_consommation` | Numéro de lieu de consommation, pour distinguer les lieux dans les journaux *(diagnostic, désactivé par défaut)* |
 | `binary_sensor.maison_etat_du_service` | `on` pendant une panne ou une interruption planifiée en cours |
 | `binary_sensor.maison_intervention_planifiee` | `on` quand une interruption planifiée est à venir ou en cours. Ses attributs donnent `debut`, `fin`, `duree_prevue`, le créneau `report_debut` / `report_fin` affiché « En cas de report », et `interruptions_suivantes` |
 | `calendar.maison_interruptions_planifiees` | Les interruptions planifiées non annulées, visibles dans le panneau Calendrier |

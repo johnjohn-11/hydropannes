@@ -47,6 +47,9 @@
       },
       "derniere_maj": {
         "default": "mdi:clock-outline"
+      },
+      "lieu_consommation": {
+        "default": "mdi:identifier"
       }
     },
     "binary_sensor": {

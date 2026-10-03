@@ -93,6 +93,7 @@ async def test_unique_ids_are_stable(hass: HomeAssistant, aioclient_mock) -> Non
         ("sensor", "duree"),
         ("sensor", "delai_avant_retablissement"),
         ("sensor", "derniere_maj"),
+        ("sensor", "idlieuconso"),
         ("binary_sensor", "etat_service"),
         ("binary_sensor", "intervention_planifiee"),
         ("calendar", "calendrier"),
@@ -337,7 +338,7 @@ async def test_broken_payload_raises_a_repair_issue(hass: HomeAssistant, aioclie
 
 
 async def test_removed_entities_leave_the_registry(hass: HomeAssistant, aioclient_mock) -> None:
-    """The consumption-location and API-compatibility entities of an older version are removed at setup."""
+    """The API-compatibility entity of an older version is removed at setup, the consumption location is kept."""
     aioclient_mock.get(API_URL.format(LIEU), json=PAYLOAD)
     entry = _entry()
     entry.add_to_hass(hass)
@@ -350,7 +351,9 @@ async def test_removed_entities_leave_the_registry(hass: HomeAssistant, aioclien
     assert await hass.config_entries.async_setup(entry.entry_id)
     await hass.async_block_till_done()
 
-    assert registry.async_get_entity_id("sensor", DOMAIN, f"{entry.entry_id}_idlieuconso") is None
+    assert (
+        registry.async_get_entity_id("sensor", DOMAIN, f"{entry.entry_id}_idlieuconso") is not None
+    )
     assert (
         registry.async_get_entity_id("binary_sensor", DOMAIN, f"{entry.entry_id}_api_compatibility")
         is None
