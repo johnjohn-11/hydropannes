@@ -108,14 +108,14 @@ Chaque lieu de consommation configuré crée un appareil avec les entités suiva
 | `sensor.*_duree` | Durée de la panne en secondes |
 | `sensor.*_retablissement` | Étape du rétablissement d'une panne ou d'une interruption planifiée en cours : en évaluation, prévu ou en révision |
 | `sensor.*_delai_avant_retablissement` | Temps restant avant le rétablissement estimé |
-| `sensor.*_derniere_maj` | Horodatage de la dernière mise à jour des données |
-| `sensor.*_lieu_de_consommation` | Numéro de lieu de consommation *(Diagnostic)* |
+| `sensor.*_derniere_maj` | Horodatage de la dernière mise à jour des données *(désactivé par défaut : hors panne, il change à chaque relevé)* |
+| `sensor.*_lieu_de_consommation` | Numéro de lieu de consommation *(Diagnostic, désactivé par défaut)* |
 
 ### Binary Sensors
 
 | Entité | Description |
 |--------|-------------|
-| `binary_sensor.*_etat_du_service` | `on` = panne active ou intervention planifiée en cours, `off` = service normal |
+| `binary_sensor.*_etat_du_service` | `on` = panne active ou intervention planifiée en cours, y compris une panne non planifiée en cours alors qu'Hydro-Québec indique encore l'adresse alimentée, `off` = service normal |
 | `binary_sensor.*_intervention_planifiee` | `on` = intervention planifiée active ou à venir, et non annulée. Ses attributs décrivent la plus proche : `debut` et `fin` du créneau en vigueur, `duree_prevue` en minutes, `report_debut` et `report_fin` pour le créneau de remplacement que le site affiche sous « En cas de report » (absents une fois l'interruption reportée), et à partir de 8 heures de travaux `reprise_graduelle_possible` et `fin_au_plus_tard`, 5 heures après la fin, comme la fourchette du site. `interruptions_suivantes` liste les autres avec les mêmes champs |
 | `binary_sensor.*_compatibilite_api` | `on` = structure de l'API Hydro-Québec modifiée *(Diagnostic)* |
 
@@ -134,7 +134,7 @@ Les cinq sensors ci-dessous sont des énumérations (`device_class: enum`). Leur
 | État | Libellé affiché (fr) | Description |
 |------|----------------------|-------------|
 | `aucune_panne` | Aucune panne détectée | Service normal, aucune interruption |
-| `panne_en_cours` | Panne en cours | Panne non planifiée active |
+| `panne_en_cours` | Panne en cours | Panne non planifiée active. Aussi quand l'état de l'adresse et les interruptions se contredisent : le site affiche alors « Panne en cours » sans détails, et les capteurs de détail n'ont pas de valeur |
 | `panne_majeure` | Panne majeure en cours | Panne de grande envergure |
 | `reprise_graduelle` | Rétablissement graduel du service en cours | Retour progressif du courant |
 | `service_retabli` | Service rétabli | Panne terminée récemment |
@@ -294,7 +294,7 @@ automation:
 
 ## Journaliser les changements (événement)
 
-À chaque changement de données d'un lieu, l'intégration émet l'événement `hydropannes_data_changed` sur le bus Home Assistant, avec le payload complet :
+À chaque changement de données d'un lieu, l'intégration émet l'événement `hydropannes_data_changed` sur le bus Home Assistant, avec le payload complet. Le premier relevé après un démarrage ou un rechargement n'émet rien, puisque ce n'est pas un changement :
 
 | Champ | Description |
 |-------|-------------|
