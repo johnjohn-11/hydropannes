@@ -18,9 +18,9 @@ from custom_components.hydropannes.const import (
     RETABLISSEMENT_DESCRIPTIONS_MAJEUR,
 )
 from custom_components.hydropannes.sensor import (
-    HydroPannesFinEstimeeSensor,
+    HydroPannesAdressesToucheesSensor,
+    HydroPannesDateFinSensor,
     HydroPannesInfoPannesSensor,
-    HydroPannesNombreClientSensor,
     HydroPannesRetablissementSensor,
     HydroPannesStatutInterventionSensor,
 )
@@ -174,13 +174,13 @@ def test_retablissement_none_without_outage_or_planned_in_progress(payload) -> N
 )
 def test_nb_client_arrondi(nb_client, expected) -> None:
     intr = make_interruption(dateFin=None, nbClient=nb_client)
-    sensor = build(HydroPannesNombreClientSensor, make_payload(etat="N", interruptions=[intr]))
+    sensor = build(HydroPannesAdressesToucheesSensor, make_payload(etat="N", interruptions=[intr]))
     assert sensor.extra_state_attributes == expected
 
 
 def test_new_attributes_are_not_recorded() -> None:
     assert "description" in HydroPannesRetablissementSensor._unrecorded_attributes
-    assert "arrondi" in HydroPannesNombreClientSensor._unrecorded_attributes
+    assert "arrondi" in HydroPannesAdressesToucheesSensor._unrecorded_attributes
 
 
 # ---------------------------------------------------------------------------
@@ -394,7 +394,7 @@ def test_fin_estimee_min_exposed_for_a_range() -> None:
     intr = make_interruption(
         dateFin=None, dateFinEstimeeMin=hours_from_now(1), dateFinEstimeeMax=hours_from_now(3)
     )
-    sensor = build(HydroPannesFinEstimeeSensor, make_payload(etat="N", interruptions=[intr]))
+    sensor = build(HydroPannesDateFinSensor, make_payload(etat="N", interruptions=[intr]))
     assert sensor.native_value == dt_util.as_local(
         dt_util.parse_datetime(intr["dateFinEstimeeMax"])
     )
@@ -411,7 +411,7 @@ def test_fin_estimee_min_absent_without_a_range(same_as_max) -> None:
         dateFinEstimeeMin=fin_max if same_as_max else None,
         dateFinEstimeeMax=fin_max,
     )
-    sensor = build(HydroPannesFinEstimeeSensor, make_payload(etat="N", interruptions=[intr]))
+    sensor = build(HydroPannesDateFinSensor, make_payload(etat="N", interruptions=[intr]))
     assert sensor.extra_state_attributes == {}
 
 
