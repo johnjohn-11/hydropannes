@@ -1,11 +1,8 @@
 """The Hydro-Pannes integration.
 
-This module handles the lifecycle of config entries: setup, platform
-forwarding, and teardown.
+This module handles the lifecycle of config entries: setup, platform forwarding, and teardown.
 
-An immediate data refresh can be triggered per entity with the built-in
-``homeassistant.update_entity`` service, so no custom refresh service is
-provided.
+An immediate data refresh can be triggered per entity with the built-in ``homeassistant.update_entity`` service, so no custom refresh service is provided.
 """
 
 from __future__ import annotations
@@ -35,9 +32,7 @@ CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 async def async_setup_entry(hass: HomeAssistant, entry: HydroPannesConfigEntry) -> bool:
     """Set up Hydro-Pannes from a config entry.
 
-    Creates a coordinator for the configured lieu de consommation, performs
-    the first data fetch, stores the coordinator in ``entry.runtime_data``,
-    and forwards setup to all platforms.
+    Creates a coordinator for the configured lieu de consommation, performs the first data fetch, stores the coordinator in ``entry.runtime_data``, and forwards setup to all platforms.
     """
     coordinator = HydroPannesDataUpdateCoordinator(hass, entry)
 
@@ -45,8 +40,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: HydroPannesConfigEntry) 
 
     entry.runtime_data = coordinator
 
-    # Reload the entry when its data or options change (e.g. a rename) so the
-    # new title takes effect immediately.
+    # Reload the entry when its data or options change (e.g. a rename) so the new title takes effect immediately.
     entry.async_on_unload(entry.add_update_listener(_async_update_listener))
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)

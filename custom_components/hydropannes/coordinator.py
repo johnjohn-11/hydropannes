@@ -2,18 +2,12 @@
 
 The coordinator is responsible for:
 - Polling the Hydro-Québec Info-pannes API.
-- Switching to faster polling (ACTIVE_OUTAGE_UPDATE_INTERVAL) during an
-  active outage and back to the normal interval once it clears.
+- Switching to faster polling (ACTIVE_OUTAGE_UPDATE_INTERVAL) during an active outage and back to the normal interval once it clears.
 - Retrying transient HTTP 5xx errors and timeouts up to MAX_RETRIES times.
-- Raising UpdateFailed once retries are exhausted, so entities become
-  unavailable and the failure is visible (standard HA behaviour).
-- Maintaining an in-memory ring buffer (api_history) of the last
-  API_HISTORY_SIZE distinct payloads for diagnostics.
-- Firing a ``hydropannes_data_changed`` bus event, carrying the full payload,
-  whenever a location's data changes, so users can log or react to changes
-  from their own automations.
-- Detecting API structure changes (missing root fields) and flagging unknown
-  interruption fields when Hydro-Québec evolves their schema.
+- Raising UpdateFailed once retries are exhausted, so entities become unavailable and the failure is visible (standard HA behaviour).
+- Maintaining an in-memory ring buffer (api_history) of the last API_HISTORY_SIZE distinct payloads for diagnostics.
+- Firing a ``hydropannes_data_changed`` bus event, carrying the full payload, whenever a location's data changes, so users can log or react to changes from their own automations.
+- Detecting API structure changes (missing root fields) and flagging unknown interruption fields when Hydro-Québec evolves their schema.
 - Tracking poll/error/change statistics exposed via the diagnostics report.
 """
 
@@ -69,14 +63,10 @@ API_HISTORY_SIZE = 5
 # API schema validation
 # ---------------------------------------------------------------------------
 
-# Fields that the Hydro-Québec API must always return at the root level.
-# Their absence indicates a breaking schema change.
+# Fields that the Hydro-Québec API must always return at the root level. Their absence indicates a breaking schema change.
 EXPECTED_ROOT_FIELDS = {"etat", "interruptions", "idLieuConso"}
 
-# All interruption-level fields currently consumed by the integration.
-# Any field returned by HQ that is NOT in this set triggers a warning log,
-# signalling that the API has evolved and the integration may need updating.
-# Only fires while a panne is listed: the interruptions list is empty otherwise.
+# All interruption-level fields currently consumed by the integration. Any field returned by HQ that is NOT in this set triggers a warning log, signalling that the API has evolved and the integration may need updating. Only fires while a panne is listed: the interruptions list is empty otherwise.
 KNOWN_INTERRUPTION_FIELDS = {
     "dateDebut",
     "dateFin",
@@ -344,11 +334,7 @@ class HydroPannesDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     def _raise_failure(self, error_msg: str, translation_key: str, **placeholders: str) -> NoReturn:
         """Record error details for diagnostics and raise UpdateFailed.
 
-        Raising UpdateFailed is the standard HA pattern: the coordinator
-        keeps its previous ``data`` in memory, ``last_update_success``
-        becomes False, entities go unavailable, and the next scheduled
-        refresh retries automatically.  Transient hiccups are already
-        absorbed by the in-loop retry logic (MAX_RETRIES).
+        Raising UpdateFailed is the standard HA pattern: the coordinator keeps its previous ``data`` in memory, ``last_update_success`` becomes False, entities go unavailable, and the next scheduled refresh retries automatically.  Transient hiccups are already absorbed by the in-loop retry logic (MAX_RETRIES).
 
         The English ``error_msg`` goes to the log and diagnostics. The UI shows the translation of ``translation_key``, so the user never sees the English cause inside a French message.
         """
@@ -371,8 +357,7 @@ class HydroPannesDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     def _append_history(self, data: dict[str, Any]) -> None:
         """Append a timestamped snapshot to the in-memory history ring buffer.
 
-        Called only when the payload has changed (caller guarantees this).
-        The deque automatically evicts the oldest entry when full.
+        Called only when the payload has changed (caller guarantees this). The deque automatically evicts the oldest entry when full.
         """
         snapshot = {
             "timestamp": dt_util.utcnow().isoformat(),
@@ -389,9 +374,7 @@ class HydroPannesDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     def _adjust_update_interval(self, data: dict[str, Any]) -> None:
         """Switch between fast and normal polling intervals.
 
-        Uses ACTIVE_OUTAGE_UPDATE_INTERVAL (60 s) during an active outage for
-        more responsive end-of-panne detection, and falls back to the normal
-        UPDATE_INTERVAL (180 s) otherwise.
+        Uses ACTIVE_OUTAGE_UPDATE_INTERVAL (60 s) during an active outage for more responsive end-of-panne detection, and falls back to the normal UPDATE_INTERVAL (180 s) otherwise.
         """
         target_seconds = (
             ACTIVE_OUTAGE_UPDATE_INTERVAL
@@ -438,10 +421,7 @@ class HydroPannesDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     def _fire_change_event(self, data: dict[str, Any]) -> None:
         """Fire a bus event carrying the full payload on each change.
 
-        Called only when the payload has changed (caller guarantees this).
-        Users can subscribe to ``hydropannes_data_changed`` to log or react to
-        changes — e.g. append them to a file via the File integration — instead
-        of the integration writing to disk itself.
+        Called only when the payload has changed (caller guarantees this). Users can subscribe to ``hydropannes_data_changed`` to log or react to changes — e.g. append them to a file via the File integration — instead of the integration writing to disk itself.
         """
         self.hass.bus.async_fire(
             EVENT_DATA_CHANGED,

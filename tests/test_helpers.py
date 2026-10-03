@@ -1,7 +1,6 @@
 """Unit tests for HydroPannesHelperMixin state-transition logic.
 
-These cover the planned-interruption state machine and outage
-selection priority, which are the subtlest parts of the integration.
+These cover the planned-interruption state machine and outage selection priority, which are the subtlest parts of the integration.
 """
 
 from __future__ import annotations

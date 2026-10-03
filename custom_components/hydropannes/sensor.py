@@ -463,21 +463,14 @@ class HydroPannesDureeSensor(HydroPannesSensorBase):
     _attr_translation_key = "duree"
     _attr_native_unit_of_measurement = UnitOfTime.SECONDS
     _attr_device_class = SensorDeviceClass.DURATION
-    # No state_class: the value grows with wall-clock time during an outage and
-    # resets between outages, so long-term statistics would be a meaningless
-    # sawtooth. It remains useful as a live state.
+    # No state_class: the value grows with wall-clock time during an outage and resets between outages, so long-term statistics would be a meaningless sawtooth. It remains useful as a live state.
     _unique_id_suffix = "duree"
 
     @property
     def native_value(self) -> int | None:
         """Return the interruption duration in seconds.
 
-        Uses the effective start/end dates so postponed or rescheduled planned interruptions
-        are measured against their real (rescheduled) window rather than the
-        cancelled original slot. Returns None when the interruption has not
-        started yet (e.g. an upcoming planned intervention), which avoids
-        reporting a negative duration. When the interruption is ongoing (no
-        effective end date), the elapsed time up to now is returned.
+        Uses the effective start/end dates so postponed or rescheduled planned interruptions are measured against their real (rescheduled) window rather than the cancelled original slot. Returns None when the interruption has not started yet (e.g. an upcoming planned intervention), which avoids reporting a negative duration. When the interruption is ongoing (no effective end date), the elapsed time up to now is returned.
         """
         outage = self._get_current_interruption()
         if not outage:
@@ -499,8 +492,7 @@ class HydroPannesDureeAvantRetablissementSensor(HydroPannesSensorBase):
     _attr_translation_key = "delai_avant_retablissement"
     _attr_native_unit_of_measurement = UnitOfTime.SECONDS
     _attr_device_class = SensorDeviceClass.DURATION
-    # No state_class: this countdown shifts every poll and resets between
-    # outages, so long-term statistics would be a meaningless sawtooth.
+    # No state_class: this countdown shifts every poll and resets between outages, so long-term statistics would be a meaningless sawtooth.
     _unique_id_suffix = "delai_avant_retablissement"
 
     @property

@@ -1,7 +1,6 @@
 """Coordinator tests using pytest-homeassistant-custom-component.
 
-Covers adaptive polling, change detection/history, and the retry/error
-paths, driving the real coordinator against a stubbed API (aioclient_mock).
+Covers adaptive polling, change detection/history, and the retry/error paths, driving the real coordinator against a stubbed API (aioclient_mock).
 """
 
 from __future__ import annotations

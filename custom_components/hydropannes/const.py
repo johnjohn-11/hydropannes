@@ -10,8 +10,7 @@ DOMAIN = "hydropannes"
 CONF_LIEU_CONSO = "lieu_consommation"
 CONF_NOM_LIEU = "nom_lieu"
 
-# Bus event fired whenever a location's API payload changes. Carries the full
-# payload so users can log or react to changes from their own automations.
+# Bus event fired whenever a location's API payload changes. Carries the full payload so users can log or react to changes from their own automations.
 EVENT_DATA_CHANGED = f"{DOMAIN}_data_changed"
 
 API_URL = "https://services-bs.solutions.hydroquebec.com/pan/web/api/v1/lieux-conso/etats/{}"
@@ -147,9 +146,7 @@ INTERVENTION_CODES_MAJEUR = {
     "L": "travaux_par_priorite",
 }
 
-# typeFinPrevue → slug.
-# U, D, P: documented by HQ.
-# F, E, X: observed empirically; meanings are provisional.
+# typeFinPrevue → slug. U, D, P: documented by HQ. F, E, X: observed empirically; meanings are provisional.
 TYPE_FIN_PREVUE_CODES = {
     "U": "retablissement_en_evaluation",  # no estimated date
     "D": "retablissement_prevu",  # reliable date

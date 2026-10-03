@@ -2,13 +2,9 @@
 
 Provides three binary sensors per configured location:
 
-- **État du service** (BinarySensorDeviceClass.PROBLEM): ``True`` when an
-  active unplanned outage or active planned intervention is in progress.
-- **Intervention planifiée** (no device class): ``True``
-  when at least one non-terminated planned intervention exists.
-- **Compatibilité API** (EntityCategory.DIAGNOSTIC, BinarySensorDeviceClass.PROBLEM):
-  ``True`` when the Hydro-Québec API response no longer contains the expected
-  root-level fields, indicating a breaking schema change.
+- **État du service** (BinarySensorDeviceClass.PROBLEM): ``True`` when an active unplanned outage or active planned intervention is in progress.
+- **Intervention planifiée** (no device class): ``True`` when at least one non-terminated planned intervention exists.
+- **Compatibilité API** (EntityCategory.DIAGNOSTIC, BinarySensorDeviceClass.PROBLEM): ``True`` when the Hydro-Québec API response no longer contains the expected root-level fields, indicating a breaking schema change.
 """
 
 from __future__ import annotations
@@ -32,11 +28,7 @@ if TYPE_CHECKING:
 
 PARALLEL_UPDATES = 0
 
-# The service-status binary sensor exposes no extra attributes — its on/off
-# state is the whole signal. The report-window and planned-intervention fields
-# below live only on the planned-intervention binary sensor. Fields already on
-# a dedicated sensor, or carried by the hydropannes_data_changed event (etat,
-# codeMunicipal, codeRemarque, probabilite), are not duplicated as attributes.
+# The service-status binary sensor exposes no extra attributes — its on/off state is the whole signal. The report-window and planned-intervention fields below live only on the planned-intervention binary sensor. Fields already on a dedicated sensor, or carried by the hydropannes_data_changed event (etat, codeMunicipal, codeRemarque, probabilite), are not duplicated as attributes.
 INTERVENTION_PLANIFIEE_ATTRIBUTE_KEYS = (
     "dateDebutReport",
     "dateFinReport",
@@ -90,8 +82,7 @@ class HydroPannesEtatServiceBinarySensor(HydroPannesBinarySensorBase):
 class HydroPannesInterventionPlanifieeBinarySensor(HydroPannesBinarySensorBase):
     """Binary sensor indicating whether a planned intervention exists.
 
-    Returns ``True`` when at least one planned interruption that is neither cancelled nor terminated is
-    present in the API response (active or upcoming).
+    Returns ``True`` when at least one planned interruption that is neither cancelled nor terminated is present in the API response (active or upcoming).
     """
 
     # No device class: RUNNING would read "Running" while the intervention is only upcoming. The on/off labels come from the translations.
@@ -144,12 +135,9 @@ class HydroPannesInterventionPlanifieeBinarySensor(HydroPannesBinarySensorBase):
 class HydroPannesAPICompatibilityBinarySensor(HydroPannesBinarySensorBase):
     """Diagnostic sensor monitoring the Hydro-Québec API response structure.
 
-    Returns ``True`` (Problem) when the coordinator has detected that the API
-    response is missing one or more expected root-level fields, which indicates
-    a breaking schema change that requires an integration update.
+    Returns ``True`` (Problem) when the coordinator has detected that the API response is missing one or more expected root-level fields, which indicates a breaking schema change that requires an integration update.
 
-    This sensor is in the DIAGNOSTIC category and is hidden from the default
-    dashboard view; it is intended for troubleshooting and automations.
+    This sensor is in the DIAGNOSTIC category and is hidden from the default dashboard view; it is intended for troubleshooting and automations.
     """
 
     _attr_translation_key = "api_compatibilite"
