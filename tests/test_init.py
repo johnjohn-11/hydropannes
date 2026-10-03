@@ -1,7 +1,6 @@
 """Integration setup/unload tests using pytest-homeassistant-custom-component.
 
-The Hydro-Québec API is served by aioclient_mock, so the coordinator's first
-refresh runs against a stubbed response and no real socket is opened.
+The Hydro-Québec API is served by aioclient_mock, so the coordinator's first refresh runs against a stubbed response and no real socket is opened.
 """
 
 from __future__ import annotations

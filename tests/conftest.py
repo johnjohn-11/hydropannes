@@ -1,10 +1,6 @@
 """Shared fixtures and helpers for the Hydro-Pannes test suite.
 
-The business logic under test lives in ``HydroPannesHelperMixin`` and only
-depends on a ``coordinator`` attribute that exposes ``.data``. Rather than
-spinning up a full Home Assistant instance, these tests drive the mixin (and
-the sensor classes that inherit from it) through a lightweight fake
-coordinator, which keeps them fast and focused on state-transition logic.
+The business logic under test lives in ``HydroPannesHelperMixin`` and only depends on a ``coordinator`` attribute that exposes ``.data``. Rather than spinning up a full Home Assistant instance, these tests drive the mixin (and the sensor classes that inherit from it) through a lightweight fake coordinator, which keeps them fast and focused on state-transition logic.
 """
 
 from __future__ import annotations
@@ -45,8 +41,7 @@ def hours_from_now(hours: float) -> str:
 def make_interruption(**overrides: Any) -> dict[str, Any]:
     """Build an interruption dict with sensible defaults.
 
-    Pass field overrides as keyword arguments; ``None`` values are dropped so
-    tests can express "field absent" by passing ``field=None``.
+    Pass field overrides as keyword arguments; ``None`` values are dropped so tests can express "field absent" by passing ``field=None``.
     """
     interruption: dict[str, Any] = {
         "dateDebut": hours_from_now(-2),

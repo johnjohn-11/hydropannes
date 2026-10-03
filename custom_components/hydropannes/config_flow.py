@@ -106,9 +106,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     async def async_step_user(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         """Handle the user-initiated setup step.
 
-        Strips whitespace from the lieu de consommation number before
-        validation and storage so that accidental leading/trailing spaces
-        never end up in the config entry or in API URLs. The supplied name becomes the entry title and is not duplicated into entry.data.
+        Strips whitespace from the lieu de consommation number before validation and storage so that accidental leading/trailing spaces never end up in the config entry or in API URLs. The supplied name becomes the entry title and is not duplicated into entry.data.
         """
         errors: dict[str, str] = {}
         if user_input is not None:
@@ -132,11 +130,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     ) -> ConfigFlowResult:
         """Handle reconfiguration of an existing location's number.
 
-        Lets the user correct the lieu de consommation number in place —
-        keeping the entry, its device and entity IDs, and its history — instead
-        of deleting and re-adding. The number is the entry's unique ID, so it
-        is re-validated and the unique ID is updated; adopting a number already
-        used by another entry is blocked.
+        Lets the user correct the lieu de consommation number in place — keeping the entry, its device and entity IDs, and its history — instead of deleting and re-adding. The number is the entry's unique ID, so it is re-validated and the unique ID is updated; adopting a number already used by another entry is blocked.
         """
         reconfigure_entry = self._get_reconfigure_entry()
         errors: dict[str, str] = {}

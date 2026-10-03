@@ -1,13 +1,8 @@
 """Diagnostics support for Hydro-Pannes.
 
-Exposes coordinator state and recent API history for the HA diagnostics
-download feature.  All sensitive fields (lieu de consommation ID) are
-masked before being returned so the report is safe to share publicly in
-GitHub issues.
+Exposes coordinator state and recent API history for the HA diagnostics download feature.  All sensitive fields (lieu de consommation ID) are masked before being returned so the report is safe to share publicly in GitHub issues.
 
-Note: a custom partial-masking helper is used instead of the standard
-``async_redact_data`` so that the last 4 digits remain visible — this keeps
-multi-location reports diagnosable while still hiding the identifier.
+Note: a custom partial-masking helper is used instead of the standard ``async_redact_data`` so that the last 4 digits remain visible — this keeps multi-location reports diagnosable while still hiding the identifier.
 """
 
 from __future__ import annotations
@@ -28,9 +23,7 @@ async def async_get_config_entry_diagnostics(
 
     The report contains:
     - Config entry metadata (entry_id, version, title).
-    - Coordinator health: last update success, polling interval,
-      API compatibility flag, last success timestamp if available,
-      and lifetime poll/change/error counters with the last error details.
+    - Coordinator health: last update success, polling interval, API compatibility flag, last success timestamp if available, and lifetime poll/change/error counters with the last error details.
     - The current API payload (redacted).
     - The last API_HISTORY_SIZE distinct payloads with timestamps (redacted).
     """
@@ -53,8 +46,7 @@ async def async_get_config_entry_diagnostics(
         ),
     }
 
-    # Deep-copy each history snapshot before redacting so the coordinator's
-    # in-memory data is never mutated by the diagnostics call.
+    # Deep-copy each history snapshot before redacting so the coordinator's in-memory data is never mutated by the diagnostics call.
     api_history = [
         {
             "timestamp": snapshot["timestamp"],
@@ -83,9 +75,7 @@ async def async_get_config_entry_diagnostics(
 def _redact_data(data: dict[str, Any]) -> dict[str, Any]:
     """Return a deep copy of an API payload with ``idLieuConso`` masked.
 
-    Uses deepcopy to ensure the original coordinator data is never modified,
-    even if the dict contains nested mutable objects (e.g. the interruptions
-    list).
+    Uses deepcopy to ensure the original coordinator data is never modified, even if the dict contains nested mutable objects (e.g. the interruptions list).
     """
     if not data:
         return {}

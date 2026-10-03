@@ -1,9 +1,6 @@
 """Shared helper mixin for Hydro-Pannes sensors and binary sensors.
 
-All business logic for interpreting the Hydro-Québec API response lives here.
-Both HydroPannesSensorBase (sensor.py) and HydroPannesBinarySensorBase
-(binary_sensor.py) inherit from HydroPannesHelperMixin, providing a single
-source of truth for outage detection, date parsing, and priority selection.
+All business logic for interpreting the Hydro-Québec API response lives here. Both HydroPannesSensorBase (sensor.py) and HydroPannesBinarySensorBase (binary_sensor.py) inherit from HydroPannesHelperMixin, providing a single source of truth for outage detection, date parsing, and priority selection.
 """
 
 from __future__ import annotations
@@ -35,8 +32,7 @@ _NEW_WINDOW_SUFFIX = {ETAT_PLANIFIE_REPORTE: "Report", ETAT_PLANIFIE_DECALE: "De
 class HydroPannesHelperMixin:
     """Mixin providing shared helper methods for Hydro-Pannes entities.
 
-    Requires that the subclass exposes a `coordinator` attribute of type
-    HydroPannesDataUpdateCoordinator (provided by CoordinatorEntity).
+    Requires that the subclass exposes a `coordinator` attribute of type HydroPannesDataUpdateCoordinator (provided by CoordinatorEntity).
     """
 
     coordinator: HydroPannesDataUpdateCoordinator
@@ -93,12 +89,7 @@ class HydroPannesHelperMixin:
     def _is_outage_active(self, intr: dict[str, Any]) -> bool:
         """Return True if the interruption represents an active outage.
 
-        An outage is active when:
-        - The top-level etat is "N" (power out), AND
-        - dateFin is absent or in the future.
-
-        The interruption's own 'etat' field is intentionally ignored here,
-        as it does not reliably indicate whether power is currently restored.
+        An unplanned interruption is active from its own etat, as on the site: C, I or N is under way, T is terminated. A planned one, or an unplanned one with another etat, is active when the root etat is "N" and its end (the new window's end once postponed or shifted) is absent or in the future.
         """
         if not self._is_planned_intervention(intr):
             # The site goes by the interruption's own etat: a C with root etat "A" is still shown as an outage under way.
@@ -207,11 +198,7 @@ class HydroPannesHelperMixin:
     ) -> dict[str, Any]:
         """Build an extra-state-attributes dict for the given interruption keys.
 
-        Date fields (keys starting with ``date``) are parsed to a localized
-        ISO string so every entity exposes timestamps in the same format;
-        values that cannot be parsed fall back to the raw string. Keys whose
-        value is None are omitted. Centralizing this keeps date formatting
-        consistent across the info-pannes and binary sensors.
+        Date fields (keys starting with ``date``) are parsed to a localized ISO string so every entity exposes timestamps in the same format; values that cannot be parsed fall back to the raw string. Keys whose value is None are omitted. Centralizing this keeps date formatting consistent across the info-pannes and binary sensors.
         """
         attrs: dict[str, Any] = {}
         for key in keys:
@@ -275,8 +262,7 @@ class HydroPannesHelperMixin:
     def _get_terminated_outage(self) -> dict[str, Any] | None:
         """Return the most recently terminated non-planned outage, or None.
 
-        When HQ splits a single panne into multiple sections, there may be
-        several terminated interruptions. Returns the one with the latest dateFin.
+        When HQ splits a single panne into multiple sections, there may be several terminated interruptions. Returns the one with the latest dateFin.
         """
         candidates = [
             intr
@@ -351,10 +337,7 @@ class HydroPannesHelperMixin:
     def _planned_supersedes_terminated(self, planned: dict[str, Any] | None) -> bool:
         """Return True when a planned intervention outranks a past outage.
 
-        A still-relevant planned interruption (present, not cancelled, not terminated) should
-        be displayed in place of an already-terminated unplanned outage. This
-        rule is shared by _get_current_interruption and the info-pannes sensor
-        so the two never drift apart.
+        A still-relevant planned interruption (present, not cancelled, not terminated) should be displayed in place of an already-terminated unplanned outage. This rule is shared by _get_current_interruption and the info-pannes sensor so the two never drift apart.
         """
         return (
             planned is not None
@@ -381,9 +364,7 @@ class HydroPannesHelperMixin:
 
         Selection priority:
         1. Active non-planned outage (power is currently out).
-        2. Terminated non-planned outage ("Service rétabli"), unless a
-           non-cancelled, non-terminated planned interruption also exists — in that case
-           the planned interruption takes precedence.
+        2. Terminated non-planned outage ("Service rétabli"), unless a non-cancelled, non-terminated planned interruption also exists — in that case the planned interruption takes precedence.
         3. Planned intervention (active, future, or terminated).
         4. First interruption in list (fallback).
         """
