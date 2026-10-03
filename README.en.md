@@ -58,6 +58,7 @@ Entity IDs follow the location name and the entity names in your Home Assistant 
 | Time until restoration | Time left until the estimated restoration |
 | Duration | Outage duration in seconds |
 | Last update | Last data update *(disabled by default)* |
+| Consumption location | Consumption location number, to tell locations apart in the logs *(diagnostic, disabled by default)* |
 | Service status (binary sensor) | `on` during an outage or a planned interruption under way |
 | Planned intervention (binary sensor) | `on` when a planned interruption is upcoming or under way. Its attributes give `debut`, `fin`, `duree_prevue`, the fallback slot `report_debut` / `report_fin` shown as "In case of postponement", and `interruptions_suivantes` |
 | Planned interruptions (calendar) | Planned interruptions that are not cancelled, shown in the Calendar panel |

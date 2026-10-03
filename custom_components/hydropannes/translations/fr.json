@@ -122,6 +122,9 @@
       },
       "derniere_maj": {
         "name": "Dernière MAJ"
+      },
+      "lieu_consommation": {
+        "name": "Lieu consommation"
       }
     },
     "binary_sensor": {
