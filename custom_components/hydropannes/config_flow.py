@@ -7,6 +7,7 @@ There is no options flow: the location name is the config entry title, which Hom
 
 from __future__ import annotations
 
+import asyncio
 import html
 import logging
 import re
@@ -43,6 +44,8 @@ _LOGGER = logging.getLogger(__name__)
 
 # Hydro-Québec lieu de consommation identifiers are always exactly 10 digits.
 _LIEU_CONSO_RE = re.compile(r"^\d{10}$")
+
+REQUEST_TIMEOUT = 10  # seconds
 
 _CODE_POSTAL_RE = re.compile(r"^[A-Z]\d[A-Z]\d[A-Z]\d$")
 
@@ -98,15 +101,14 @@ async def validate_lieu_conso(hass: HomeAssistant, lieu_conso: str) -> None:
     session = async_get_clientsession(hass)
 
     try:
-        async with session.get(url, timeout=aiohttp.ClientTimeout(total=10)) as response:
+        async with asyncio.timeout(REQUEST_TIMEOUT), session.get(url) as response:
             if response.status != 200:
                 raise CannotConnect
             json_data = await response.json()
             if not json_data:
                 raise InvalidLieuConso
     except (TimeoutError, aiohttp.ClientError) as err:
-        # aiohttp total timeouts raise asyncio.TimeoutError, which is NOT a
-        # ClientError subclass — both must be mapped to "cannot_connect".
+        # TimeoutError is not a ClientError subclass, so both are listed.
         _LOGGER.debug("HydroPannes config_flow network error: %s", err)
         raise CannotConnect from err
 
@@ -137,8 +139,7 @@ async def search_lieux_conso(
         numero_civique: Civic number, already stripped.
         appartement: Apartment number, empty when there is none.
 
-    Returns:
-        The eligible locations found, one per distinct number, possibly empty.
+    Returns: The eligible locations found, one per distinct number, possibly empty.
 
     Raises:
         CannotConnect: A network error, a timeout or an unexpected answer.
@@ -154,9 +155,10 @@ async def search_lieux_conso(
     session = async_get_clientsession(hass)
 
     try:
-        async with session.get(
-            SEARCH_URL, params=params, timeout=aiohttp.ClientTimeout(total=10)
-        ) as response:
+        async with (
+            asyncio.timeout(REQUEST_TIMEOUT),
+            session.get(SEARCH_URL, params=params) as response,
+        ):
             if response.status == 400:
                 body = await response.json(content_type=None)
                 error = body.get("error") if isinstance(body, dict) else None
@@ -318,17 +320,16 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     async def async_step_numero(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         """Set the location up from a typed number.
 
-        Strips whitespace from the lieu de consommation number before
-        validation and storage so that accidental leading/trailing spaces
-        never end up in the config entry or in API URLs. The supplied name becomes the entry title and is not duplicated into entry.data.
+        Strips whitespace from the lieu de consommation number before validation and storage so that accidental leading/trailing spaces never end up in the config entry or in API URLs. The supplied name becomes the entry title and is not duplicated into entry.data.
         """
         errors: dict[str, str] = {}
         if user_input is not None:
             lieu = user_input[CONF_LIEU_CONSO].strip()
+            # Before validating, so a duplicate aborts without calling the API.
+            await self.async_set_unique_id(lieu)
+            self._abort_if_unique_id_configured()
             errors = await self._async_validate(lieu)
             if not errors:
-                await self.async_set_unique_id(lieu)
-                self._abort_if_unique_id_configured()
                 return self.async_create_entry(
                     title=user_input[CONF_NOM_LIEU],
                     data={CONF_LIEU_CONSO: lieu},
@@ -343,11 +344,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     ) -> ConfigFlowResult:
         """Handle reconfiguration of an existing location's number.
 
-        Lets the user correct the lieu de consommation number in place —
-        keeping the entry, its device and entity IDs, and its history — instead
-        of deleting and re-adding. The number is the entry's unique ID, so it
-        is re-validated and the unique ID is updated; adopting a number already
-        used by another entry is blocked.
+        Lets the user correct the lieu de consommation number in place — keeping the entry, its device and entity IDs, and its history — instead of deleting and re-adding. The number is the entry's unique ID, so it is re-validated and the unique ID is updated; adopting a number already used by another entry is blocked.
         """
         reconfigure_entry = self._get_reconfigure_entry()
         errors: dict[str, str] = {}

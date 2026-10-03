@@ -9,15 +9,13 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import ATTRIBUTION, DOMAIN
 from .coordinator import HydroPannesDataUpdateCoordinator
-from .helpers import HydroPannesHelperMixin
 
 if TYPE_CHECKING:
     from . import HydroPannesConfigEntry
+    from .model import EtatLieu
 
 
-class HydroPannesEntity(
-    HydroPannesHelperMixin, CoordinatorEntity[HydroPannesDataUpdateCoordinator]
-):
+class HydroPannesEntity(CoordinatorEntity[HydroPannesDataUpdateCoordinator]):
     """Wire an entity to its location's coordinator and device.
 
     Subclasses set ``_unique_id_suffix``. The suffixes predate this class and some differ from the translation key (``nbclient``, ``datefin``...): changing one would orphan the entity in the registry.
@@ -42,6 +40,20 @@ class HydroPannesEntity(
             manufacturer="Hydro-Québec",
             model="Info-pannes",
         )
+
+    @property
+    def _etat(self) -> EtatLieu:
+        """Return the reading of the last successful payload, computed once per poll by the coordinator."""
+        return self.coordinator.etat
+
+    @property
+    def _english(self) -> bool:
+        """Return True when attribute texts should be in English.
+
+        Home Assistant translates states and names but not attribute values, so the integration picks the French or English text itself from the configured language. French by default, also when the entity is not attached to Home Assistant.
+        """
+        hass = getattr(self, "hass", None)
+        return hass is not None and not (hass.config.language or "fr").startswith("fr")
 
     @property
     def available(self) -> bool:

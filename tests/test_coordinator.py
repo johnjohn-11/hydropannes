@@ -1,7 +1,6 @@
 """Coordinator tests using pytest-homeassistant-custom-component.
 
-Covers adaptive polling, change detection/history, and the retry/error
-paths, driving the real coordinator against a stubbed API (aioclient_mock).
+Covers adaptive polling, change detection/history, and the retry/error paths, driving the real coordinator against a stubbed API (aioclient_mock).
 """
 
 from __future__ import annotations
@@ -107,12 +106,12 @@ async def test_change_detection_and_history(hass: HomeAssistant, aioclient_mock)
     aioclient_mock.get(API_URL.format(LIEU), json=IDLE_PAYLOAD)
     coordinator = _coordinator(hass)
 
-    await coordinator._async_update_data()
+    await coordinator.async_refresh()
     assert coordinator.total_changes == 1
     assert len(coordinator.api_history) == 1
 
     # Same payload again: no new change recorded, history unchanged.
-    await coordinator._async_update_data()
+    await coordinator.async_refresh()
     assert coordinator.total_changes == 1
     assert len(coordinator.api_history) == 1
     assert coordinator.total_polls == 2
@@ -124,13 +123,19 @@ async def test_change_fires_event_with_payload(hass: HomeAssistant, aioclient_mo
     aioclient_mock.get(API_URL.format(LIEU), json=IDLE_PAYLOAD)
     coordinator = _coordinator(hass)
 
-    await coordinator._async_update_data()
+    # The first payload after a start is not a change.
+    await coordinator.async_refresh()
+    assert events == []
+
+    aioclient_mock.clear_requests()
+    aioclient_mock.get(API_URL.format(LIEU), json=ACTIVE_PAYLOAD)
+    await coordinator.async_refresh()
     assert len(events) == 1
     assert events[0].data["lieu_consommation"] == LIEU
     assert events[0].data["data"]["idLieuConso"] == LIEU
 
     # Unchanged payload on the next poll fires no further event.
-    await coordinator._async_update_data()
+    await coordinator.async_refresh()
     assert len(events) == 1
 
 
@@ -316,3 +321,62 @@ async def test_missing_fields_logged_after_invalid_response(
 
     errors = [r for r in caplog.records if "missing fields" in r.message]
     assert len(errors) == 1
+
+
+@pytest.mark.parametrize(
+    ("mock_kwargs", "key", "placeholders"),
+    [
+        ({"status": 404}, "api_status", {"status": "404"}),
+        ({"status": 503}, "api_server_error", {"status": "503", "attempts": str(MAX_RETRIES + 1)}),
+        ({"exc": TimeoutError()}, "api_timeout", {"attempts": str(MAX_RETRIES + 1)}),
+        ({"json": {"not": "a list"}}, "invalid_response", {}),
+    ],
+)
+async def test_failure_carries_a_translation_key(
+    hass: HomeAssistant, aioclient_mock, mock_kwargs, key, placeholders
+) -> None:
+    """Each failure cause has its own translated message instead of an English cause in a translated sentence."""
+    aioclient_mock.get(API_URL.format(LIEU), **mock_kwargs)
+    coordinator = _coordinator(hass)
+
+    with (
+        patch("custom_components.hydropannes.coordinator.RETRY_DELAY", 0),
+        pytest.raises(UpdateFailed) as err,
+    ):
+        await coordinator._async_update_data()
+
+    assert err.value.translation_key == key
+    assert err.value.translation_placeholders == placeholders
+
+
+async def test_unknown_root_field_warns_once(hass: HomeAssistant, aioclient_mock, caplog) -> None:
+    """A root field such as etatReprise, which the site reads for a gradual restoration, is reported once."""
+    payload = [{**IDLE_PAYLOAD[0], "etatReprise": "E"}]
+    aioclient_mock.get(API_URL.format(LIEU), json=payload)
+    coordinator = _coordinator(hass)
+
+    with caplog.at_level(logging.WARNING):
+        for _ in range(3):
+            await coordinator._async_update_data()
+
+    warnings = [r for r in caplog.records if "payload root" in r.message]
+    assert len(warnings) == 1
+    assert "etatReprise" in warnings[0].message
+
+
+async def test_known_root_fields_do_not_warn(hass: HomeAssistant, aioclient_mock, caplog) -> None:
+    payload = [
+        {
+            **IDLE_PAYLOAD[0],
+            "date": "2026-10-02T00:00:00.000+00:00",
+            "repriseGraduellePossible": False,
+            "declencheurReprise": False,
+        }
+    ]
+    aioclient_mock.get(API_URL.format(LIEU), json=payload)
+    coordinator = _coordinator(hass)
+
+    with caplog.at_level(logging.WARNING):
+        await coordinator._async_update_data()
+
+    assert "payload root" not in caplog.text
