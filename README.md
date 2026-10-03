@@ -36,7 +36,12 @@ Copier le dossier `custom_components/hydropannes` de la dernière [release](http
 
 [![Ajouter l'intégration](https://my.home-assistant.io/badges/config_flow_start.svg)](https://my.home-assistant.io/redirect/config_flow_start/?domain=hydropannes)
 
-Ou **Paramètres** → **Appareils et services** → **+ Ajouter une intégration** → « Hydro-Pannes ». Entrer le **numéro de lieu de consommation** (10 chiffres, voir le [guide domo-quebec](https://github.com/domo-quebec/domo-quebec/blob/main/hydro-quebec/configuration_info-panne.md) pour le trouver) et un **nom** (« Maison », « Chalet »). Répéter pour chaque lieu.
+Ou **Paramètres** → **Appareils et services** → **+ Ajouter une intégration** → « Hydro-Pannes ». Deux façons de trouver le lieu :
+
+- **Rechercher par adresse** : code postal, numéro civique et, s'il y a lieu, appartement. Si plusieurs lieux correspondent, choisir le bon dans la liste. L'adresse sert seulement à trouver le numéro et n'est pas conservée.
+- **Entrer le numéro** : le numéro de lieu de consommation à 10 chiffres (voir le [guide domo-quebec](https://github.com/domo-quebec/domo-quebec/blob/main/hydro-quebec/configuration_info-panne.md) pour le trouver).
+
+Donner ensuite un **nom** au lieu (« Maison », « Chalet »). Répéter pour chaque lieu.
 
 - **Renommer un lieu** : les 3 points à côté du lieu → **Renommer**. Les `entity_id` existants ne changent pas.
 - **Corriger le numéro** : les 3 points → **Reconfigurer**. Les entités et l'historique sont conservés.

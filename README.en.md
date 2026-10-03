@@ -36,7 +36,12 @@ Copy the `custom_components/hydropannes` folder of the latest [release](https://
 
 [![Add the integration](https://my.home-assistant.io/badges/config_flow_start.svg)](https://my.home-assistant.io/redirect/config_flow_start/?domain=hydropannes)
 
-Or **Settings** → **Devices & services** → **+ Add integration** → "Hydro-Pannes". Enter the **consumption location number** (10 digits, see the [domo-quebec guide](https://github.com/domo-quebec/domo-quebec/blob/main/hydro-quebec/configuration_info-panne.md) to find it) and a **name** ("Home", "Cottage"). Repeat for each location.
+Or **Settings** → **Devices & services** → **+ Add integration** → "Hydro-Pannes". Two ways to find the location:
+
+- **Search by address**: postal code, civic number and, if any, apartment. If several locations match, pick the right one from the list. The address is only used to find the number and is not stored.
+- **Enter the number**: the 10-digit consumption location number (see the [domo-quebec guide](https://github.com/domo-quebec/domo-quebec/blob/main/hydro-quebec/configuration_info-panne.md) to find it).
+
+Then give the location a **name** ("Home", "Cottage"). Repeat for each location.
 
 - **Rename a location**: the 3 dots next to the location → **Rename**. Existing entity IDs do not change.
 - **Fix the number**: the 3 dots → **Reconfigure**. Entities and history are kept.
