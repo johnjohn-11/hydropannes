@@ -122,9 +122,6 @@
       },
       "derniere_maj": {
         "name": "Dernière MAJ"
-      },
-      "lieu_consommation": {
-        "name": "Lieu consommation"
       }
     },
     "binary_sensor": {
@@ -137,9 +134,11 @@
           "on": "Prévue",
           "off": "Aucune"
         }
-      },
-      "api_compatibilite": {
-        "name": "Compatibilité API"
+      }
+    },
+    "calendar": {
+      "interruptions_planifiees": {
+        "name": "Interruptions planifiées"
       }
     }
   },

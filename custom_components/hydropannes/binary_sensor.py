@@ -1,10 +1,9 @@
 """Binary sensors for Hydro-Pannes.
 
-Provides three binary sensors per configured location:
+Provides two binary sensors per configured location:
 
 - **État du service** (BinarySensorDeviceClass.PROBLEM): ``True`` when an active unplanned outage or active planned intervention is in progress.
 - **Intervention planifiée** (no device class): ``True`` when at least one non-terminated planned intervention exists.
-- **Compatibilité API** (EntityCategory.DIAGNOSTIC, BinarySensorDeviceClass.PROBLEM): ``True`` when the Hydro-Québec API response no longer contains the expected root-level fields, indicating a breaking schema change.
 """
 
 from __future__ import annotations
@@ -15,7 +14,6 @@ from homeassistant.components.binary_sensor import (
     BinarySensorDeviceClass,
     BinarySensorEntity,
 )
-from homeassistant.const import EntityCategory
 
 from .const import ETAT_PLANIFIE_REPORTE, GRAP_DUREE_PREVUE_MINUTES, GRAP_FIN_MARGE
 from .entity import HydroPannesEntity
@@ -52,7 +50,6 @@ async def async_setup_entry(
         [
             HydroPannesEtatServiceBinarySensor(coordinator, entry),
             HydroPannesInterventionPlanifieeBinarySensor(coordinator, entry),
-            HydroPannesAPICompatibilityBinarySensor(coordinator, entry),
         ]
     )
 
@@ -131,30 +128,3 @@ class HydroPannesInterventionPlanifieeBinarySensor(HydroPannesBinarySensorBase):
                 item["report_debut"] = report_debut.isoformat()
                 item["report_fin"] = report_fin.isoformat() if report_fin else None
         return item
-
-
-class HydroPannesAPICompatibilityBinarySensor(HydroPannesBinarySensorBase):
-    """Diagnostic sensor monitoring the Hydro-Québec API response structure.
-
-    Returns ``True`` (Problem) when the coordinator has detected that the API response is missing one or more expected root-level fields, which indicates a breaking schema change that requires an integration update.
-
-    This sensor is in the DIAGNOSTIC category and is hidden from the default dashboard view; it is intended for troubleshooting and automations.
-    """
-
-    _attr_translation_key = "api_compatibilite"
-    _attr_entity_category = EntityCategory.DIAGNOSTIC
-    _attr_device_class = BinarySensorDeviceClass.PROBLEM
-    _unique_id_suffix = "api_compatibility"
-
-    @property
-    def available(self) -> bool:
-        """Stay available even when the last update failed.
-
-        This sensor reports coordinator state rather than payload data. A payload the integration cannot parse fails the update, and that is precisely when the user needs this sensor to read "problem" instead of going unavailable along with every other entity.
-        """
-        return True
-
-    @property
-    def is_on(self) -> bool:
-        """Return True (Problem) when the API structure is incompatible."""
-        return not self.coordinator.api_compatible
