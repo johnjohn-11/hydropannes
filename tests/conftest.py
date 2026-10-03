@@ -1,10 +1,6 @@
 """Shared fixtures and helpers for the Hydro-Pannes test suite.
 
-The business logic under test lives in ``HydroPannesHelperMixin`` and only
-depends on a ``coordinator`` attribute that exposes ``.data``. Rather than
-spinning up a full Home Assistant instance, these tests drive the mixin (and
-the sensor classes that inherit from it) through a lightweight fake
-coordinator, which keeps them fast and focused on state-transition logic.
+The business logic under test lives in ``HydroPannesHelperMixin`` and only depends on a ``coordinator`` attribute that exposes ``.data``. Rather than spinning up a full Home Assistant instance, these tests drive the mixin (and the sensor classes that inherit from it) through a lightweight fake coordinator, which keeps them fast and focused on state-transition logic.
 """
 
 from __future__ import annotations
@@ -14,6 +10,8 @@ from typing import Any
 
 from homeassistant.util import dt as dt_util
 import pytest
+
+from custom_components.hydropannes.model import EtatLieu
 
 
 class FakeCoordinator:
@@ -29,6 +27,7 @@ class FakeCoordinator:
     ) -> None:
         """Store the API payload the mixin will interpret."""
         self.data = data
+        self.etat = EtatLieu.depuis(data)
         self.last_success_time = last_success_time
 
 
@@ -45,8 +44,7 @@ def hours_from_now(hours: float) -> str:
 def make_interruption(**overrides: Any) -> dict[str, Any]:
     """Build an interruption dict with sensible defaults.
 
-    Pass field overrides as keyword arguments; ``None`` values are dropped so
-    tests can express "field absent" by passing ``field=None``.
+    Pass field overrides as keyword arguments; ``None`` values are dropped so tests can express "field absent" by passing ``field=None``.
     """
     interruption: dict[str, Any] = {
         "dateDebut": hours_from_now(-2),
@@ -54,6 +52,11 @@ def make_interruption(**overrides: Any) -> dict[str, Any]:
         "interruptionPlanifiee": False,
     }
     interruption.update(overrides)
+    if not interruption["interruptionPlanifiee"] and "etat" not in overrides:
+        # Like real payloads: an unplanned interruption is "C" while under way and "T" once its dateFin is past.
+        date_fin = interruption.get("dateFin")
+        ended = date_fin is not None and dt_util.parse_datetime(date_fin) <= dt_util.now()
+        interruption["etat"] = "T" if ended else "C"
     return {k: v for k, v in interruption.items() if v is not None}
 
 

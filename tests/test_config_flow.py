@@ -1,7 +1,6 @@
 """End-to-end config-flow tests using pytest-homeassistant-custom-component.
 
-These drive the real Home Assistant flow machinery (unlike the mixin unit
-tests, which stub the coordinator). The Hydro-Québec API is never contacted:
+These drive the real Home Assistant flow machinery (unlike the model unit tests, which stub the coordinator). The Hydro-Québec API is never contacted:
 validate_lieu_conso, search_lieux_conso and async_setup_entry are patched, and the lookup parsing tests answer through aioclient_mock, so no socket is opened.
 """
 

@@ -1,7 +1,6 @@
 """Integration setup/unload tests using pytest-homeassistant-custom-component.
 
-The Hydro-Québec API is served by aioclient_mock, so the coordinator's first
-refresh runs against a stubbed response and no real socket is opened.
+The Hydro-Québec API is served by aioclient_mock, so the coordinator's first refresh runs against a stubbed response and no real socket is opened.
 """
 
 from __future__ import annotations
@@ -15,12 +14,14 @@ from homeassistant.helpers import (
     entity_registry as er,
     issue_registry as ir,
 )
+from homeassistant.util import dt as dt_util
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.hydropannes.const import (
     API_URL,
     CAUSE_DESCRIPTIONS,
+    CAUSE_DESCRIPTIONS_EN,
     CONF_LIEU_CONSO,
     CONF_NOM_LIEU,
     DOMAIN,
@@ -95,7 +96,7 @@ async def test_unique_ids_are_stable(hass: HomeAssistant, aioclient_mock) -> Non
         ("sensor", "idlieuconso"),
         ("binary_sensor", "etat_service"),
         ("binary_sensor", "intervention_planifiee"),
-        ("binary_sensor", "api_compatibility"),
+        ("calendar", "calendrier"),
     }
 
 
@@ -106,6 +107,7 @@ async def test_enum_sensor_states_accepted_by_home_assistant(
 
     Home Assistant rejects any state outside a sensor's ``options`` and logs an error, so this drives the real state machine rather than the sensor classes alone.
     """
+    hass.config.language = "fr"
     outage = [
         {
             "etat": "N",
@@ -309,26 +311,14 @@ async def test_reconfigure_reloads_once_through_the_listener(
     assert "should use it for scheduling a reload" not in caplog.text
 
 
-async def test_api_compatibility_sensor_survives_a_broken_payload(
-    hass: HomeAssistant, aioclient_mock
-) -> None:
-    """A payload that is not a list raises a repair issue and is reported.
-
-    The update fails, so every other entity goes unavailable. The API-compatibility sensor must stay available — it is the one entity whose whole purpose is to report this.
-    """
+async def test_broken_payload_raises_a_repair_issue(hass: HomeAssistant, aioclient_mock) -> None:
+    """A payload that is not a list raises a repair issue, the entities go unavailable, and a valid payload clears it."""
     aioclient_mock.get(API_URL.format(LIEU), json=PAYLOAD)
     entry = _entry()
     entry.add_to_hass(hass)
     assert await hass.config_entries.async_setup(entry.entry_id)
     await hass.async_block_till_done()
 
-    registry = er.async_get(hass)
-    compat_id = registry.async_get_entity_id(
-        "binary_sensor", DOMAIN, f"{entry.entry_id}_api_compatibility"
-    )
-    assert hass.states.get(compat_id).state == "off"
-
-    # The API starts answering with something that is not a list.
     aioclient_mock.clear_requests()
     aioclient_mock.get(API_URL.format(LIEU), json={"not": "a list"})
     await entry.runtime_data.async_refresh()
@@ -337,17 +327,194 @@ async def test_api_compatibility_sensor_survives_a_broken_payload(
     issue_registry = ir.async_get(hass)
     issue_id = f"api_invalid_response_{entry.entry_id}"
     assert issue_registry.async_get_issue(DOMAIN, issue_id) is not None
+    assert _state(hass, entry, "sensor", "info_pannes").state == "unavailable"
 
-    # Other entities are unavailable, but this one reports the problem.
-    info_id = registry.async_get_entity_id("sensor", DOMAIN, f"{entry.entry_id}_info_pannes")
-    assert hass.states.get(info_id).state == "unavailable"
-    assert hass.states.get(compat_id).state == "on"
-
-    # A valid payload clears the issue.
     aioclient_mock.clear_requests()
     aioclient_mock.get(API_URL.format(LIEU), json=PAYLOAD)
     await entry.runtime_data.async_refresh()
     await hass.async_block_till_done()
 
     assert issue_registry.async_get_issue(DOMAIN, issue_id) is None
-    assert hass.states.get(compat_id).state == "off"
+
+
+async def test_removed_entities_leave_the_registry(hass: HomeAssistant, aioclient_mock) -> None:
+    """The API-compatibility entity of an older version is removed at setup, the consumption location is kept."""
+    aioclient_mock.get(API_URL.format(LIEU), json=PAYLOAD)
+    entry = _entry()
+    entry.add_to_hass(hass)
+    registry = er.async_get(hass)
+    for domain, suffix in (("sensor", "idlieuconso"), ("binary_sensor", "api_compatibility")):
+        registry.async_get_or_create(
+            domain, DOMAIN, f"{entry.entry_id}_{suffix}", config_entry=entry
+        )
+
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    assert (
+        registry.async_get_entity_id("sensor", DOMAIN, f"{entry.entry_id}_idlieuconso") is not None
+    )
+    assert (
+        registry.async_get_entity_id("binary_sensor", DOMAIN, f"{entry.entry_id}_api_compatibility")
+        is None
+    )
+
+
+async def test_calendar_lists_planned_interruptions(hass: HomeAssistant, aioclient_mock) -> None:
+    """The calendar shows the effective window of each planned interruption that is not cancelled."""
+    hass.config.language = "fr"
+    payload = [
+        {
+            "etat": "A",
+            "idLieuConso": LIEU,
+            "interruptions": [
+                {
+                    "idInterruption": {
+                        "site": "ORL",
+                        "typeObjet": "A",
+                        "noInterruption": 1,
+                        "noSection": 1,
+                    },
+                    "dateDebut": "2099-10-05T13:00:00.000+00:00",
+                    "dateFin": "2099-10-05T19:00:00.000+00:00",
+                    "dateDebutReport": "2099-10-13T13:00:00.000+00:00",
+                    "dateFinReport": "2099-10-13T19:00:00.000+00:00",
+                    "etat": "P",
+                    "dureePrevu": 360,
+                    "interruptionPlanifiee": True,
+                },
+                {
+                    "idInterruption": {
+                        "site": "ORL",
+                        "typeObjet": "A",
+                        "noInterruption": 2,
+                        "noSection": 1,
+                    },
+                    "dateDebut": "2099-11-05T13:00:00.000+00:00",
+                    "dateFin": "2099-11-05T19:00:00.000+00:00",
+                    "etat": "A",
+                    "interruptionPlanifiee": True,
+                },
+            ],
+        }
+    ]
+    aioclient_mock.get(API_URL.format(LIEU), json=payload)
+    entry = _entry()
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    state = _state(hass, entry, "calendar", "calendrier")
+    assert state.state == "off"
+    assert state.attributes["start_time"].startswith("2099-10-05")
+    assert state.attributes["message"] == "Interruption planifiée"
+    assert "En cas de report" in state.attributes["description"]
+
+    calendar = hass.data["calendar"].get_entity(state.entity_id)
+    events = await calendar.async_get_events(
+        hass,
+        dt_util.parse_datetime("2099-01-01T00:00:00+00:00"),
+        dt_util.parse_datetime("2100-01-01T00:00:00+00:00"),
+    )
+    assert [e.uid for e in events] == ["ORL-A-1-1"]
+
+
+def _state(hass: HomeAssistant, entry: MockConfigEntry, domain: str, key: str):
+    entity_id = er.async_get(hass).async_get_entity_id(domain, DOMAIN, f"{entry.entry_id}_{key}")
+    assert entity_id is not None, f"no {domain} registered for {key}"
+    return hass.states.get(entity_id)
+
+
+async def test_attribute_texts_follow_the_configured_language(
+    hass: HomeAssistant, aioclient_mock
+) -> None:
+    """Attribute texts are in English when Home Assistant is not configured in French."""
+    hass.config.language = "en"
+    outage = [
+        {
+            "etat": "N",
+            "idLieuConso": LIEU,
+            "interruptions": [
+                {
+                    "dateDebut": "2024-01-01T00:00:00-05:00",
+                    "etat": "C",
+                    "interruptionPlanifiee": False,
+                    "codeCause": "11",
+                    "codeIntervention": "N",
+                    "nbClient": 120,
+                }
+            ],
+        }
+    ]
+    aioclient_mock.get(API_URL.format(LIEU), json=outage)
+    entry = _entry()
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    cause = _state(hass, entry, "sensor", "cause")
+    assert cause.attributes["description"] == CAUSE_DESCRIPTIONS_EN["defaillance_equipement"]
+    assert _state(hass, entry, "sensor", "nbclient").attributes["arrondi"] == "150 or less"
+
+
+async def test_disagreeing_root_shows_an_outage_without_details(
+    hass: HomeAssistant, aioclient_mock
+) -> None:
+    """Through the real update cycle: root etat "A" with an unplanned interruption under way."""
+    payload = [
+        {
+            "etat": "A",
+            "idLieuConso": LIEU,
+            "interruptions": [
+                {
+                    "dateDebut": "2024-01-01T00:00:00-05:00",
+                    "etat": "C",
+                    "interruptionPlanifiee": False,
+                    "codeIntervention": "N",
+                }
+            ],
+        }
+    ]
+    aioclient_mock.get(API_URL.format(LIEU), json=payload)
+    entry = _entry()
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    assert _state(hass, entry, "sensor", "info_pannes").state == "panne_en_cours"
+    assert _state(hass, entry, "binary_sensor", "etat_service").state == "on"
+    assert _state(hass, entry, "sensor", "statut_intervention").state == "unknown"
+
+
+async def test_planned_attributes_through_home_assistant(
+    hass: HomeAssistant, aioclient_mock
+) -> None:
+    """Through the real update cycle: a confirmed planned interruption exposes its fallback slot."""
+    payload = [
+        {
+            "etat": "A",
+            "idLieuConso": LIEU,
+            "interruptions": [
+                {
+                    "dateDebut": "2099-10-05T13:00:00.000+00:00",
+                    "dateFin": "2099-10-05T19:00:00.000+00:00",
+                    "dateDebutReport": "2099-10-13T13:00:00.000+00:00",
+                    "dateFinReport": "2099-10-13T19:00:00.000+00:00",
+                    "etat": "P",
+                    "dureePrevu": 360,
+                    "interruptionPlanifiee": True,
+                }
+            ],
+        }
+    ]
+    aioclient_mock.get(API_URL.format(LIEU), json=payload)
+    entry = _entry()
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    planned = _state(hass, entry, "binary_sensor", "intervention_planifiee")
+    assert planned.state == "on"
+    assert planned.attributes["duree_prevue"] == 360
+    assert planned.attributes["report_debut"].startswith("2099-10-13")
+    assert "fin_au_plus_tard" not in planned.attributes

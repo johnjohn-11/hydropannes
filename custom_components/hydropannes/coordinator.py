@@ -2,18 +2,12 @@
 
 The coordinator is responsible for:
 - Polling the Hydro-Québec Info-pannes API.
-- Switching to faster polling (ACTIVE_OUTAGE_UPDATE_INTERVAL) during an
-  active outage and back to the normal interval once it clears.
+- Switching to faster polling (ACTIVE_OUTAGE_UPDATE_INTERVAL) during an active outage and back to the normal interval once it clears.
 - Retrying transient HTTP 5xx errors and timeouts up to MAX_RETRIES times.
-- Raising UpdateFailed once retries are exhausted, so entities become
-  unavailable and the failure is visible (standard HA behaviour).
-- Maintaining an in-memory ring buffer (api_history) of the last
-  API_HISTORY_SIZE distinct payloads for diagnostics.
-- Firing a ``hydropannes_data_changed`` bus event, carrying the full payload,
-  whenever a location's data changes, so users can log or react to changes
-  from their own automations.
-- Detecting API structure changes (missing root fields) and flagging unknown
-  interruption fields when Hydro-Québec evolves their schema.
+- Raising UpdateFailed once retries are exhausted, so entities become unavailable and the failure is visible (standard HA behaviour).
+- Maintaining an in-memory ring buffer (api_history) of the last API_HISTORY_SIZE distinct payloads for diagnostics.
+- Firing a ``hydropannes_data_changed`` bus event, carrying the full payload, whenever a location's data changes, so users can log or react to changes from their own automations.
+- Detecting API structure changes (missing root fields) and flagging unknown interruption fields when Hydro-Québec evolves their schema.
 - Tracking poll/error/change statistics exposed via the diagnostics report.
 """
 
@@ -22,8 +16,6 @@ from __future__ import annotations
 import asyncio
 from collections import deque
 from datetime import timedelta
-import hashlib
-import json
 import logging
 from typing import TYPE_CHECKING, Any, NoReturn
 
@@ -36,7 +28,15 @@ from homeassistant.helpers.update_coordinator import (
 )
 from homeassistant.util import dt as dt_util
 
-from .const import API_URL, CONF_LIEU_CONSO, DOMAIN, EVENT_DATA_CHANGED, UPDATE_INTERVAL
+from .const import (
+    API_URL,
+    CONF_LIEU_CONSO,
+    DOMAIN,
+    ETATS_PANNE_EN_COURS,
+    EVENT_DATA_CHANGED,
+    UPDATE_INTERVAL,
+)
+from .model import EtatLieu
 
 if TYPE_CHECKING:
     from datetime import datetime
@@ -64,14 +64,10 @@ API_HISTORY_SIZE = 5
 # API schema validation
 # ---------------------------------------------------------------------------
 
-# Fields that the Hydro-Québec API must always return at the root level.
-# Their absence indicates a breaking schema change.
+# Fields that the Hydro-Québec API must always return at the root level. Their absence indicates a breaking schema change.
 EXPECTED_ROOT_FIELDS = {"etat", "interruptions", "idLieuConso"}
 
-# All interruption-level fields currently consumed by the integration.
-# Any field returned by HQ that is NOT in this set triggers a warning log,
-# signalling that the API has evolved and the integration may need updating.
-# Only fires while a panne is listed: the interruptions list is empty otherwise.
+# All interruption-level fields currently consumed by the integration. Any field returned by HQ that is NOT in this set triggers a warning log, signalling that the API has evolved and the integration may need updating. Only fires while a panne is listed: the interruptions list is empty otherwise.
 KNOWN_INTERRUPTION_FIELDS = {
     "dateDebut",
     "dateFin",
@@ -98,6 +94,16 @@ KNOWN_INTERRUPTION_FIELDS = {
     "repriseGraduellePossible",
 }
 
+# Root fields seen in recorded payloads. The Info-pannes site also reads etatReprise, dureePrevueDelestage, dureeResiduelleDelestage, remiseEnServicePrevue and remiseEnServiceConfirmee to compute a gradual restoration, which the integration does not do yet: none of them appeared in recorded payloads, so the warning below flags their arrival.
+KNOWN_ROOT_FIELDS = {
+    "etat",
+    "idLieuConso",
+    "interruptions",
+    "date",
+    "repriseGraduellePossible",
+    "declencheurReprise",
+}
+
 
 class HydroPannesDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     """Coordinator managing data fetching, caching, and change notification."""
@@ -112,53 +118,37 @@ class HydroPannesDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         """
         self.lieu_conso: str = entry.data[CONF_LIEU_CONSO]
 
-        # Captured here so the change event doesn't rely on self.config_entry
-        # (typed Optional by the base coordinator).
+        # Captured here so the change event doesn't rely on self.config_entry, typed Optional by the base coordinator.
         self._entry_id: str = entry.entry_id
 
-        # Tracks whether the last successful API response had the expected
-        # root-level schema.  True until proven otherwise.
         self.api_compatible: bool = True
 
         # Stable ids for the repair issues raised for this location: one for a payload whose shape is not the expected list, one for a payload that is a list but no longer carries the expected root fields.
         self._api_issue_id: str = f"api_incompatible_{entry.entry_id}"
         self._invalid_response_issue_id: str = f"api_invalid_response_{entry.entry_id}"
 
-        # Whether the invalid-response repair issue is currently raised.
         self._invalid_response_flagged: bool = False
 
         # Whether missing root fields have been logged since the schema was last seen intact.  Kept apart from api_compatible, which an invalid payload also clears, so that path cannot suppress this log.
         self._missing_root_logged: bool = False
 
-        # Hash of the last payload, used for change detection.
-        self._last_hash: str | None = None
-
-        # Ring buffer of the most recent distinct API payloads with timestamps,
-        # exposed to the diagnostics module.
         self.api_history: deque[dict[str, Any]] = deque(maxlen=API_HISTORY_SIZE)
 
-        # ---------------------------------------------------------------------------
-        # Diagnostic counters — reset on each HA restart (in-memory only).
-        # ---------------------------------------------------------------------------
-
-        # Total number of API calls attempted (including retries).
+        # Diagnostic counters, in memory only: they restart at zero with Home Assistant. One poll is one update, whatever the number of retries it took.
         self.total_polls: int = 0
-
-        # Number of calls that resulted in a payload change.
         self.total_changes: int = 0
-
-        # Number of calls that ended in a non-recoverable error
-        # (after all retries were exhausted).
         self.total_errors: int = 0
-
-        # Details of the most recent error, or None if no error has occurred.
         self.last_error: dict[str, str] | None = None
 
         # UTC timestamp of the most recent successful fetch. Consumed by the "Dernière MAJ" sensor and the diagnostics report; the base DataUpdateCoordinator exposes no such attribute.
         self.last_success_time: datetime | None = None
 
+        # Reading of the last successful payload. Kept, like data, when an update fails.
+        self.etat: EtatLieu = EtatLieu.depuis(None)
+
         # Interruption field names already reported as unknown, so a schema change is logged once instead of on every poll.
         self._warned_unknown_fields: set[str] = set()
+        self._warned_unknown_root_fields: set[str] = set()
 
         super().__init__(
             hass,
@@ -178,14 +168,12 @@ class HydroPannesDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         On persistent failure, raises UpdateFailed; HA then marks entities unavailable and keeps retrying on the normal schedule.
         """
         self.total_polls += 1
+        payload = await self._async_fetch()
         try:
-            payload = await self._async_fetch()
             return self._process_payload(payload)
-        except UpdateFailed:
-            raise
-        except Exception as err:
-            _LOGGER.exception("Unexpected error for lieu %s", self.lieu_conso)
-            self._raise_failure(f"Unexpected error: {err}")
+        except (AttributeError, KeyError, TypeError, ValueError) as err:
+            _LOGGER.debug("Unparseable payload for lieu %s", self.lieu_conso, exc_info=True)
+            self._raise_failure(f"Unexpected payload: {err}", "unexpected_payload")
 
     async def _async_fetch(self) -> Any:
         """Return the decoded API response, retrying 5xx errors, timeouts and connection errors.
@@ -201,15 +189,24 @@ class HydroPannesDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     if response.status == 200:
                         return await response.json()
                     if not 500 <= response.status < 600:
-                        self._raise_failure(f"API returned status {response.status}")
+                        self._raise_failure(
+                            f"API returned status {response.status}",
+                            "api_status",
+                            status=str(response.status),
+                        )
                     reason = f"API returned {response.status}"
+                    key, extra = "api_server_error", {"status": str(response.status)}
             except TimeoutError:
                 reason = "Timeout"
+                key, extra = "api_timeout", {}
             except aiohttp.ClientError as err:
                 reason = f"Connection error: {err}"
+                key, extra = "connection_error", {}
 
             if attempt > MAX_RETRIES:
-                self._raise_failure(f"{reason} after {attempt} attempts")
+                self._raise_failure(
+                    f"{reason} after {attempt} attempts", key, attempts=str(attempt), **extra
+                )
             _LOGGER.debug(
                 "%s for lieu %s, retry %s/%s", reason, self.lieu_conso, attempt, MAX_RETRIES
             )
@@ -223,23 +220,24 @@ class HydroPannesDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         if not data or not isinstance(data, list) or not isinstance(data[0], dict):
             # Surface this through Repairs too: the update fails, so entities other than the API-compatibility sensor go unavailable and cannot report it.
             self._flag_invalid_response()
-            self._raise_failure("API returned invalid data format (expected a list of objects)")
+            self._raise_failure(
+                "API returned invalid data format (expected a list of objects)", "invalid_response"
+            )
 
         result: dict[str, Any] = data[0]
         self._clear_invalid_response()
         self._check_root_fields(result)
+        self._warn_unknown_root_fields(result)
         self._warn_unknown_interruption_fields(result)
 
-        current_hash = hashlib.md5(
-            json.dumps(result, sort_keys=True).encode(),
-            usedforsecurity=False,
-        ).hexdigest()
-        if self._last_hash != current_hash:
-            self._last_hash = current_hash
+        if result != self.data:
             self.total_changes += 1
             self._append_history(result)
-            self._fire_change_event(result)
+            # The first payload after a start or reload is not a change, so no event: an automation logging changes would otherwise get one on every restart.
+            if self.data is not None:
+                self._fire_change_event(result)
 
+        self.etat = EtatLieu.depuis(result)
         self._adjust_update_interval(result)
         self.last_success_time = dt_util.utcnow()
         return result
@@ -275,6 +273,18 @@ class HydroPannesDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             translation_key="api_schema_changed",
             translation_placeholders={"missing_fields": ", ".join(sorted(missing_root))},
         )
+
+    def _warn_unknown_root_fields(self, result: dict[str, Any]) -> None:
+        """Log root fields the integration does not know yet, once per field name."""
+        new_fields = result.keys() - KNOWN_ROOT_FIELDS - self._warned_unknown_root_fields
+        if new_fields:
+            self._warned_unknown_root_fields |= new_fields
+            _LOGGER.warning(
+                "New API fields detected at the payload root (lieu %s): "
+                "%s — the Hydro-Québec schema may have evolved.",
+                self.lieu_conso,
+                new_fields,
+            )
 
     def _warn_unknown_interruption_fields(self, result: dict[str, Any]) -> None:
         """Log interruption fields the integration does not know yet.
@@ -326,21 +336,24 @@ class HydroPannesDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     # Failure handling
     # -----------------------------------------------------------------------
 
-    def _raise_failure(self, error_msg: str) -> NoReturn:
+    def _raise_failure(self, error_msg: str, translation_key: str, **placeholders: str) -> NoReturn:
         """Record error details for diagnostics and raise UpdateFailed.
 
-        Raising UpdateFailed is the standard HA pattern: the coordinator
-        keeps its previous ``data`` in memory, ``last_update_success``
-        becomes False, entities go unavailable, and the next scheduled
-        refresh retries automatically.  Transient hiccups are already
-        absorbed by the in-loop retry logic (MAX_RETRIES).
+        Raising UpdateFailed is the standard HA pattern: the coordinator keeps its previous ``data`` in memory, ``last_update_success`` becomes False, entities go unavailable, and the next scheduled refresh retries automatically.  Transient hiccups are already absorbed by the in-loop retry logic (MAX_RETRIES).
+
+        The English ``error_msg`` goes to the log and diagnostics. The UI shows the translation of ``translation_key``, so the user never sees the English cause inside a French message.
         """
         self.total_errors += 1
         self.last_error = {
             "timestamp": dt_util.utcnow().isoformat(),
             "message": error_msg,
         }
-        raise UpdateFailed(f"Error communicating with API: {error_msg}")
+        raise UpdateFailed(
+            f"Error communicating with API: {error_msg}",
+            translation_domain=DOMAIN,
+            translation_key=translation_key,
+            translation_placeholders=placeholders,
+        )
 
     # -----------------------------------------------------------------------
     # History and polling management
@@ -349,8 +362,7 @@ class HydroPannesDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     def _append_history(self, data: dict[str, Any]) -> None:
         """Append a timestamped snapshot to the in-memory history ring buffer.
 
-        Called only when the payload has changed (caller guarantees this).
-        The deque automatically evicts the oldest entry when full.
+        Called only when the payload has changed (caller guarantees this). The deque automatically evicts the oldest entry when full.
         """
         snapshot = {
             "timestamp": dt_util.utcnow().isoformat(),
@@ -367,9 +379,7 @@ class HydroPannesDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     def _adjust_update_interval(self, data: dict[str, Any]) -> None:
         """Switch between fast and normal polling intervals.
 
-        Uses ACTIVE_OUTAGE_UPDATE_INTERVAL (60 s) during an active outage for
-        more responsive end-of-panne detection, and falls back to the normal
-        UPDATE_INTERVAL (180 s) otherwise.
+        Uses ACTIVE_OUTAGE_UPDATE_INTERVAL (60 s) during an active outage for more responsive end-of-panne detection, and falls back to the normal UPDATE_INTERVAL (180 s) otherwise.
         """
         target_seconds = (
             ACTIVE_OUTAGE_UPDATE_INTERVAL
@@ -386,20 +396,20 @@ class HydroPannesDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             )
 
     def _is_active_outage_in_data(self, data: dict[str, Any]) -> bool:
-        """Return True if the payload contains at least one active outage.
+        """Return True if the payload contains at least one active outage, which switches to fast polling.
 
-        An outage is considered active when:
-        - The root-level ``etat`` is ``"N"`` (non-alimenté), AND
-        - At least one interruption has no ``dateFin`` or a ``dateFin`` in
-          the future.
-
-        This is intentionally separate from the helper mixin used by sensors,
-        because it operates on a raw dict rather than through coordinator.data.
+        An unplanned interruption whose own etat is under way counts whatever the root etat, as on the site. Otherwise the root etat must be "N" with an interruption that has no dateFin or one in the future. It works on the raw payload, before coordinator.data is set, so it does not use the helper mixin.
         """
+        interruptions = data.get("interruptions", [])
+        if any(
+            not i.get("interruptionPlanifiee") and i.get("etat") in ETATS_PANNE_EN_COURS
+            for i in interruptions
+        ):
+            return True
         if data.get("etat") != "N":
             return False
         now = dt_util.now()
-        for intr in data.get("interruptions", []):
+        for intr in interruptions:
             date_fin_str = intr.get("dateFin")
             if not date_fin_str:
                 # No end date → outage is still ongoing.
@@ -416,10 +426,7 @@ class HydroPannesDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     def _fire_change_event(self, data: dict[str, Any]) -> None:
         """Fire a bus event carrying the full payload on each change.
 
-        Called only when the payload has changed (caller guarantees this).
-        Users can subscribe to ``hydropannes_data_changed`` to log or react to
-        changes — e.g. append them to a file via the File integration — instead
-        of the integration writing to disk itself.
+        Called only when the payload has changed (caller guarantees this). Users can subscribe to ``hydropannes_data_changed`` to log or react to changes — e.g. append them to a file via the File integration — instead of the integration writing to disk itself.
         """
         self.hass.bus.async_fire(
             EVENT_DATA_CHANGED,

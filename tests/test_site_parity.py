@@ -10,15 +10,18 @@ from homeassistant.util import dt as dt_util
 import pytest
 
 from custom_components.hydropannes.binary_sensor import (
+    HydroPannesEtatServiceBinarySensor,
     HydroPannesInterventionPlanifieeBinarySensor,
 )
 from custom_components.hydropannes.const import (
     RETABLISSEMENT_DESCRIPTIONS,
     RETABLISSEMENT_DESCRIPTIONS_MAJEUR,
 )
+from custom_components.hydropannes.model import round_up_quarter
 from custom_components.hydropannes.sensor import (
+    HydroPannesAdressesToucheesSensor,
+    HydroPannesDateFinSensor,
     HydroPannesInfoPannesSensor,
-    HydroPannesNombreClientSensor,
     HydroPannesRetablissementSensor,
     HydroPannesStatutInterventionSensor,
 )
@@ -46,7 +49,7 @@ def test_major_outage_wins_over_later_ending_one() -> None:
     sensor = build(
         HydroPannesRetablissementSensor, make_payload(etat="N", interruptions=[normal, majeure])
     )
-    assert sensor._get_active_outage()["niveauUrgence"] == "P"
+    assert sensor._etat.panne_active["niveauUrgence"] == "P"
 
 
 def test_latest_ending_outage_wins() -> None:
@@ -55,7 +58,7 @@ def test_latest_ending_outage_wins() -> None:
     sensor = build(
         HydroPannesRetablissementSensor, make_payload(etat="N", interruptions=[early, late])
     )
-    assert sensor._get_active_outage()["nbClient"] == 20
+    assert sensor._etat.panne_active["nbClient"] == 20
 
 
 def test_overlapping_outage_moves_start_back() -> None:
@@ -66,7 +69,7 @@ def test_overlapping_outage_moves_start_back() -> None:
         dateDebut=hours_from_now(-3), dateFin=None, dateFinEstimeeMax=hours_from_now(2)
     )
     payload = make_payload(etat="N", interruptions=[kept, earlier])
-    chosen = build(HydroPannesRetablissementSensor, payload)._get_active_outage()
+    chosen = build(HydroPannesRetablissementSensor, payload)._etat.panne_active
     assert chosen["dateDebut"] == earlier["dateDebut"]
     # The payload itself is left untouched.
     assert kept["dateDebut"] != earlier["dateDebut"]
@@ -78,7 +81,7 @@ def test_non_overlapping_outage_keeps_start() -> None:
     )
     finished_before = make_interruption(dateDebut=hours_from_now(-6), dateFin=hours_from_now(-4))
     payload = make_payload(etat="N", interruptions=[kept, finished_before])
-    assert build(HydroPannesRetablissementSensor, payload)._get_active_outage() is kept
+    assert build(HydroPannesRetablissementSensor, payload)._etat.panne_active is kept
 
 
 # ---------------------------------------------------------------------------
@@ -112,9 +115,9 @@ def test_retablissement_states(overrides, expected) -> None:
     [(0, (14, 0)), (1, (14, 15)), (15, (14, 15)), (31, (14, 45)), (46, (15, 0))],
 )
 def test_round_up_quarter(minute, expected) -> None:
-    sensor = build(HydroPannesRetablissementSensor, None)
+    build(HydroPannesRetablissementSensor, None)
     value = datetime(2026, 9, 25, 14, minute, 30, tzinfo=dt_util.UTC)
-    rounded = sensor._round_up_quarter(value)
+    rounded = round_up_quarter(value)
     assert (rounded.hour, rounded.minute, rounded.second) == (*expected, 30)
 
 
@@ -172,13 +175,13 @@ def test_retablissement_none_without_outage_or_planned_in_progress(payload) -> N
 )
 def test_nb_client_arrondi(nb_client, expected) -> None:
     intr = make_interruption(dateFin=None, nbClient=nb_client)
-    sensor = build(HydroPannesNombreClientSensor, make_payload(etat="N", interruptions=[intr]))
+    sensor = build(HydroPannesAdressesToucheesSensor, make_payload(etat="N", interruptions=[intr]))
     assert sensor.extra_state_attributes == expected
 
 
 def test_new_attributes_are_not_recorded() -> None:
     assert "description" in HydroPannesRetablissementSensor._unrecorded_attributes
-    assert "arrondi" in HydroPannesNombreClientSensor._unrecorded_attributes
+    assert "arrondi" in HydroPannesAdressesToucheesSensor._unrecorded_attributes
 
 
 # ---------------------------------------------------------------------------
@@ -308,3 +311,115 @@ def test_cancelled_planned_stays_cancelled_once_its_slot_is_past() -> None:
         build(HydroPannesStatutInterventionSensor, payload).native_value
         == "interruption_planifiee_annulee"
     )
+
+
+# ---------------------------------------------------------------------------
+# Root etat and interruptions disagreeing (the site's nonSynchronise)
+# ---------------------------------------------------------------------------
+
+
+def test_fed_root_with_outage_under_way_shows_outage_without_details() -> None:
+    """Replays real payloads: root etat "A" while an unplanned interruption "C" without dateFin is listed."""
+    payload = make_payload(etat="A", interruptions=[make_interruption(etat="C", dateFin=None)])
+    assert build(HydroPannesInfoPannesSensor, payload).native_value == "panne_en_cours"
+    assert build(HydroPannesStatutInterventionSensor, payload).native_value is None
+    assert build(HydroPannesRetablissementSensor, payload).native_value is None
+    assert build(HydroPannesEtatServiceBinarySensor, payload).is_on is True
+
+
+def test_unfed_root_with_only_terminated_outages_shows_outage_under_way() -> None:
+    """Replays real payloads: root etat "N" while the only interruption is "T" with a past dateFin."""
+    payload = make_payload(
+        etat="N", interruptions=[make_interruption(etat="T", dateFin=hours_from_now(-10))]
+    )
+    assert build(HydroPannesInfoPannesSensor, payload).native_value == "panne_en_cours"
+    assert build(HydroPannesStatutInterventionSensor, payload).native_value is None
+    assert build(HydroPannesEtatServiceBinarySensor, payload).is_on is True
+
+
+def test_terminated_outage_with_fed_root_is_restored() -> None:
+    payload = make_payload(
+        etat="A", interruptions=[make_interruption(etat="T", dateFin=hours_from_now(-1))]
+    )
+    assert build(HydroPannesInfoPannesSensor, payload).native_value == "service_retabli"
+    assert build(HydroPannesEtatServiceBinarySensor, payload).is_on is False
+
+
+def _iso_local(value: str) -> str:
+    return dt_util.as_local(dt_util.parse_datetime(value)).isoformat()
+
+
+def test_planned_sensor_lists_the_fallback_slot() -> None:
+    """Replays a real payload: a confirmed interruption carries the slot the site lists under "En cas de report"."""
+    intr = _planned(
+        24,
+        dureePrevu=270,
+        dateDebutReport=hours_from_now(24 * 14),
+        dateFinReport=hours_from_now(24 * 14 + 4),
+    )
+    attrs = build(
+        HydroPannesInterventionPlanifieeBinarySensor, make_payload(etat="A", interruptions=[intr])
+    ).extra_state_attributes
+    assert attrs["debut"] == _iso_local(intr["dateDebut"])
+    assert attrs["fin"] == _iso_local(intr["dateFin"])
+    assert attrs["report_debut"] == _iso_local(intr["dateDebutReport"])
+    assert attrs["report_fin"] == _iso_local(intr["dateFinReport"])
+    assert "fin_au_plus_tard" not in attrs
+
+
+def test_postponed_planned_has_no_fallback_slot() -> None:
+    intr = _planned(
+        -100,
+        etat="R",
+        dateDebutReport=hours_from_now(24),
+        dateFinReport=hours_from_now(28),
+    )
+    attrs = build(
+        HydroPannesInterventionPlanifieeBinarySensor, make_payload(etat="A", interruptions=[intr])
+    ).extra_state_attributes
+    assert attrs["debut"] == _iso_local(intr["dateDebutReport"])
+    assert "report_debut" not in attrs
+
+
+def test_long_planned_ends_within_five_hours() -> None:
+    intr = _planned(24, dureePrevu=480)
+    attrs = build(
+        HydroPannesInterventionPlanifieeBinarySensor, make_payload(etat="A", interruptions=[intr])
+    ).extra_state_attributes
+    fin = dt_util.as_local(dt_util.parse_datetime(intr["dateFin"]))
+    assert attrs["fin_au_plus_tard"] == (fin + timedelta(hours=5)).isoformat()
+    assert attrs["reprise_graduelle_possible"] is True
+
+
+def test_fin_estimee_min_exposed_for_a_range() -> None:
+    intr = make_interruption(
+        dateFin=None, dateFinEstimeeMin=hours_from_now(1), dateFinEstimeeMax=hours_from_now(3)
+    )
+    sensor = build(HydroPannesDateFinSensor, make_payload(etat="N", interruptions=[intr]))
+    assert sensor.native_value == dt_util.as_local(
+        dt_util.parse_datetime(intr["dateFinEstimeeMax"])
+    )
+    assert sensor.extra_state_attributes == {
+        "fin_estimee_min": _iso_local(intr["dateFinEstimeeMin"])
+    }
+
+
+@pytest.mark.parametrize("same_as_max", [False, True])
+def test_fin_estimee_min_absent_without_a_range(same_as_max) -> None:
+    fin_max = hours_from_now(3)
+    intr = make_interruption(
+        dateFin=None,
+        dateFinEstimeeMin=fin_max if same_as_max else None,
+        dateFinEstimeeMax=fin_max,
+    )
+    sensor = build(HydroPannesDateFinSensor, make_payload(etat="N", interruptions=[intr]))
+    assert sensor.extra_state_attributes == {}
+
+
+@pytest.mark.parametrize(
+    ("nb_client", "expected"), [(120, "150 or less"), (600, "Over 500"), (1500, "Over 1000")]
+)
+def test_nb_client_arrondi_english(nb_client, expected) -> None:
+    from custom_components.hydropannes.sensor import _nb_client_arrondi
+
+    assert _nb_client_arrondi(nb_client, english=True) == expected

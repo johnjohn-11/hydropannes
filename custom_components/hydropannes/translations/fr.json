@@ -105,7 +105,7 @@
           "evaluation_travaux": "Évaluation des travaux requis",
           "fin_non_determinee": "Fin non déterminée",
           "reprise_graduelle": "Rétablissement graduel du service en cours",
-          "retablissement_en_evaluation": "Heure de rétablissement en cours d'évaluation",
+          "retablissement_en_evaluation": "Heure de rétablissement en cours d’évaluation",
           "retablissement_prevu": "Rétablissement prévu",
           "service_retabli": "Service rétabli",
           "travaux_en_cours": "Travaux en cours sur le réseau électrique",
@@ -115,7 +115,7 @@
       "retablissement": {
         "name": "Rétablissement",
         "state": {
-          "en_evaluation": "Heure de rétablissement en cours d'évaluation",
+          "en_evaluation": "Heure de rétablissement en cours d’évaluation",
           "prevu": "Rétablissement prévu",
           "en_revision": "Heure de rétablissement en cours de révision"
         }
@@ -125,10 +125,10 @@
         "state": {
           "accident_ou_incident": "Accident ou incident",
           "amelioration_entretien_reseau": "Amélioration ou entretien du réseau",
-          "bris_equipement": "Bris d'équipement",
+          "bris_equipement": "Bris d’équipement",
           "collision_poteau": "Collision avec un poteau",
           "contact_accidentel": "Contact accidentel avec le réseau",
-          "defaillance_equipement": "Défaillance d'un équipement",
+          "defaillance_equipement": "Défaillance d’un équipement",
           "dommages_animaux": "Dommages causés par les animaux",
           "dommages_oiseaux": "Dommages causés par les oiseaux",
           "dommages_vegetation": "Dommages causés par la végétation",
@@ -138,7 +138,7 @@
           "indeterminee": "Indéterminée",
           "mesure_protection": "Mesure de protection du réseau",
           "precipitations": "Précipitations",
-          "securite_publique": "Interruption - Sécurité publique",
+          "securite_publique": "Interruption – Sécurité publique",
           "securite_travaux": "Sécurité pendant les travaux",
           "sinistre_naturel": "Sinistre naturel",
           "surcharge_reseau": "Surcharge sur le réseau",
@@ -166,11 +166,37 @@
         "name": "État du service"
       },
       "intervention_planifiee": {
-        "name": "Intervention planifiée"
-      },
-      "api_compatibilite": {
-        "name": "Compatibilité API"
+        "name": "Intervention planifiée",
+        "state": {
+          "on": "Prévue",
+          "off": "Aucune"
+        }
       }
+    },
+    "calendar": {
+      "interruptions_planifiees": {
+        "name": "Interruptions planifiées"
+      }
+    }
+  },
+  "exceptions": {
+    "unexpected_payload": {
+      "message": "L'API d'Hydro-Québec a renvoyé une réponse illisible"
+    },
+    "api_status": {
+      "message": "L'API d'Hydro-Québec a répondu avec le code {status}"
+    },
+    "api_server_error": {
+      "message": "L'API d'Hydro-Québec a répondu avec le code {status} après {attempts} tentatives"
+    },
+    "api_timeout": {
+      "message": "L'API d'Hydro-Québec n'a pas répondu après {attempts} tentatives"
+    },
+    "connection_error": {
+      "message": "Impossible de joindre l'API d'Hydro-Québec après {attempts} tentatives"
+    },
+    "invalid_response": {
+      "message": "L'API d'Hydro-Québec a renvoyé une réponse dans un format inattendu"
     }
   },
   "issues": {

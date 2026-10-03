@@ -1,8 +1,6 @@
 """Regression tests for HydroPannesDureeSensor duration calculation.
 
-Guards against the duration sensor reporting negative values for upcoming
-planned interventions, and against measuring a rescheduled planned interruption with its
-cancelled original slot instead of its effective window.
+Guards against the duration sensor reporting negative values for upcoming planned interventions, and against measuring a rescheduled planned interruption with its cancelled original slot instead of its effective window.
 """
 
 from __future__ import annotations
@@ -17,9 +15,7 @@ from .conftest import FakeCoordinator, hours_from_now, make_interruption, make_p
 def duree_for(payload: dict[str, Any]) -> int | None:
     """Return the duration sensor's native_value for a given payload.
 
-    The sensor is built with ``__new__`` to bypass the Home Assistant entity
-    constructor; ``native_value`` only reads coordinator data via the helper
-    mixin, so no further wiring is needed.
+    The sensor is built with ``__new__`` to bypass the Home Assistant entity constructor; ``native_value`` only reads coordinator data via the helper mixin, so no further wiring is needed.
     """
     sensor = HydroPannesDureeSensor.__new__(HydroPannesDureeSensor)
     sensor.coordinator = FakeCoordinator(payload)  # type: ignore[assignment]
