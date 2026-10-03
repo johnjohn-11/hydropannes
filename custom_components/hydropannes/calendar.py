@@ -90,7 +90,7 @@ class HydroPannesCalendar(HydroPannesEntity, CalendarEntity):
             report_debut = parse_dt(intr.get("dateDebutReport"))
             if report_debut:
                 lines.append(
-                    f"If postponed: {_format(report_debut)}."
+                    f"In case of postponement: {_format(report_debut)}."
                     if en
                     else f"En cas de report : {_format(report_debut)}."
                 )
