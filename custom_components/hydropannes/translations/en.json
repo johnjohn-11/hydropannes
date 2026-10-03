@@ -122,9 +122,6 @@
       },
       "derniere_maj": {
         "name": "Last update"
-      },
-      "lieu_consommation": {
-        "name": "Consumption location"
       }
     },
     "binary_sensor": {
@@ -137,9 +134,11 @@
           "on": "Scheduled",
           "off": "None"
         }
-      },
-      "api_compatibilite": {
-        "name": "API compatibility"
+      }
+    },
+    "calendar": {
+      "interruptions_planifiees": {
+        "name": "Planned interruptions"
       }
     }
   },

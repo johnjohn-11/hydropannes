@@ -11,7 +11,7 @@ from homeassistant.components.sensor import (
     SensorEntity,
     SensorStateClass,
 )
-from homeassistant.const import EntityCategory, UnitOfTime
+from homeassistant.const import UnitOfTime
 from homeassistant.util import dt as dt_util
 
 from .const import (
@@ -102,7 +102,6 @@ async def async_setup_entry(
             HydroPannesDureeSensor(coordinator, entry),
             HydroPannesDelaiAvantRetablissementSensor(coordinator, entry),
             HydroPannesDerniereMAJSensor(coordinator, entry),
-            HydroPannesLieuConsoSensor(coordinator, entry),
         ]
     )
 
@@ -541,19 +540,3 @@ class HydroPannesDerniereMAJSensor(HydroPannesSensorBase):
                 return parsed
         # Outside an outage there is no datePublication, so fall back to the time of the last successful poll.
         return self.coordinator.last_success_time
-
-
-class HydroPannesLieuConsoSensor(HydroPannesSensorBase):
-    """Diagnostic sensor reporting the consumption location ID."""
-
-    _attr_translation_key = "lieu_consommation"
-    _attr_entity_category = EntityCategory.DIAGNOSTIC
-    _attr_entity_registry_enabled_default = False
-    _unique_id_suffix = "idlieuconso"
-
-    @property
-    def native_value(self) -> str | None:
-        """Return the consumption location ID."""
-        if not self.coordinator.data:
-            return None
-        return self.coordinator.data.get("idLieuConso")

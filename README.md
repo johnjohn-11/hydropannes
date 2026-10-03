@@ -18,7 +18,7 @@ Suivez en temps réel l'état du service électrique pour un ou plusieurs lieux 
 ## Fonctionnalités
 
 - 🔌 **État du service** : Détection des pannes en temps réel
-- 📅 **Interventions planifiées** : Travaux annoncés à l'avance
+- 📅 **Interventions planifiées** : Travaux annoncés à l'avance, aussi dans un calendrier Home Assistant
 - ⏱️ **Durée de la panne** : Temps écoulé depuis le début
 - 🕐 **Estimation de rétablissement** : Compte à rebours avant le retour du courant
 - 👥 **Adresses touchées** : Nombre de clients affectés
@@ -109,7 +109,12 @@ Chaque lieu de consommation configuré crée un appareil avec les entités suiva
 | `sensor.*_retablissement` | Étape du rétablissement d'une panne ou d'une interruption planifiée en cours : en évaluation, prévu ou en révision |
 | `sensor.*_delai_avant_retablissement` | Temps restant avant le rétablissement estimé |
 | `sensor.*_derniere_maj` | Horodatage de la dernière mise à jour des données *(désactivé par défaut : hors panne, il change à chaque relevé)* |
-| `sensor.*_lieu_de_consommation` | Numéro de lieu de consommation *(Diagnostic, désactivé par défaut)* |
+
+### Calendrier
+
+| Entité | Description |
+|--------|-------------|
+| `calendar.*_interruptions_planifiees` | Une entrée par interruption planifiée non annulée, sur son créneau en vigueur (les nouvelles dates une fois reportée ou décalée). La description donne le créneau « En cas de report » et, à partir de 8 heures de travaux, l'heure de fin au plus tard. Seules les interruptions encore listées par Hydro-Québec apparaissent : une interruption passée disparaît du calendrier quand elle quitte le relevé. |
 
 ### Binary Sensors
 
@@ -117,11 +122,8 @@ Chaque lieu de consommation configuré crée un appareil avec les entités suiva
 |--------|-------------|
 | `binary_sensor.*_etat_du_service` | `on` = panne active ou intervention planifiée en cours, y compris une panne non planifiée en cours alors qu'Hydro-Québec indique encore l'adresse alimentée, `off` = service normal |
 | `binary_sensor.*_intervention_planifiee` | `on` = intervention planifiée active ou à venir, et non annulée. Ses attributs décrivent la plus proche : `debut` et `fin` du créneau en vigueur, `duree_prevue` en minutes, `report_debut` et `report_fin` pour le créneau de remplacement que le site affiche sous « En cas de report » (absents une fois l'interruption reportée), et à partir de 8 heures de travaux `reprise_graduelle_possible` et `fin_au_plus_tard`, 5 heures après la fin, comme la fourchette du site. `interruptions_suivantes` liste les autres avec les mêmes champs |
-| `binary_sensor.*_compatibilite_api` | `on` = structure de l'API Hydro-Québec modifiée *(Diagnostic)* |
 
 > 💡 Dans les exemples ci-dessous, `maison` correspond au nom donné au lieu.
-
-> 💡 Les entités de catégorie **Diagnostic** sont masquées par défaut dans l'interface. Elles sont accessibles via **Paramètres** → **Appareils et services** → appareil → **Entités de diagnostic**.
 
 ---
 
@@ -331,8 +333,8 @@ Le coordinator n'a pas encore reçu de données valides. Vérifiez votre connexi
 **Les sensors restent sur leur ancienne valeur**
 Comportement normal en cas d'erreur réseau transitoire. Les données sont conservées jusqu'au prochain cycle réussi.
 
-**Le sensor `compatibilite_api` est `on` (ou une alerte apparaît dans Réparations)**
-L'API Hydro-Québec a probablement modifié sa structure. Une carte est aussi ajoutée dans **Paramètres** → **Appareils et services** → **Réparations** : « structure modifiée » si la réponse a perdu des champs attendus, « réponse inattendue » si elle n'a plus la forme d'une liste de lieux. Dans ce second cas, les autres entités deviennent indisponibles, mais `compatibilite_api` reste lisible pour vous dire pourquoi.
+**Une alerte apparaît dans Réparations**
+L'API Hydro-Québec a probablement modifié sa structure. Une carte est ajoutée dans **Paramètres** → **Appareils et services** → **Réparations** : « structure modifiée » si la réponse a perdu des champs attendus, « réponse inattendue » si elle n'a plus la forme d'une liste de lieux. Dans ce second cas, les entités deviennent indisponibles, et la carte de Réparations dit pourquoi.
 Vérifiez si une mise à jour de l'intégration est disponible dans HACS et ouvrez une [issue](https://github.com/johnjohn-11/hydropannes/issues) si le problème persiste.
 
 ---

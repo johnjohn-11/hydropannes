@@ -47,9 +47,6 @@
       },
       "derniere_maj": {
         "default": "mdi:clock-outline"
-      },
-      "lieu_consommation": {
-        "default": "mdi:identifier"
       }
     },
     "binary_sensor": {
@@ -64,12 +61,11 @@
         "state": {
           "on": "mdi:calendar-clock"
         }
-      },
-      "api_compatibilite": {
-        "default": "mdi:api",
-        "state": {
-          "on": "mdi:api-off"
-        }
+      }
+    },
+    "calendar": {
+      "interruptions_planifiees": {
+        "default": "mdi:calendar-clock"
       }
     }
   }

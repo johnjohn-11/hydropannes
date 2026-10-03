@@ -124,6 +124,7 @@ jobs:
             "custom_components/hydropannes/model.py"
             "custom_components/hydropannes/sensor.py"
             "custom_components/hydropannes/binary_sensor.py"
+            "custom_components/hydropannes/calendar.py"
             "custom_components/hydropannes/config_flow.py"
             "custom_components/hydropannes/diagnostics.py"
             "custom_components/hydropannes/entity.py"
