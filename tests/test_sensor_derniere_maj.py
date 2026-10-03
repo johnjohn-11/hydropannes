@@ -9,6 +9,7 @@ from typing import Any
 
 from homeassistant.util import dt as dt_util
 
+from custom_components.hydropannes.model import parse_dt
 from custom_components.hydropannes.sensor import HydroPannesDerniereMAJSensor
 
 from .conftest import FakeCoordinator, hours_from_now, make_interruption, make_payload
@@ -39,7 +40,7 @@ def test_date_publication_wins_over_last_success_time() -> None:
 
     sensor = HydroPannesDerniereMAJSensor.__new__(HydroPannesDerniereMAJSensor)
     sensor.coordinator = FakeCoordinator(payload, dt_util.utcnow())  # type: ignore[assignment]
-    assert sensor.native_value == sensor._parse_dt(published)
+    assert sensor.native_value == parse_dt(published)
 
 
 def test_none_before_first_successful_poll() -> None:

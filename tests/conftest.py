@@ -11,6 +11,8 @@ from typing import Any
 from homeassistant.util import dt as dt_util
 import pytest
 
+from custom_components.hydropannes.model import EtatLieu
+
 
 class FakeCoordinator:
     """Minimal stand-in for HydroPannesDataUpdateCoordinator.
@@ -25,6 +27,7 @@ class FakeCoordinator:
     ) -> None:
         """Store the API payload the mixin will interpret."""
         self.data = data
+        self.etat = EtatLieu.depuis(data)
         self.last_success_time = last_success_time
 
 

@@ -36,6 +36,7 @@ from .const import (
     EVENT_DATA_CHANGED,
     UPDATE_INTERVAL,
 )
+from .model import EtatLieu
 
 if TYPE_CHECKING:
     from datetime import datetime
@@ -142,6 +143,9 @@ class HydroPannesDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         # UTC timestamp of the most recent successful fetch. Consumed by the "Dernière MAJ" sensor and the diagnostics report; the base DataUpdateCoordinator exposes no such attribute.
         self.last_success_time: datetime | None = None
 
+        # Reading of the last successful payload. Kept, like data, when an update fails.
+        self.etat: EtatLieu = EtatLieu.depuis(None)
+
         # Interruption field names already reported as unknown, so a schema change is logged once instead of on every poll.
         self._warned_unknown_fields: set[str] = set()
         self._warned_unknown_root_fields: set[str] = set()
@@ -233,6 +237,7 @@ class HydroPannesDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             if self.data is not None:
                 self._fire_change_event(result)
 
+        self.etat = EtatLieu.depuis(result)
         self._adjust_update_interval(result)
         self.last_success_time = dt_util.utcnow()
         return result

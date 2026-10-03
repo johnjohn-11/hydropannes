@@ -19,6 +19,7 @@ from homeassistant.const import EntityCategory
 
 from .const import ETAT_PLANIFIE_REPORTE, GRAP_DUREE_PREVUE_MINUTES, GRAP_FIN_MARGE
 from .entity import HydroPannesEntity
+from .model import effective_dates, interruption_attributes, parse_dt
 
 if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
@@ -76,7 +77,7 @@ class HydroPannesEtatServiceBinarySensor(HydroPannesBinarySensorBase):
         if not self.coordinator.data:
             return None
         # "N" means the service point is not fed, whether or not an interruption object can be matched to it. An unplanned interruption under way also counts, as the site shows it as an outage even while the root etat still says "A".
-        return self._get_root_etat() == "N" or self._get_active_outage() is not None
+        return self._etat.root_etat == "N" or self._etat.panne_active is not None
 
 
 class HydroPannesInterventionPlanifieeBinarySensor(HydroPannesBinarySensorBase):
@@ -94,15 +95,15 @@ class HydroPannesInterventionPlanifieeBinarySensor(HydroPannesBinarySensorBase):
         """Return True if a planned intervention that is neither cancelled nor terminated exists."""
         if not self.coordinator.data:
             return None
-        return bool(self._get_pending_planned())
+        return bool(self._etat.planifiees_en_attente)
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
         """Return key fields from the first planned interruption that is neither cancelled nor terminated."""
-        pending = self._get_pending_planned()
+        pending = self._etat.planifiees_en_attente
         if not pending:
             return {}
-        attrs = self._interruption_attributes(pending[0], INTERVENTION_PLANIFIEE_ATTRIBUTE_KEYS)
+        attrs = interruption_attributes(pending[0], INTERVENTION_PLANIFIEE_ATTRIBUTE_KEYS)
         attrs.update(self._resume(pending[0]))
         if len(pending) > 1:
             attrs["interruptions_suivantes"] = [self._resume(i) for i in pending[1:]]
@@ -110,7 +111,7 @@ class HydroPannesInterventionPlanifieeBinarySensor(HydroPannesBinarySensorBase):
 
     def _resume(self, intr: dict[str, Any]) -> dict[str, Any]:
         """Summarize a planned interruption the way the site's planned-interruption card shows it."""
-        debut, fin = self._get_effective_dates(intr)
+        debut, fin = effective_dates(intr)
         duree = intr.get("dureePrevu")
         item: dict[str, Any] = {
             "debut": debut.isoformat() if debut else None,
@@ -124,9 +125,9 @@ class HydroPannesInterventionPlanifieeBinarySensor(HydroPannesBinarySensorBase):
                 item["fin_au_plus_tard"] = (fin + GRAP_FIN_MARGE).isoformat()
         # On an interruption not yet postponed, the report dates are the fallback slot the site lists under "En cas de report".
         if intr.get("etat") != ETAT_PLANIFIE_REPORTE:
-            report_debut = self._parse_dt(intr.get("dateDebutReport"))
+            report_debut = parse_dt(intr.get("dateDebutReport"))
             if report_debut:
-                report_fin = self._parse_dt(intr.get("dateFinReport"))
+                report_fin = parse_dt(intr.get("dateFinReport"))
                 item["report_debut"] = report_debut.isoformat()
                 item["report_fin"] = report_fin.isoformat() if report_fin else None
         return item

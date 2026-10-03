@@ -17,6 +17,7 @@ from custom_components.hydropannes.const import (
     RETABLISSEMENT_DESCRIPTIONS,
     RETABLISSEMENT_DESCRIPTIONS_MAJEUR,
 )
+from custom_components.hydropannes.model import round_up_quarter
 from custom_components.hydropannes.sensor import (
     HydroPannesAdressesToucheesSensor,
     HydroPannesDateFinSensor,
@@ -48,7 +49,7 @@ def test_major_outage_wins_over_later_ending_one() -> None:
     sensor = build(
         HydroPannesRetablissementSensor, make_payload(etat="N", interruptions=[normal, majeure])
     )
-    assert sensor._get_active_outage()["niveauUrgence"] == "P"
+    assert sensor._etat.panne_active["niveauUrgence"] == "P"
 
 
 def test_latest_ending_outage_wins() -> None:
@@ -57,7 +58,7 @@ def test_latest_ending_outage_wins() -> None:
     sensor = build(
         HydroPannesRetablissementSensor, make_payload(etat="N", interruptions=[early, late])
     )
-    assert sensor._get_active_outage()["nbClient"] == 20
+    assert sensor._etat.panne_active["nbClient"] == 20
 
 
 def test_overlapping_outage_moves_start_back() -> None:
@@ -68,7 +69,7 @@ def test_overlapping_outage_moves_start_back() -> None:
         dateDebut=hours_from_now(-3), dateFin=None, dateFinEstimeeMax=hours_from_now(2)
     )
     payload = make_payload(etat="N", interruptions=[kept, earlier])
-    chosen = build(HydroPannesRetablissementSensor, payload)._get_active_outage()
+    chosen = build(HydroPannesRetablissementSensor, payload)._etat.panne_active
     assert chosen["dateDebut"] == earlier["dateDebut"]
     # The payload itself is left untouched.
     assert kept["dateDebut"] != earlier["dateDebut"]
@@ -80,7 +81,7 @@ def test_non_overlapping_outage_keeps_start() -> None:
     )
     finished_before = make_interruption(dateDebut=hours_from_now(-6), dateFin=hours_from_now(-4))
     payload = make_payload(etat="N", interruptions=[kept, finished_before])
-    assert build(HydroPannesRetablissementSensor, payload)._get_active_outage() is kept
+    assert build(HydroPannesRetablissementSensor, payload)._etat.panne_active is kept
 
 
 # ---------------------------------------------------------------------------
@@ -114,9 +115,9 @@ def test_retablissement_states(overrides, expected) -> None:
     [(0, (14, 0)), (1, (14, 15)), (15, (14, 15)), (31, (14, 45)), (46, (15, 0))],
 )
 def test_round_up_quarter(minute, expected) -> None:
-    sensor = build(HydroPannesRetablissementSensor, None)
+    build(HydroPannesRetablissementSensor, None)
     value = datetime(2026, 9, 25, 14, minute, 30, tzinfo=dt_util.UTC)
-    rounded = sensor._round_up_quarter(value)
+    rounded = round_up_quarter(value)
     assert (rounded.hour, rounded.minute, rounded.second) == (*expected, 30)
 
 

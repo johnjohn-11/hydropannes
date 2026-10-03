@@ -121,7 +121,7 @@ jobs:
             "custom_components/hydropannes/manifest.json"
             "custom_components/hydropannes/const.py"
             "custom_components/hydropannes/coordinator.py"
-            "custom_components/hydropannes/helpers.py"
+            "custom_components/hydropannes/model.py"
             "custom_components/hydropannes/sensor.py"
             "custom_components/hydropannes/binary_sensor.py"
             "custom_components/hydropannes/config_flow.py"
