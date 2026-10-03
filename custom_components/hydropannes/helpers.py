@@ -69,7 +69,7 @@ class HydroPannesHelperMixin:
     # API data accessors
     # ==========================================================================
 
-    def _get_main_etat(self) -> str | None:
+    def _get_root_etat(self) -> str | None:
         """Return the top-level 'etat' field from the API response."""
         if not self.coordinator.data:
             return None
@@ -86,12 +86,12 @@ class HydroPannesHelperMixin:
     # Interruption state checks
     # ==========================================================================
 
-    def _is_outage_active(self, intr: dict[str, Any]) -> bool:
+    def _is_interruption_active(self, intr: dict[str, Any]) -> bool:
         """Return True if the interruption represents an active outage.
 
         An unplanned interruption is active from its own etat, as on the site: C, I or N is under way, T is terminated. A planned one, or an unplanned one with another etat, is active when the root etat is "N" and its end (the new window's end once postponed or shifted) is absent or in the future.
         """
-        if not self._is_planned_intervention(intr):
+        if not self._is_planned(intr):
             # The site goes by the interruption's own etat: a C with root etat "A" is still shown as an outage under way.
             etat = intr.get("etat")
             if etat in ETATS_PANNE_EN_COURS:
@@ -99,20 +99,20 @@ class HydroPannesHelperMixin:
             if etat == ETAT_PANNE_TERMINEE:
                 return False
 
-        main_etat = self._get_main_etat()
-        if main_etat != "N":
+        root_etat = self._get_root_etat()
+        if root_etat != "N":
             return False
 
         # A postponed or shifted planned interruption is active only inside its new window: its dateDebut/dateFin are the abandoned slot, and the root etat can be "N" because of another outage before the new window starts.
         suffix = _NEW_WINDOW_SUFFIX.get(intr.get("etat", ""))
-        if suffix and self._is_planned_intervention(intr):
+        if suffix and self._is_planned(intr):
             debut = self._parse_dt(intr.get(f"dateDebut{suffix}"))
             fin = self._parse_dt(intr.get(f"dateFin{suffix}"))
             return self._is_date_in_past(debut) and (not fin or self._is_date_in_future(fin))
         date_fin = self._parse_dt(intr.get("dateFin"))
         return not date_fin or self._is_date_in_future(date_fin)
 
-    def _is_outage_terminated(self, intr: dict[str, Any]) -> bool:
+    def _is_interruption_terminated(self, intr: dict[str, Any]) -> bool:
         """Return True if the interruption is terminated (power restored).
 
         A postponed or shifted planned interruption is terminated only once its new end is past, and never without one: its original dateFin is the abandoned slot. Any other interruption is terminated once dateFin is past.
@@ -136,7 +136,7 @@ class HydroPannesHelperMixin:
         """Return True when the interruption carries a major-outage urgency level."""
         return intr.get("niveauUrgence") in NIVEAU_URGENCE_MAJEURS
 
-    def _is_planned_intervention(self, intr: dict[str, Any]) -> bool:
+    def _is_planned(self, intr: dict[str, Any]) -> bool:
         """Return True if the interruption is a planned intervention."""
         result: bool = intr.get("interruptionPlanifiee", False)
         return result
@@ -183,7 +183,7 @@ class HydroPannesHelperMixin:
 
     def _is_future_planned(self, intr: dict[str, Any]) -> bool:
         """Return True if the interruption is a planned intervention with a future start."""
-        if not self._is_planned_intervention(intr):
+        if not self._is_planned(intr):
             return False
 
         effective_debut, _ = self._get_effective_dates(intr)
@@ -234,9 +234,9 @@ class HydroPannesHelperMixin:
     def _get_active_outage(self) -> dict[str, Any] | None:
         """Return the active non-planned outage to display, or None.
 
-        An active outage is unplanned, has main etat = "N", and has no dateFin or a dateFin in the future. Like the Info-pannes site, the unplanned interruptions are ranked major first, then by latest end. The first active one is kept, and any interruption ranked after it that overlaps it moves its dateDebut back. The returned dict is then a copy carrying that earlier dateDebut.
+        An active outage is an unplanned interruption that _is_interruption_active accepts. Like the Info-pannes site, the unplanned interruptions are ranked major first, then by latest end. The first active one is kept, and any interruption ranked after it that overlaps it moves its dateDebut back. The returned dict is then a copy carrying that earlier dateDebut.
         """
-        unplanned = [i for i in self._get_interruptions() if not self._is_planned_intervention(i)]
+        unplanned = [i for i in self._get_interruptions() if not self._is_planned(i)]
         # Sort ascending then reverse, like the site, so that ties also come out in reverse payload order.
         ranked = sorted(
             unplanned,
@@ -245,7 +245,7 @@ class HydroPannesHelperMixin:
         chosen: dict[str, Any] | None = None
         for intr in ranked:
             if chosen is None:
-                if self._is_outage_active(intr):
+                if self._is_interruption_active(intr):
                     chosen = intr
                 continue
             chosen_debut = self._parse_dt(chosen.get("dateDebut"))
@@ -267,7 +267,7 @@ class HydroPannesHelperMixin:
         candidates = [
             intr
             for intr in self._get_interruptions()
-            if not self._is_planned_intervention(intr) and self._is_outage_terminated(intr)
+            if not self._is_planned(intr) and self._is_interruption_terminated(intr)
         ]
         if not candidates:
             return None
@@ -287,27 +287,27 @@ class HydroPannesHelperMixin:
             (
                 i
                 for i in self._get_interruptions()
-                if self._is_planned_intervention(i)
+                if self._is_planned(i)
                 and not self._is_planned_cancelled(i)
-                and not self._is_outage_terminated(i)
+                and not self._is_interruption_terminated(i)
             ),
             key=self._planned_sort_key,
         )
 
     def _is_planned_in_progress(self, intr: dict[str, Any]) -> bool:
-        """Return True for a planned interruption under way: main etat "N", neither cancelled nor terminated."""
+        """Return True for a planned interruption under way: root etat "N", neither cancelled nor terminated."""
         return (
-            self._is_planned_intervention(intr)
-            and self._get_main_etat() == "N"
+            self._is_planned(intr)
+            and self._get_root_etat() == "N"
             and not self._is_planned_cancelled(intr)
-            and not self._is_outage_terminated(intr)
+            and not self._is_interruption_terminated(intr)
         )
 
-    def _get_planned_intervention(self) -> dict[str, Any] | None:
+    def _get_planned_interruption(self) -> dict[str, Any] | None:
         """Return the most relevant planned intervention, or None.
 
         Selection priority:
-        1. Active planned intervention (main etat = "N", dateFin absent or future).
+        1. Active planned intervention (root etat "N", end absent or in the future).
         2. Nearest future non-cancelled planned intervention (effective dateDebut in future).
         3. Nearest future planned intervention (including rescheduled ones).
         4. Any planned intervention, including terminated (fallback).
@@ -315,12 +315,12 @@ class HydroPannesHelperMixin:
         "Nearest" follows the Info-pannes ranking, by original dateDebut.
         """
         interruptions = self._get_interruptions()
-        planned = [i for i in interruptions if self._is_planned_intervention(i)]
+        planned = [i for i in interruptions if self._is_planned(i)]
         if not planned:
             return None
 
         for p in planned:
-            if self._is_outage_active(p):
+            if self._is_interruption_active(p):
                 return p
 
         ranked = sorted(planned, key=self._planned_sort_key)
@@ -342,7 +342,7 @@ class HydroPannesHelperMixin:
         return (
             planned is not None
             and not self._is_planned_cancelled(planned)
-            and not self._is_outage_terminated(planned)
+            and not self._is_interruption_terminated(planned)
         )
 
     def _is_non_synchronise(self) -> bool:
@@ -350,13 +350,13 @@ class HydroPannesHelperMixin:
 
         Either the root etat is "A" while an unplanned interruption is under way, or it is "N" while no unplanned outage is under way and no planned interruption is in progress. The site then shows an outage under way without any detail ("Des précisions suivront dès que l'information sur la panne sera disponible").
         """
-        main_etat = self._get_main_etat()
+        root_etat = self._get_root_etat()
         active = self._get_active_outage()
-        if main_etat == "A":
+        if root_etat == "A":
             return active is not None
-        if main_etat != "N" or active:
+        if root_etat != "N" or active:
             return False
-        planned = self._get_planned_intervention()
+        planned = self._get_planned_interruption()
         return not (planned and self._is_planned_in_progress(planned))
 
     def _get_current_interruption(self) -> dict[str, Any] | None:
@@ -378,12 +378,12 @@ class HydroPannesHelperMixin:
         # Yield to an active or future planned interruption when one coexists with a past outage.
         terminated_outage = self._get_terminated_outage()
         if terminated_outage:
-            planned_check = self._get_planned_intervention()
+            planned_check = self._get_planned_interruption()
             if not self._planned_supersedes_terminated(planned_check):
                 return terminated_outage
             # Fall through — planned interruption state supersedes the past outage.
 
-        interruption = self._get_planned_intervention()
+        interruption = self._get_planned_interruption()
         if interruption:
             return interruption
 

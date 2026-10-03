@@ -76,7 +76,7 @@ class HydroPannesEtatServiceBinarySensor(HydroPannesBinarySensorBase):
         if not self.coordinator.data:
             return None
         # "N" means the service point is not fed, whether or not an interruption object can be matched to it. An unplanned interruption under way also counts, as the site shows it as an outage even while the root etat still says "A".
-        return self._get_main_etat() == "N" or self._get_active_outage() is not None
+        return self._get_root_etat() == "N" or self._get_active_outage() is not None
 
 
 class HydroPannesInterventionPlanifieeBinarySensor(HydroPannesBinarySensorBase):

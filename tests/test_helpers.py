@@ -27,32 +27,32 @@ def harness(**payload_kwargs: Any) -> Harness:
 
 
 # ---------------------------------------------------------------------------
-# _is_outage_active
+# _is_interruption_active
 # ---------------------------------------------------------------------------
 
 
 def test_outage_active_when_etat_n_and_no_date_fin() -> None:
     intr = make_interruption(dateFin=None)
     h = harness(etat="N", interruptions=[intr])
-    assert h._is_outage_active(intr) is True
+    assert h._is_interruption_active(intr) is True
 
 
 def test_outage_active_when_date_fin_in_future() -> None:
     intr = make_interruption(dateFin=hours_from_now(3))
     h = harness(etat="N", interruptions=[intr])
-    assert h._is_outage_active(intr) is True
+    assert h._is_interruption_active(intr) is True
 
 
-def test_outage_not_active_when_main_etat_alimente() -> None:
+def test_planned_not_active_when_root_etat_alimente() -> None:
     intr = make_interruption(interruptionPlanifiee=True, dateFin=None)
     h = harness(etat="A", interruptions=[intr])
-    assert h._is_outage_active(intr) is False
+    assert h._is_interruption_active(intr) is False
 
 
 def test_outage_not_active_when_date_fin_in_past() -> None:
     intr = make_interruption(dateFin=hours_from_now(-1))
     h = harness(etat="N", interruptions=[intr])
-    assert h._is_outage_active(intr) is False
+    assert h._is_interruption_active(intr) is False
 
 
 @pytest.mark.parametrize(("etat", "suffix"), [("R", "Report"), ("E", "Decalage")])
@@ -65,7 +65,7 @@ def test_postponed_planned_active_follows_new_end(etat, suffix) -> None:
         **{f"dateDebut{suffix}": hours_from_now(-5), f"dateFin{suffix}": hours_from_now(-1)},
     )
     h = harness(etat="N", interruptions=[intr])
-    assert h._is_outage_active(intr) is False
+    assert h._is_interruption_active(intr) is False
 
 
 @pytest.mark.parametrize(("etat", "suffix"), [("R", "Report"), ("E", "Decalage")])
@@ -83,7 +83,7 @@ def test_postponed_planned_not_active_before_new_window(etat, suffix) -> None:
     )
     outage = make_interruption(etat="C", dateFin=None)
     h = harness(etat="N", interruptions=[planned, outage])
-    assert h._is_outage_active(planned) is False
+    assert h._is_interruption_active(planned) is False
     assert h._get_current_interruption() is outage
 
 
@@ -96,25 +96,25 @@ def test_postponed_planned_active_inside_new_window(etat, suffix) -> None:
         **{f"dateDebut{suffix}": hours_from_now(-1), f"dateFin{suffix}": hours_from_now(2)},
     )
     h = harness(etat="N", interruptions=[intr])
-    assert h._is_outage_active(intr) is True
+    assert h._is_interruption_active(intr) is True
 
 
 # ---------------------------------------------------------------------------
-# _is_outage_terminated
+# _is_interruption_terminated
 # ---------------------------------------------------------------------------
 
 
 def test_outage_terminated_when_date_fin_in_past() -> None:
     intr = make_interruption(dateFin=hours_from_now(-1))
     h = harness(etat="A", interruptions=[intr])
-    assert h._is_outage_terminated(intr) is True
+    assert h._is_interruption_terminated(intr) is True
 
 
 def test_outage_not_terminated_when_etat_reportee_without_new_end() -> None:
     # etat "R" (postponed): the original dateFin is the abandoned slot.
     intr = make_interruption(etat="R", dateFin=hours_from_now(-1))
     h = harness(etat="A", interruptions=[intr])
-    assert h._is_outage_terminated(intr) is False
+    assert h._is_interruption_terminated(intr) is False
 
 
 @pytest.mark.parametrize(("etat", "suffix"), [("R", "Report"), ("E", "Decalage")])
@@ -128,8 +128,8 @@ def test_postponed_or_shifted_terminated_follows_new_end(etat, suffix) -> None:
         )
 
     h = harness(etat="A")
-    assert h._is_outage_terminated(planned(hours_from_now(-1))) is True
-    assert h._is_outage_terminated(planned(hours_from_now(24))) is False
+    assert h._is_interruption_terminated(planned(hours_from_now(-1))) is True
+    assert h._is_interruption_terminated(planned(hours_from_now(24))) is False
 
 
 # ---------------------------------------------------------------------------

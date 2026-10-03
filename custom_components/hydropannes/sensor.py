@@ -79,14 +79,14 @@ async def async_setup_entry(
         [
             HydroPannesInfoPannesSensor(coordinator, entry),
             HydroPannesNiveauUrgenceSensor(coordinator, entry),
-            HydroPannesNombreClientSensor(coordinator, entry),
-            HydroPannesDebutSensor(coordinator, entry),
-            HydroPannesFinEstimeeSensor(coordinator, entry),
+            HydroPannesAdressesToucheesSensor(coordinator, entry),
+            HydroPannesDateDebutSensor(coordinator, entry),
+            HydroPannesDateFinSensor(coordinator, entry),
             HydroPannesStatutInterventionSensor(coordinator, entry),
             HydroPannesRetablissementSensor(coordinator, entry),
             HydroPannesCauseSensor(coordinator, entry),
             HydroPannesDureeSensor(coordinator, entry),
-            HydroPannesDureeAvantRetablissementSensor(coordinator, entry),
+            HydroPannesDelaiAvantRetablissementSensor(coordinator, entry),
             HydroPannesDerniereMAJSensor(coordinator, entry),
             HydroPannesLieuConsoSensor(coordinator, entry),
         ]
@@ -114,13 +114,13 @@ class HydroPannesInfoPannesSensor(HydroPannesSensorBase):
         if not self.coordinator.data:
             return None
 
-        main_etat = self._get_main_etat()
+        root_etat = self._get_root_etat()
         interruptions = self._get_interruptions()
 
         if not interruptions:
-            if main_etat == "A":
+            if root_etat == "A":
                 return "aucune_panne"
-            if main_etat == "N":
+            if root_etat == "N":
                 return "panne_en_cours"
             return None
 
@@ -136,7 +136,7 @@ class HydroPannesInfoPannesSensor(HydroPannesSensorBase):
                 return "panne_majeure"
             return "panne_en_cours"
 
-        planned = self._get_planned_intervention()
+        planned = self._get_planned_interruption()
         if self._get_terminated_outage() and not self._planned_supersedes_terminated(planned):
             return "service_retabli"
 
@@ -145,15 +145,15 @@ class HydroPannesInfoPannesSensor(HydroPannesSensorBase):
                 return "interruption_planifiee_reportee"
             if self._is_planned_cancelled(planned):
                 return "interruption_planifiee_annulee"
-            if self._is_outage_terminated(planned):
+            if self._is_interruption_terminated(planned):
                 return "interruption_planifiee_terminee"
-            if main_etat == "N":
+            if root_etat == "N":
                 return "interruption_planifiee_en_cours"
             return "interruption_planifiee_a_venir"
 
-        if main_etat == "A":
+        if root_etat == "A":
             return "aucune_panne"
-        if main_etat == "N":
+        if root_etat == "N":
             return "panne_en_cours"
         return None
 
@@ -165,7 +165,7 @@ class HydroPannesInfoPannesSensor(HydroPannesSensorBase):
             "interruption_planifiee_reportee",
         ):
             return {}
-        planned = self._get_planned_intervention()
+        planned = self._get_planned_interruption()
         raison = self._raison_annulation(planned) if planned else None
         return {"raison_annulation": raison} if raison else {}
 
@@ -193,7 +193,7 @@ class HydroPannesNiveauUrgenceSensor(HydroPannesSensorBase):
         return NIVEAU_URGENCE_CODES.get(niveau)
 
 
-class HydroPannesNombreClientSensor(HydroPannesSensorBase):
+class HydroPannesAdressesToucheesSensor(HydroPannesSensorBase):
     """Sensor reporting the number of affected addresses."""
 
     _attr_translation_key = "adresses_touchees"
@@ -219,7 +219,7 @@ class HydroPannesNombreClientSensor(HydroPannesSensorBase):
         return {"arrondi": _nb_client_arrondi(nb_client, english=self._english)}
 
 
-class HydroPannesDebutSensor(HydroPannesSensorBase):
+class HydroPannesDateDebutSensor(HydroPannesSensorBase):
     """Sensor reporting the effective start time."""
 
     _attr_translation_key = "date_debut"
@@ -236,7 +236,7 @@ class HydroPannesDebutSensor(HydroPannesSensorBase):
         return effective_debut
 
 
-class HydroPannesFinEstimeeSensor(HydroPannesSensorBase):
+class HydroPannesDateFinSensor(HydroPannesSensorBase):
     """Sensor reporting the effective end time."""
 
     _attr_translation_key = "date_fin"
@@ -312,11 +312,11 @@ class HydroPannesStatutInterventionSensor(HydroPannesSensorBase):
         outage = self._get_current_interruption()
         if not outage:
             return None
-        planned = self._is_planned_intervention(outage)
+        planned = self._is_planned(outage)
         # Checked before termination: the site shows a cancelled planned interruption as cancelled even once its slot is past.
         if planned and self._is_planned_cancelled(outage):
             return "interruption_planifiee_annulee"
-        if self._is_outage_terminated(outage):
+        if self._is_interruption_terminated(outage):
             return "service_retabli"
         if self._is_planned_postponed(outage):
             return "interruption_planifiee_reportee"
@@ -327,7 +327,7 @@ class HydroPannesStatutInterventionSensor(HydroPannesSensorBase):
             _, fin = self._get_effective_dates(outage)
             return "retablissement_prevu" if fin else "travaux_en_cours"
         if planned:
-            # Planned but not under way (main etat not "N"), as the info-pannes sensor reports it. The site shows no step for it.
+            # Planned but not under way (root etat not "N"), as the info-pannes sensor reports it. The site shows no step for it.
             return "interruption_planifiee_a_venir"
         code = outage.get("codeIntervention")
         type_fin = outage.get("typeFinPrevue")
@@ -382,7 +382,7 @@ class HydroPannesRetablissementSensor(HydroPannesSensorBase):
             return None
         outage = self._get_active_outage()
         if not outage:
-            planned = self._get_planned_intervention()
+            planned = self._get_planned_interruption()
             if planned and self._is_planned_in_progress(planned):
                 # A planned interruption has a known end: the site shows it as expected, without revision.
                 _, fin = self._get_effective_dates(planned)
@@ -486,7 +486,7 @@ class HydroPannesDureeSensor(HydroPannesSensorBase):
             return None
 
 
-class HydroPannesDureeAvantRetablissementSensor(HydroPannesSensorBase):
+class HydroPannesDelaiAvantRetablissementSensor(HydroPannesSensorBase):
     """Sensor reporting time remaining until restoration in seconds."""
 
     _attr_translation_key = "delai_avant_retablissement"
@@ -499,7 +499,11 @@ class HydroPannesDureeAvantRetablissementSensor(HydroPannesSensorBase):
     def native_value(self) -> int | None:
         """Return seconds until estimated restoration, or None."""
         outage = self._get_current_interruption()
-        if not outage or self._is_outage_terminated(outage) or not self._is_outage_active(outage):
+        if (
+            not outage
+            or self._is_interruption_terminated(outage)
+            or not self._is_interruption_active(outage)
+        ):
             return None
         date_fin_estimee = self._parse_dt(outage.get("dateFinEstimeeMax"))
         if not date_fin_estimee:
