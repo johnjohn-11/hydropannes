@@ -65,6 +65,7 @@ class HydroPannesEtatServiceBinarySensor(HydroPannesBinarySensorBase):
     """
 
     _attr_translation_key = "etat_service"
+    _write_after_details = True
     _attr_device_class = BinarySensorDeviceClass.PROBLEM
     _unique_id_suffix = "etat_service"
 
@@ -85,6 +86,7 @@ class HydroPannesInterventionPlanifieeBinarySensor(HydroPannesBinarySensorBase):
 
     # No device class: RUNNING would read "Running" while the intervention is only upcoming. The on/off labels come from the translations.
     _attr_translation_key = "intervention_planifiee"
+    _write_after_details = True
     _unique_id_suffix = "intervention_planifiee"
 
     @property
