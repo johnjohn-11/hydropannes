@@ -9,6 +9,8 @@ from typing import TYPE_CHECKING
 from unittest.mock import patch
 
 from homeassistant.config_entries import ConfigEntryState
+from homeassistant.const import EVENT_STATE_CHANGED
+from homeassistant.core import callback
 from homeassistant.helpers import (
     device_registry as dr,
     entity_registry as er,
@@ -518,3 +520,66 @@ async def test_planned_attributes_through_home_assistant(
     assert planned.attributes["duree_prevue"] == 360
     assert planned.attributes["report_debut"].startswith("2099-10-13")
     assert "fin_au_plus_tard" not in planned.attributes
+
+
+async def test_summary_entities_are_written_after_the_detail_sensors(
+    hass: HomeAssistant, aioclient_mock
+) -> None:
+    """Replays a recorded outage going from unsynchronised to restored: an automation triggered by Info-pannes must find the detail sensors of the same poll already written."""
+    unsynchronised = [
+        {
+            "etat": "A",
+            "idLieuConso": LIEU,
+            "interruptions": [
+                {
+                    "dateDebut": "2026-10-05T08:04:01.000+00:00",
+                    "etat": "C",
+                    "interruptionPlanifiee": False,
+                    "codeIntervention": "N",
+                    "nbClient": 1828,
+                }
+            ],
+        }
+    ]
+    restored = [
+        {
+            "etat": "A",
+            "idLieuConso": LIEU,
+            "interruptions": [
+                {
+                    "dateDebut": "2026-10-05T08:04:01.000+00:00",
+                    "dateFin": "2026-10-05T08:04:20.000+00:00",
+                    "etat": "T",
+                    "interruptionPlanifiee": False,
+                    "codeIntervention": "N",
+                    "codeCause": "58",
+                    "nbClient": 1828,
+                }
+            ],
+        }
+    ]
+    aioclient_mock.get(API_URL.format(LIEU), json=unsynchronised)
+    entry = _entry()
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    seen: list[str] = []
+
+    @callback
+    def _record(event) -> None:
+        if event.data["entity_id"] == _state(hass, entry, "sensor", "info_pannes").entity_id:
+            # What an automation triggered by this change would read.
+            seen.extend(
+                _state(hass, entry, "sensor", key).state
+                for key in ("date_debut", "datefin", "duree", "cause")
+            )
+
+    hass.bus.async_listen(EVENT_STATE_CHANGED, _record)
+    aioclient_mock.clear_requests()
+    aioclient_mock.get(API_URL.format(LIEU), json=restored)
+    await entry.runtime_data.async_refresh()
+    await hass.async_block_till_done()
+
+    assert _state(hass, entry, "sensor", "info_pannes").state == "service_retabli"
+    assert seen and "unknown" not in seen
