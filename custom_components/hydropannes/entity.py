@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from homeassistant.core import callback
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
@@ -11,6 +12,8 @@ from .const import ATTRIBUTION, DOMAIN
 from .coordinator import HydroPannesDataUpdateCoordinator
 
 if TYPE_CHECKING:
+    from asyncio import Handle
+
     from . import HydroPannesConfigEntry
     from .model import EtatLieu
 
@@ -24,6 +27,9 @@ class HydroPannesEntity(CoordinatorEntity[HydroPannesDataUpdateCoordinator]):
     _attr_has_entity_name = True
     _attr_attribution = ATTRIBUTION
     _unique_id_suffix: str
+    # Set on the entities automations trigger on (Info-pannes, État du service, Intervention planifiée, the calendar), so an automation they start finds the detail sensors of the same poll already written.
+    _write_after_details = False
+    _deferred_write: Handle | None = None
 
     def __init__(
         self,
@@ -40,6 +46,30 @@ class HydroPannesEntity(CoordinatorEntity[HydroPannesDataUpdateCoordinator]):
             manufacturer="Hydro-Québec",
             model="Info-pannes",
         )
+
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        """Write the state, after the other entities of the poll for a summary entity.
+
+        The coordinator calls every listener in turn within one loop iteration, so a write scheduled with call_soon runs once all of them have written, whatever order Home Assistant added the entities in.
+        """
+        if not self._write_after_details:
+            super()._handle_coordinator_update()
+            return
+        if self._deferred_write is None:
+            self._deferred_write = self.hass.loop.call_soon(self._write_deferred)
+
+    @callback
+    def _write_deferred(self) -> None:
+        self._deferred_write = None
+        self.async_write_ha_state()
+
+    async def async_will_remove_from_hass(self) -> None:
+        """Drop a write still scheduled for an entity being removed."""
+        if self._deferred_write is not None:
+            self._deferred_write.cancel()
+            self._deferred_write = None
+        await super().async_will_remove_from_hass()
 
     @property
     def _etat(self) -> EtatLieu:
