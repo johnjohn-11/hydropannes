@@ -118,6 +118,7 @@ class HydroPannesInfoPannesSensor(HydroPannesSensorBase):
     """
 
     _attr_translation_key = "info_pannes"
+    _write_after_details = True
     _attr_device_class = SensorDeviceClass.ENUM
     _attr_options = INFO_PANNES_OPTIONS
     _unique_id_suffix = "info_pannes"

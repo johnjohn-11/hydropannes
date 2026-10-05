@@ -37,6 +37,7 @@ class HydroPannesCalendar(HydroPannesEntity, CalendarEntity):
     """One event per planned interruption that is not cancelled, on its effective window."""
 
     _attr_translation_key = "interruptions_planifiees"
+    _write_after_details = True
     _unique_id_suffix = "calendrier"
 
     @property
