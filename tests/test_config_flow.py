@@ -111,9 +111,9 @@ async def test_user_flow_strips_whitespace(hass: HomeAssistant) -> None:
 @pytest.mark.parametrize(
     ("error", "expected"),
     [
-        (InvalidFormat, {CONF_LIEU_CONSO: "invalid_format"}),
-        (CannotConnect, {"base": "cannot_connect"}),
-        (InvalidLieuConso, {"base": "invalid_lieu"}),
+        pytest.param(InvalidFormat, {CONF_LIEU_CONSO: "invalid_format"}, id="format_invalide"),
+        pytest.param(CannotConnect, {"base": "cannot_connect"}, id="reseau"),
+        pytest.param(InvalidLieuConso, {"base": "invalid_lieu"}, id="lieu_invalide"),
     ],
 )
 async def test_user_flow_errors(hass: HomeAssistant, error, expected) -> None:
@@ -215,10 +215,21 @@ async def test_address_flow_several_matches(hass: HomeAssistant) -> None:
 @pytest.mark.parametrize(
     ("search", "code_postal", "expected"),
     [
-        ({"return_value": []}, "J7V 8K8", {"base": "adresse_introuvable"}),
-        ({"side_effect": AmbiguousAddress}, "J7V 8K8", {"base": "adresse_ambigue"}),
-        ({"side_effect": CannotConnect}, "J7V 8K8", {"base": "cannot_connect"}),
-        ({"return_value": []}, "J7V 8K", {CONF_CODE_POSTAL: "invalid_code_postal"}),
+        pytest.param(
+            {"return_value": []}, "J7V 8K8", {"base": "adresse_introuvable"}, id="introuvable"
+        ),
+        pytest.param(
+            {"side_effect": AmbiguousAddress}, "J7V 8K8", {"base": "adresse_ambigue"}, id="ambigue"
+        ),
+        pytest.param(
+            {"side_effect": CannotConnect}, "J7V 8K8", {"base": "cannot_connect"}, id="reseau"
+        ),
+        pytest.param(
+            {"return_value": []},
+            "J7V 8K",
+            {CONF_CODE_POSTAL: "invalid_code_postal"},
+            id="code_postal_invalide",
+        ),
     ],
 )
 async def test_address_flow_errors(hass: HomeAssistant, search, code_postal, expected) -> None:
@@ -280,10 +291,12 @@ async def test_search_lieux_conso_parses_answer(
 @pytest.mark.parametrize(
     ("status", "body", "error"),
     [
-        (400, {"error": {"code": "BSSP0001"}}, AmbiguousAddress),
-        (400, {"error": {"code": "AUTRE"}}, CannotConnect),
-        (500, {"error": {"code": "INTERNAL_SERVER_ERROR"}}, CannotConnect),
-        (200, {"inattendu": True}, CannotConnect),
+        pytest.param(400, {"error": {"code": "BSSP0001"}}, AmbiguousAddress, id="doublons"),
+        pytest.param(400, {"error": {"code": "AUTRE"}}, CannotConnect, id="autre_code_400"),
+        pytest.param(
+            500, {"error": {"code": "INTERNAL_SERVER_ERROR"}}, CannotConnect, id="erreur_500"
+        ),
+        pytest.param(200, {"inattendu": True}, CannotConnect, id="reponse_inattendue"),
     ],
 )
 async def test_search_lieux_conso_errors(

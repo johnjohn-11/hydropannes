@@ -109,7 +109,7 @@ jobs:
           PYPROJECT=$(python3 -c "import tomllib; print(tomllib.load(open('pyproject.toml','rb'))['project']['version'])")
           if [[ "$MANIFEST" != "$PYPROJECT" ]]; then
             echo "❌ Version mismatch: manifest.json ($MANIFEST) != pyproject.toml ($PYPROJECT)"
-            echo "Run: just bump <version>"
+            echo "The Release workflow sets both, never edit them by hand"
             exit 1
           fi
           echo "✅ Versions are in sync: $MANIFEST"
