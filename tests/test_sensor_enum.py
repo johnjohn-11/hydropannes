@@ -5,6 +5,7 @@ These sensors report language-neutral slugs; the displayed labels come from the 
 
 from __future__ import annotations
 
+from itertools import product
 from typing import Any
 
 from homeassistant.components.sensor import SensorDeviceClass
@@ -31,11 +32,13 @@ from custom_components.hydropannes.sensor import (
 from .conftest import FakeCoordinator, hours_from_now, make_interruption, make_payload
 
 ENUM_SENSORS = [
-    (HydroPannesInfoPannesSensor, INFO_PANNES_OPTIONS),
-    (HydroPannesNiveauUrgenceSensor, NIVEAU_URGENCE_OPTIONS),
-    (HydroPannesCauseSensor, CAUSE_OPTIONS),
-    (HydroPannesStatutInterventionSensor, STATUT_INTERVENTION_OPTIONS),
-    (HydroPannesRetablissementSensor, RETABLISSEMENT_OPTIONS),
+    pytest.param(HydroPannesInfoPannesSensor, INFO_PANNES_OPTIONS, id="info_pannes"),
+    pytest.param(HydroPannesNiveauUrgenceSensor, NIVEAU_URGENCE_OPTIONS, id="niveau_urgence"),
+    pytest.param(HydroPannesCauseSensor, CAUSE_OPTIONS, id="cause"),
+    pytest.param(
+        HydroPannesStatutInterventionSensor, STATUT_INTERVENTION_OPTIONS, id="statut_intervention"
+    ),
+    pytest.param(HydroPannesRetablissementSensor, RETABLISSEMENT_OPTIONS, id="retablissement"),
 ]
 
 
@@ -75,39 +78,46 @@ def test_options_have_no_duplicates(cls, options) -> None:
 @pytest.mark.parametrize(
     ("payload", "expected"),
     [
-        (make_payload(etat="A", interruptions=[]), "aucune_panne"),
-        (make_payload(etat="N", interruptions=[]), "panne_en_cours"),
-        (
+        pytest.param(make_payload(etat="A", interruptions=[]), "aucune_panne", id="aucune_panne"),
+        pytest.param(
+            make_payload(etat="N", interruptions=[]), "panne_en_cours", id="panne_sans_interruption"
+        ),
+        pytest.param(
             make_payload(etat="N", interruptions=[make_interruption(dateFin=None)]),
             "panne_en_cours",
+            id="panne_en_cours",
         ),
-        (
+        pytest.param(
             make_payload(
                 etat="N",
                 interruptions=[make_interruption(dateFin=None, niveauUrgence="P")],
             ),
             "panne_majeure",
+            id="urgence_p",
         ),
-        (
+        pytest.param(
             make_payload(
                 etat="N",
                 interruptions=[make_interruption(dateFin=None, niveauUrgence="M")],
             ),
             "panne_majeure",
+            id="urgence_m",
         ),
-        (
+        pytest.param(
             make_payload(
                 etat="N",
                 interruptions=[make_interruption(dateFin=None)],
                 repriseGraduellePossible=True,
             ),
             "reprise_graduelle",
+            id="reprise_graduelle",
         ),
-        (
+        pytest.param(
             make_payload(etat="A", interruptions=[make_interruption(dateFin=hours_from_now(-1))]),
             "service_retabli",
+            id="service_retabli",
         ),
-        (
+        pytest.param(
             make_payload(
                 etat="A",
                 interruptions=[
@@ -119,8 +129,9 @@ def test_options_have_no_duplicates(cls, options) -> None:
                 ],
             ),
             "interruption_planifiee_a_venir",
+            id="planifiee_a_venir",
         ),
-        (
+        pytest.param(
             make_payload(
                 etat="N",
                 interruptions=[
@@ -128,8 +139,9 @@ def test_options_have_no_duplicates(cls, options) -> None:
                 ],
             ),
             "interruption_planifiee_en_cours",
+            id="planifiee_en_cours",
         ),
-        (
+        pytest.param(
             make_payload(
                 etat="A",
                 interruptions=[
@@ -137,8 +149,9 @@ def test_options_have_no_duplicates(cls, options) -> None:
                 ],
             ),
             "interruption_planifiee_terminee",
+            id="planifiee_terminee",
         ),
-        (
+        pytest.param(
             make_payload(
                 etat="A",
                 interruptions=[
@@ -151,8 +164,9 @@ def test_options_have_no_duplicates(cls, options) -> None:
                 ],
             ),
             "interruption_planifiee_annulee",
+            id="annulee",
         ),
-        (
+        pytest.param(
             make_payload(
                 etat="A",
                 interruptions=[
@@ -168,8 +182,9 @@ def test_options_have_no_duplicates(cls, options) -> None:
                 ],
             ),
             "interruption_planifiee_reportee",
+            id="reportee",
         ),
-        (
+        pytest.param(
             # Recorded payload: cancelled with code 91 although report dates are present.
             make_payload(
                 etat="A",
@@ -186,8 +201,9 @@ def test_options_have_no_duplicates(cls, options) -> None:
                 ],
             ),
             "interruption_planifiee_annulee",
+            id="annulee_avec_dates_report",
         ),
-        (
+        pytest.param(
             make_payload(
                 etat="A",
                 interruptions=[
@@ -202,6 +218,7 @@ def test_options_have_no_duplicates(cls, options) -> None:
                 ],
             ),
             "interruption_planifiee_a_venir",
+            id="decalee",
         ),
     ],
 )
@@ -299,9 +316,9 @@ def test_every_cause_has_a_description() -> None:
     assert CAUSE_DESCRIPTIONS.keys() == set(CAUSE_OPTIONS)
 
 
-def test_description_is_not_recorded() -> None:
-    for cls in (HydroPannesCauseSensor, HydroPannesStatutInterventionSensor):
-        assert "description" in cls._unrecorded_attributes
+@pytest.mark.parametrize("cls", [HydroPannesCauseSensor, HydroPannesStatutInterventionSensor])
+def test_description_is_not_recorded(cls) -> None:
+    assert "description" in cls._unrecorded_attributes
 
 
 # ---------------------------------------------------------------------------
@@ -312,17 +329,27 @@ def test_description_is_not_recorded() -> None:
 @pytest.mark.parametrize(
     ("overrides", "expected"),
     [
-        ({"codeIntervention": "N"}, "evaluation_travaux"),
-        ({"codeIntervention": "A"}, "evaluation_travaux"),
-        ({"codeIntervention": "R"}, "equipe_designee"),
-        ({"codeIntervention": "L"}, "travaux_en_cours"),
-        ({"codeIntervention": "L", "niveauUrgence": "P"}, "travaux_par_priorite"),
-        ({"codeIntervention": "L", "niveauUrgence": "M"}, "travaux_par_priorite"),
-        ({"typeFinPrevue": "U"}, "retablissement_en_evaluation"),
-        ({"typeFinPrevue": "D"}, "retablissement_prevu"),
-        ({"typeFinPrevue": "F"}, "fin_non_determinee"),
-        ({"typeFinPrevue": "ZZ"}, None),  # unknown code -> no fabricated state
-        ({}, None),
+        pytest.param({"codeIntervention": "N"}, "evaluation_travaux", id="code_n"),
+        pytest.param({"codeIntervention": "A"}, "evaluation_travaux", id="code_a"),
+        pytest.param({"codeIntervention": "R"}, "equipe_designee", id="code_r"),
+        pytest.param({"codeIntervention": "L"}, "travaux_en_cours", id="code_l"),
+        pytest.param(
+            {"codeIntervention": "L", "niveauUrgence": "P"},
+            "travaux_par_priorite",
+            id="code_l_urgence_p",
+        ),
+        pytest.param(
+            {"codeIntervention": "L", "niveauUrgence": "M"},
+            "travaux_par_priorite",
+            id="code_l_urgence_m",
+        ),
+        pytest.param({"typeFinPrevue": "U"}, "retablissement_en_evaluation", id="fin_u"),
+        pytest.param({"typeFinPrevue": "D"}, "retablissement_prevu", id="fin_d"),
+        pytest.param({"typeFinPrevue": "F"}, "fin_non_determinee", id="fin_f"),
+        pytest.param(
+            {"typeFinPrevue": "ZZ"}, None, id="fin_inconnue"
+        ),  # unknown code -> no fabricated state
+        pytest.param({}, None, id="vide"),
     ],
 )
 def test_statut_intervention_states(overrides, expected) -> None:
@@ -334,16 +361,22 @@ def test_statut_intervention_states(overrides, expected) -> None:
 @pytest.mark.parametrize(
     ("overrides", "expected"),
     [
-        ({"codeIntervention": "N"}, STATUT_INTERVENTION_DESCRIPTIONS["evaluation_travaux"]),
-        (
+        pytest.param(
+            {"codeIntervention": "N"},
+            STATUT_INTERVENTION_DESCRIPTIONS["evaluation_travaux"],
+            id="evaluation",
+        ),
+        pytest.param(
             {"codeIntervention": "N", "niveauUrgence": "P"},
             STATUT_INTERVENTION_DESCRIPTIONS_MAJEUR["evaluation_travaux"],
+            id="evaluation_majeure",
         ),
-        (
+        pytest.param(
             {"codeIntervention": "L", "niveauUrgence": "P"},
             STATUT_INTERVENTION_DESCRIPTIONS["travaux_par_priorite"],
+            id="travaux_par_priorite",
         ),
-        ({}, None),  # no state, no description
+        pytest.param({}, None, id="vide"),  # no state, no description
     ],
 )
 def test_statut_intervention_description(overrides, expected) -> None:
@@ -376,46 +409,45 @@ def _payload_matrix() -> list[dict[str, Any]]:
         make_payload(etat="N", interruptions=[]),
         make_payload(etat="X", interruptions=[]),
     ]
-    for etat in ("A", "N"):
-        for planned in (True, False):
-            for date_fin in (None, hours_from_now(-1), hours_from_now(3)):
-                for code_remarque in (None, "91", "92", "93"):
-                    for intr_etat in ("N", "A", "R", "E", "P", "T"):
-                        for extra in (
-                            {},
-                            {"niveauUrgence": "P"},
-                            {"niveauUrgence": "M"},
-                            {"codeIntervention": "L"},
-                            {"typeFinPrevue": "F"},
-                            {"codeCause": "99"},
-                            {"codeCause": "21"},
-                            {"dateFinEstimeeMax": hours_from_now(2)},
-                            {"niveauUrgence": "N"},
-                        ):
-                            intr = make_interruption(
-                                interruptionPlanifiee=planned,
-                                etat=intr_etat,
-                                dateFin=date_fin,
-                                codeRemarque=code_remarque,
-                                dateDebutReport=hours_from_now(24),
-                                dateFinReport=hours_from_now(26),
-                                **extra,
-                            )
-                            payloads.append(make_payload(etat=etat, interruptions=[intr]))
+    extras = (
+        {},
+        {"niveauUrgence": "P"},
+        {"niveauUrgence": "M"},
+        {"codeIntervention": "L"},
+        {"typeFinPrevue": "F"},
+        {"codeCause": "99"},
+        {"codeCause": "21"},
+        {"dateFinEstimeeMax": hours_from_now(2)},
+        {"niveauUrgence": "N"},
+    )
+    for etat, planned, date_fin, code_remarque, intr_etat, extra in product(
+        ("A", "N"),
+        (True, False),
+        (None, hours_from_now(-1), hours_from_now(3)),
+        (None, "91", "92", "93"),
+        ("N", "A", "R", "E", "P", "T"),
+        extras,
+    ):
+        intr = make_interruption(
+            interruptionPlanifiee=planned,
+            etat=intr_etat,
+            dateFin=date_fin,
+            codeRemarque=code_remarque,
+            dateDebutReport=hours_from_now(24),
+            dateFinReport=hours_from_now(26),
+            **extra,
+        )
+        payloads.append(make_payload(etat=etat, interruptions=[intr]))
     return payloads
 
 
 @pytest.mark.parametrize(("cls", "options"), ENUM_SENSORS)
 def test_every_produced_state_is_a_declared_option(cls, options) -> None:
     """Home Assistant raises on a state outside options, so none may escape."""
-    seen = set()
-    for payload in _payload_matrix():
-        value = build(cls, payload).native_value
-        if value is not None:
-            assert value in options, f"{cls.__name__} produced {value!r}, not in options"
-            seen.add(value)
+    produced = {build(cls, payload).native_value for payload in _payload_matrix()} - {None}
+    assert produced <= set(options), f"{cls.__name__} produced {produced - set(options)}"
     # The matrix is only useful if it actually exercises several states.
-    assert len(seen) >= 2
+    assert len(produced) >= 2
 
 
 def test_english_descriptions_cover_the_same_states() -> None:
