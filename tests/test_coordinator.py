@@ -281,7 +281,14 @@ async def test_invalid_payload_shape_marks_incompatible(
     assert coordinator.api_compatible is False
 
 
-@pytest.mark.parametrize("payload", [["x"], [None], [[]]])
+@pytest.mark.parametrize(
+    "payload",
+    [
+        pytest.param(["x"], id="texte"),
+        pytest.param([None], id="null"),
+        pytest.param([[]], id="liste"),
+    ],
+)
 async def test_non_object_first_item_is_invalid_response(
     hass: HomeAssistant, aioclient_mock, payload
 ) -> None:
@@ -326,10 +333,17 @@ async def test_missing_fields_logged_after_invalid_response(
 @pytest.mark.parametrize(
     ("mock_kwargs", "key", "placeholders"),
     [
-        ({"status": 404}, "api_status", {"status": "404"}),
-        ({"status": 503}, "api_server_error", {"status": "503", "attempts": str(MAX_RETRIES + 1)}),
-        ({"exc": TimeoutError()}, "api_timeout", {"attempts": str(MAX_RETRIES + 1)}),
-        ({"json": {"not": "a list"}}, "invalid_response", {}),
+        pytest.param({"status": 404}, "api_status", {"status": "404"}, id="http_404"),
+        pytest.param(
+            {"status": 503},
+            "api_server_error",
+            {"status": "503", "attempts": str(MAX_RETRIES + 1)},
+            id="http_503",
+        ),
+        pytest.param(
+            {"exc": TimeoutError()}, "api_timeout", {"attempts": str(MAX_RETRIES + 1)}, id="delai"
+        ),
+        pytest.param({"json": {"not": "a list"}}, "invalid_response", {}, id="reponse_invalide"),
     ],
 )
 async def test_failure_carries_a_translation_key(

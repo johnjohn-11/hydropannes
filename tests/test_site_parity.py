@@ -92,15 +92,17 @@ def test_non_overlapping_outage_keeps_start() -> None:
 @pytest.mark.parametrize(
     ("overrides", "expected"),
     [
-        ({"dateFinEstimeeMax": hours_from_now(2)}, "prevu"),
-        ({"dateFinEstimeeMax": hours_from_now(-1)}, "en_revision"),
-        ({}, "en_evaluation"),
-        ({"codeIntervention": "N"}, "en_evaluation"),
-        ({"codeIntervention": "A"}, "en_evaluation"),
-        ({"codeIntervention": "R"}, "en_revision"),
-        ({"codeIntervention": "L"}, "en_revision"),
+        pytest.param({"dateFinEstimeeMax": hours_from_now(2)}, "prevu", id="estimee_future"),
+        pytest.param({"dateFinEstimeeMax": hours_from_now(-1)}, "en_revision", id="estimee_passee"),
+        pytest.param({}, "en_evaluation", id="vide"),
+        pytest.param({"codeIntervention": "N"}, "en_evaluation", id="code_n"),
+        pytest.param({"codeIntervention": "A"}, "en_evaluation", id="code_a"),
+        pytest.param({"codeIntervention": "R"}, "en_revision", id="code_r"),
+        pytest.param({"codeIntervention": "L"}, "en_revision", id="code_l"),
         # typeFinPrevue "U" does not prevent the revision, as on the site.
-        ({"codeIntervention": "L", "typeFinPrevue": "U"}, "en_revision"),
+        pytest.param(
+            {"codeIntervention": "L", "typeFinPrevue": "U"}, "en_revision", id="code_l_fin_u"
+        ),
     ],
 )
 def test_retablissement_states(overrides, expected) -> None:
@@ -143,8 +145,11 @@ def test_retablissement_major_description() -> None:
 @pytest.mark.parametrize(
     "payload",
     [
-        make_payload(etat="A", interruptions=[]),
-        make_payload(etat="A", interruptions=[make_interruption(dateFin=hours_from_now(-1))]),
+        pytest.param(make_payload(etat="A", interruptions=[]), id="aucune_interruption"),
+        pytest.param(
+            make_payload(etat="A", interruptions=[make_interruption(dateFin=hours_from_now(-1))]),
+            id="panne_terminee",
+        ),
     ],
 )
 def test_retablissement_none_without_outage_or_planned_in_progress(payload) -> None:
@@ -192,8 +197,8 @@ def test_new_attributes_are_not_recorded() -> None:
 @pytest.mark.parametrize(
     ("date_fin", "statut", "retablissement"),
     [
-        (hours_from_now(2), "retablissement_prevu", "prevu"),
-        (None, "travaux_en_cours", None),
+        pytest.param(hours_from_now(2), "retablissement_prevu", "prevu", id="fin_connue"),
+        pytest.param(None, "travaux_en_cours", None, id="fin_inconnue"),
     ],
 )
 def test_planned_in_progress_steps(date_fin, statut, retablissement) -> None:
@@ -287,17 +292,24 @@ def test_info_pannes_follows_the_nearest_planned() -> None:
 @pytest.mark.parametrize(
     ("overrides", "expected"),
     [
-        ({"etat": "P"}, "interruption_planifiee_a_venir"),
-        ({"etat": "E", "dateDebutDecalage": hours_from_now(30)}, "interruption_planifiee_a_venir"),
-        (
+        pytest.param({"etat": "P"}, "interruption_planifiee_a_venir", id="confirmee"),
+        pytest.param(
+            {"etat": "E", "dateDebutDecalage": hours_from_now(30)},
+            "interruption_planifiee_a_venir",
+            id="decalee",
+        ),
+        pytest.param(
             {
                 "etat": "R",
                 "dateDebutReport": hours_from_now(30),
                 "dateFinReport": hours_from_now(34),
             },
             "interruption_planifiee_reportee",
+            id="reportee",
         ),
-        ({"etat": "A", "codeRemarque": "91"}, "interruption_planifiee_annulee"),
+        pytest.param(
+            {"etat": "A", "codeRemarque": "91"}, "interruption_planifiee_annulee", id="annulee"
+        ),
     ],
 )
 def test_statut_of_planned_not_under_way(overrides, expected) -> None:
