@@ -3,10 +3,9 @@
 
 GitHub (`generate_release_notes`) ne liste que les pull requests : les commits
 poussés directement sur la branche par défaut n'apparaissent jamais. Ce script
-parcourt tous les commits depuis le tag de version précédent et produit une
-seule liste chronologique : chaque entrée est soit la PR d'origine du commit
-(dédupliquée), soit, à défaut, le commit direct (titre + lien + auteur
-cliquable).
+parcourt tous les commits depuis le tag de version précédent, dans l'ordre chronologique : chaque entrée est soit la PR d'origine du commit (dédupliquée), soit, à défaut, le commit direct (titre + lien + auteur cliquable).
+
+Les entrées sont regroupées selon le préfixe du titre : « feat » sous Nouveautés, « fix » sous Corrections, tout le reste sous Maintenance, en dernier.
 
 Changements incompatibles : toute ligne d'un message de commit commençant par
 « Breaking change: » (insensible à la casse) est reprise — jusqu'à la fin du
@@ -15,6 +14,7 @@ paragraphe — dans une section « Changements incompatibles » en tête des not
 
 import json
 import os
+import re
 import subprocess
 
 REPO = os.environ["GITHUB_REPOSITORY"]  # owner/repo
@@ -23,6 +23,11 @@ TAG = f"v{VERSION}"
 SERVER = os.environ.get("GITHUB_SERVER_URL", "https://github.com")
 
 BREAKING_PREFIX = "breaking change:"
+
+# Préfixe conventionnel du titre → section. Tout autre préfixe, ou aucun, va sous « Maintenance ».
+SECTIONS = {"feat": "Nouveautés", "fix": "Corrections"}
+MAINTENANCE = "Maintenance"
+PREFIX_RE = re.compile(r"^(\w+)(\([^)]*\))?!?:")
 
 
 def run(*args):
@@ -77,13 +82,19 @@ def extract_breaking(message):
     return None
 
 
+def section(title):
+    match = PREFIX_RE.match(title)
+    return SECTIONS.get(match.group(1).lower(), MAINTENANCE) if match else MAINTENANCE
+
+
 def main():
     prev = previous_tag()
-    changes = []
+    changes = {name: [] for name in [*SECTIONS.values(), MAINTENANCE]}
     breaking = []
     seen_prs = set()
 
-    for sha in commit_shas(prev):
+    # rev-list donne le plus récent en premier, les notes suivent l'ordre chronologique.
+    for sha in reversed(commit_shas(prev)):
         commit = gh_api(f"repos/{REPO}/commits/{sha}")
         message = commit["commit"]["message"]
         title = message.splitlines()[0]
@@ -102,11 +113,11 @@ def main():
                 seen_prs.add(pr["number"])
                 author = (pr.get("user") or {}).get("login")
                 by = f" par {user_link(author, None)}" if author else ""
-                changes.append(f"* {pr['title']}{by} dans #{pr['number']}")
+                changes[section(pr["title"])].append(f"* {pr['title']}{by} dans #{pr['number']}")
         else:
             login = (commit.get("author") or {}).get("login")
             name = commit["commit"]["author"]["name"]
-            changes.append(
+            changes[section(title)].append(
                 f"* {title} ([`{sha[:7]}`]({commit['html_url']})) par {user_link(login, name)}"
             )
 
@@ -116,9 +127,11 @@ def main():
         lines += [f"- {note}" for note in breaking]
         lines.append("")
 
-    lines += ["## Quoi de neuf", ""]
-    lines += changes or ["_Aucun changement notable._"]
-    lines.append("")
+    for name, entries in changes.items():
+        if entries:
+            lines += [f"## {name}", "", *entries, ""]
+    if not any(changes.values()):
+        lines += ["_Aucun changement notable._", ""]
 
     if prev:
         lines.append(f"**Changelog complet** : {SERVER}/{REPO}/compare/{prev}...{TAG}")
