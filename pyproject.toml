@@ -45,3 +45,8 @@ strict = false
 [[tool.mypy.overrides]]
 module = "homeassistant.*"
 ignore_missing_imports = true
+
+# Home Assistant 2026.10 types flow schemas as probatio, but still accepts voluptuous at runtime. Kept on voluptuous for the older versions hacs.json allows.
+[[tool.mypy.overrides]]
+module = "hydropannes.config_flow"
+disable_error_code = ["arg-type"]

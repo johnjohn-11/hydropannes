@@ -212,7 +212,9 @@ async def test_device_is_named_after_the_location_alone(
     assert await hass.config_entries.async_setup(entry.entry_id)
     await hass.async_block_till_done()
 
-    device = dr.async_get(hass).async_get_device(identifiers={(DOMAIN, entry.entry_id)})
+    device = dr.async_get(hass).async_get_device_by_identifier(
+        (DOMAIN, entry.entry_id), entry.entry_id
+    )
     assert device is not None
     assert device.name == "Maison"
 
@@ -235,7 +237,9 @@ async def test_rename_without_options_flow(hass: HomeAssistant, aioclient_mock) 
     hass.config_entries.async_update_entry(entry, title="Chalet")
     await hass.async_block_till_done()
 
-    device = dr.async_get(hass).async_get_device(identifiers={(DOMAIN, entry.entry_id)})
+    device = dr.async_get(hass).async_get_device_by_identifier(
+        (DOMAIN, entry.entry_id), entry.entry_id
+    )
     assert device.name == "Chalet"
 
 
