@@ -1,5 +1,5 @@
 # pytest-homeassistant-custom-component hard-pins an exact Home Assistant
-# version; 0.13.372 pins homeassistant==2026.10.1, matching requirements-ci.txt.
+# version, and the only Home Assistant pin of the repo: 0.13.372 pins homeassistant==2026.10.1.
 # It brings pytest, pytest-asyncio, and the HA test helpers transitively.
 pytest-homeassistant-custom-component==0.13.372
 

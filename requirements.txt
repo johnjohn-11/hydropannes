@@ -1,5 +1,4 @@
-# Pinned to match requirements-ci.txt so local dev == CI.
-homeassistant==2026.10.1
+# Home Assistant comes from requirements-test.txt, through the exact version pytest-homeassistant-custom-component pins, so local dev == CI.
+-r requirements-test.txt
 colorlog
-ruff
 mypy
