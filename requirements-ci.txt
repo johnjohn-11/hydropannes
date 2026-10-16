@@ -1,2 +1,3 @@
-homeassistant==2026.10.1
+# Home Assistant comes from requirements-test.txt, through the exact version pytest-homeassistant-custom-component pins.
+-r requirements-test.txt
 mypy
