@@ -3,21 +3,27 @@ updates:
   - package-ecosystem: "pip"
     directory: "/"
     schedule:
-      interval: "weekly"
-    open-pull-requests-limit: 3
+      interval: "monthly"
     labels:
       - "dependencies"
+    commit-message:
+      prefix: "chore"
+      include: "scope"
+    groups:
+      pip:
+        patterns:
+          - "*"
 
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
-      interval: "weekly"
-    open-pull-requests-limit: 5
+      interval: "monthly"
     labels:
       - "dependencies"
-
+    commit-message:
+      prefix: "chore"
+      include: "scope"
     groups:
-      actions-minor:
-        update-types:
-          - "minor"
-          - "patch"
+      actions:
+        patterns:
+          - "*"
