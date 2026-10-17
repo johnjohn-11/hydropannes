@@ -1,6 +1,6 @@
 {
     "name": "Hydropannes Dev",
-    "image": "mcr.microsoft.com/devcontainers/python:1-3.13-bookworm",
+    "image": "mcr.microsoft.com/devcontainers/python:3-3.14-bookworm",
     "postCreateCommand": "bash scripts/setup",
     "appPort": [
         "8123:8123"
