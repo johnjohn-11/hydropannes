@@ -282,7 +282,7 @@ async def test_migration_2_1_drops_leftover_options(hass: HomeAssistant, aioclie
     assert await hass.config_entries.async_setup(entry.entry_id)
     await hass.async_block_till_done()
 
-    assert (entry.version, entry.minor_version) == (2, 2)
+    assert (entry.version, entry.minor_version) == (2, 3)
     assert entry.options == {}
     assert entry.data == {CONF_LIEU_CONSO: LIEU}
 
@@ -344,7 +344,7 @@ async def test_broken_payload_raises_a_repair_issue(hass: HomeAssistant, aioclie
 
 
 async def test_removed_entities_leave_the_registry(hass: HomeAssistant, aioclient_mock) -> None:
-    """The API-compatibility entity of an older version is removed at setup, the consumption location is kept."""
+    """The API-compatibility entity of an older version is removed by the migration, the consumption location is kept."""
     aioclient_mock.get(API_URL.format(LIEU), json=PAYLOAD)
     entry = _entry()
     entry.add_to_hass(hass)

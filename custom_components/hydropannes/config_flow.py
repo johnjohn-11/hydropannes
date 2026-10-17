@@ -196,7 +196,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
     # Version 2 dropped the location name from entry.data, 2.2 the leftover options; see async_migrate_entry in __init__.py.
     VERSION = 2
-    MINOR_VERSION = 2
+    MINOR_VERSION = 3
 
     async def _async_validate(self, lieu: str) -> dict[str, str]:
         """Validate a number and return the form errors, empty when it is valid.
