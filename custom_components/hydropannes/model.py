@@ -39,7 +39,7 @@ def parse_dt(value: str | None) -> datetime | None:
         return None
     try:
         parsed = dt_util.parse_datetime(value)
-    except (ValueError, TypeError):
+    except ValueError, TypeError:
         return None
     return dt_util.as_local(parsed) if parsed else None
 

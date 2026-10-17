@@ -2,10 +2,10 @@
 name = "hydropannes"
 version = "1.4.1"
 description = "Home Assistant integration for Hydro-Québec outage monitoring"
-requires-python = ">=3.13"
+requires-python = ">=3.14"
 
 [tool.ruff]
-target-version = "py313"
+target-version = "py314"
 line-length = 100
 
 [tool.ruff.lint]
@@ -36,7 +36,7 @@ testpaths = ["tests"]
 asyncio_mode = "auto"
 
 [tool.mypy]
-python_version = "3.13"
+python_version = "3.14"
 warn_return_any = true
 warn_unused_configs = true
 ignore_missing_imports = true
@@ -45,8 +45,3 @@ strict = false
 [[tool.mypy.overrides]]
 module = "homeassistant.*"
 ignore_missing_imports = true
-
-# Home Assistant 2026.10 types flow schemas as probatio, but still accepts voluptuous at runtime. Kept on voluptuous for the older versions hacs.json allows.
-[[tool.mypy.overrides]]
-module = "hydropannes.config_flow"
-disable_error_code = ["arg-type"]

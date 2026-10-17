@@ -23,7 +23,7 @@ from homeassistant.helpers.selector import (
     SelectSelectorConfig,
     SelectSelectorMode,
 )
-import voluptuous as vol
+import probatio
 
 from .const import (
     API_URL,
@@ -52,31 +52,31 @@ _CODE_POSTAL_RE = re.compile(r"^[A-Z]\d[A-Z]\d[A-Z]\d$")
 # Error code the lookup returns with HTTP 400 when one address maps to several locations it cannot tell apart.
 _SEARCH_DUPLICATES_CODE = "BSSP0001"
 
-STEP_NUMERO_DATA_SCHEMA = vol.Schema(
+STEP_NUMERO_DATA_SCHEMA = probatio.Schema(
     {
-        vol.Required(CONF_LIEU_CONSO): str,
-        vol.Required(CONF_NOM_LIEU): vol.All(str, vol.Length(min=1)),
+        probatio.Required(CONF_LIEU_CONSO): str,
+        probatio.Required(CONF_NOM_LIEU): probatio.All(str, probatio.Length(min=1)),
     }
 )
 
-STEP_ADRESSE_DATA_SCHEMA = vol.Schema(
+STEP_ADRESSE_DATA_SCHEMA = probatio.Schema(
     {
-        vol.Required(CONF_CODE_POSTAL): str,
-        vol.Required(CONF_NUMERO_CIVIQUE): str,
-        vol.Optional(CONF_APPARTEMENT): str,
+        probatio.Required(CONF_CODE_POSTAL): str,
+        probatio.Required(CONF_NUMERO_CIVIQUE): str,
+        probatio.Optional(CONF_APPARTEMENT): str,
     }
 )
 
-STEP_NOM_DATA_SCHEMA = vol.Schema(
+STEP_NOM_DATA_SCHEMA = probatio.Schema(
     {
-        vol.Required(CONF_NOM_LIEU): vol.All(str, vol.Length(min=1)),
+        probatio.Required(CONF_NOM_LIEU): probatio.All(str, probatio.Length(min=1)),
     }
 )
 
 # Reconfigure only changes the consumption location number; the name is the entry title and is changed with Home Assistant's own Rename action.
-STEP_RECONFIGURE_DATA_SCHEMA = vol.Schema(
+STEP_RECONFIGURE_DATA_SCHEMA = probatio.Schema(
     {
-        vol.Required(CONF_LIEU_CONSO): str,
+        probatio.Required(CONF_LIEU_CONSO): str,
     }
 )
 
@@ -281,9 +281,9 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         ]
         return self.async_show_form(
             step_id="choix",
-            data_schema=vol.Schema(
+            data_schema=probatio.Schema(
                 {
-                    vol.Required(CONF_LIEU_CONSO): SelectSelector(
+                    probatio.Required(CONF_LIEU_CONSO): SelectSelector(
                         SelectSelectorConfig(options=options, mode=SelectSelectorMode.LIST)
                     )
                 }

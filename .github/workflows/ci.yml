@@ -84,22 +84,6 @@ jobs:
       - name: Run pytest
         run: pytest
 
-  compile-py313:
-    name: Python 3.13 syntax
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v7.0.1
-
-      # Home Assistant before 2026.3 runs on Python 3.13, which hacs.json still allows.
-      - name: Set up Python
-        uses: actions/setup-python@v7.0.0
-        with:
-          python-version: "3.13"
-
-      - name: Compile the integration
-        run: python -m compileall -q custom_components/hydropannes
-
   validate:
     name: Validate
     runs-on: ubuntu-latest

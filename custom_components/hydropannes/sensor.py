@@ -496,7 +496,7 @@ class HydroPannesDureeSensor(HydroPannesSensorBase):
                 return None
             end = effective_fin or dt_util.now()
             return max(round((end - effective_debut).total_seconds()), 0)
-        except (ValueError, TypeError):
+        except ValueError, TypeError:
             _LOGGER.exception("Error calculating interruption duration")
             return None
 
