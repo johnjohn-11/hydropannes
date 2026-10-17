@@ -24,7 +24,7 @@ _LOGGER = logging.getLogger(__name__)
 
 PLATFORMS: list[Platform] = [Platform.SENSOR, Platform.BINARY_SENSOR, Platform.CALENDAR]
 
-# Unique-id suffixes of entities the integration no longer provides. Their registry entries are removed at setup so they do not linger as unavailable.
+# Unique-id suffixes of entities the integration no longer provides. The migration to 2.3 removes their registry entries so they do not linger as unavailable.
 REMOVED_ENTITY_SUFFIXES = ("api_compatibility",)
 
 type HydroPannesConfigEntry = ConfigEntry[HydroPannesDataUpdateCoordinator]
@@ -46,14 +46,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: HydroPannesConfigEntry) 
     # Reload the entry when its data or options change (e.g. a rename) so the new title takes effect immediately.
     entry.async_on_unload(entry.add_update_listener(_async_update_listener))
 
-    registry = er.async_get(hass)
-    for suffix in REMOVED_ENTITY_SUFFIXES:
-        for domain in ("sensor", "binary_sensor"):
-            if entity_id := registry.async_get_entity_id(
-                domain, DOMAIN, f"{entry.entry_id}_{suffix}"
-            ):
-                registry.async_remove(entity_id)
-
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
     return True
@@ -73,6 +65,17 @@ async def async_migrate_entry(hass: HomeAssistant, entry: HydroPannesConfigEntry
         # The removed options flow left its values behind (e.g. json_log); nothing reads them any more.
         hass.config_entries.async_update_entry(entry, options={}, minor_version=2)
         _LOGGER.debug("Migrated config entry %s to version 2.2", entry.entry_id)
+
+    if entry.version == 2 and entry.minor_version < 3:
+        registry = er.async_get(hass)
+        for suffix in REMOVED_ENTITY_SUFFIXES:
+            for domain in ("sensor", "binary_sensor"):
+                if entity_id := registry.async_get_entity_id(
+                    domain, DOMAIN, f"{entry.entry_id}_{suffix}"
+                ):
+                    registry.async_remove(entity_id)
+        hass.config_entries.async_update_entry(entry, minor_version=3)
+        _LOGGER.debug("Migrated config entry %s to version 2.3", entry.entry_id)
 
     return True
 
