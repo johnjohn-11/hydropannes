@@ -55,7 +55,7 @@ _SEARCH_DUPLICATES_CODE = "BSSP0001"
 STEP_NUMERO_DATA_SCHEMA = probatio.Schema(
     {
         probatio.Required(CONF_LIEU_CONSO): str,
-        probatio.Required(CONF_NOM_LIEU): probatio.All(str, probatio.Length(min=1)),
+        probatio.Required(CONF_NOM_LIEU): probatio.All(str, probatio.Strip, probatio.Length(min=1)),
     }
 )
 
@@ -69,7 +69,7 @@ STEP_ADRESSE_DATA_SCHEMA = probatio.Schema(
 
 STEP_NOM_DATA_SCHEMA = probatio.Schema(
     {
-        probatio.Required(CONF_NOM_LIEU): probatio.All(str, probatio.Length(min=1)),
+        probatio.Required(CONF_NOM_LIEU): probatio.All(str, probatio.Strip, probatio.Length(min=1)),
     }
 )
 
@@ -325,10 +325,13 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         errors: dict[str, str] = {}
         if user_input is not None:
             lieu = user_input[CONF_LIEU_CONSO].strip()
-            # Before validating, so a duplicate aborts without calling the API.
-            await self.async_set_unique_id(lieu)
-            self._abort_if_unique_id_configured()
-            errors = await self._async_validate(lieu)
+            if not _LIEU_CONSO_RE.match(lieu):
+                errors = {CONF_LIEU_CONSO: "invalid_format"}
+            else:
+                # Before calling the API, so a duplicate aborts without it.
+                await self.async_set_unique_id(lieu)
+                self._abort_if_unique_id_configured()
+                errors = await self._async_validate(lieu)
             if not errors:
                 return self.async_create_entry(
                     title=user_input[CONF_NOM_LIEU],
