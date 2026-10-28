@@ -194,7 +194,7 @@ def _format_adresse(lieu: dict[str, Any], key: str) -> str:
 class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Handle the initial configuration flow for Hydro-Pannes."""
 
-    # Version 2 dropped the location name from entry.data, 2.2 the leftover options; see async_migrate_entry in __init__.py.
+    # Version 2 dropped the location name from entry.data, 2.2 the leftover options, 2.3 the registry entries of removed entities. See async_migrate_entry in __init__.py.
     VERSION = 2
     MINOR_VERSION = 3
 
