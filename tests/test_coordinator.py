@@ -344,6 +344,7 @@ async def test_missing_fields_logged_after_invalid_response(
             {"exc": TimeoutError()}, "api_timeout", {"attempts": str(MAX_RETRIES + 1)}, id="delai"
         ),
         pytest.param({"json": {"not": "a list"}}, "invalid_response", {}, id="reponse_invalide"),
+        pytest.param({"text": "<html>"}, "invalid_response", {}, id="corps_pas_json"),
     ],
 )
 async def test_failure_carries_a_translation_key(

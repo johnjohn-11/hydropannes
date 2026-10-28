@@ -187,7 +187,12 @@ class HydroPannesDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             try:
                 async with asyncio.timeout(REQUEST_TIMEOUT), session.get(url) as response:
                     if response.status == 200:
-                        return await response.json()
+                        try:
+                            return await response.json()
+                        except ValueError:
+                            self._raise_failure(
+                                "API returned a body that is not JSON", "invalid_response"
+                            )
                     if not 500 <= response.status < 600:
                         self._raise_failure(
                             f"API returned status {response.status}",
@@ -218,7 +223,7 @@ class HydroPannesDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     def _process_payload(self, data: Any) -> dict[str, Any]:
         """Validate a decoded response and update the coordinator's bookkeeping."""
         if not data or not isinstance(data, list) or not isinstance(data[0], dict):
-            # Surface this through Repairs too: the update fails, so entities other than the API-compatibility sensor go unavailable and cannot report it.
+            # Surface this through Repairs too: the update fails, so every entity goes unavailable and none can report it.
             self._flag_invalid_response()
             self._raise_failure(
                 "API returned invalid data format (expected a list of objects)", "invalid_response"
@@ -305,7 +310,7 @@ class HydroPannesDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     def _flag_invalid_response(self) -> None:
         """Mark the API incompatible and raise a repair issue.
 
-        Called when the payload is not a non-empty list of objects. Unlike a missing root field, this also fails the update, so every entity except the API-compatibility sensor goes unavailable — Repairs is then the only place the user can see what happened.
+        Called when the payload is not a non-empty list of objects. Unlike a missing root field, this also fails the update, so every entity goes unavailable and Repairs is then the only place the user can see what happened.
         """
         self.api_compatible = False
         if self._invalid_response_flagged:
