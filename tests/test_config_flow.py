@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING
 from unittest.mock import patch
 
 from homeassistant import config_entries
-from homeassistant.data_entry_flow import FlowResultType
+from homeassistant.data_entry_flow import FlowResultType, InvalidData
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
@@ -106,6 +106,37 @@ async def test_user_flow_strips_whitespace(hass: HomeAssistant) -> None:
     assert result["data"][CONF_LIEU_CONSO] == "0123456789"
     # validate_lieu_conso receives the already-stripped number.
     assert validate.call_args.args[1] == "0123456789"
+
+
+async def test_user_flow_strips_name(hass: HomeAssistant) -> None:
+    """The name is stripped before it becomes the title, and a blank one is refused."""
+    result = await _start(hass, "numero")
+    with pytest.raises(InvalidData):
+        await hass.config_entries.flow.async_configure(
+            result["flow_id"], {CONF_LIEU_CONSO: "0123456789", CONF_NOM_LIEU: "   "}
+        )
+
+    with patch(_VALIDATE, return_value=None), patch(_SETUP, return_value=True):
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"], {CONF_LIEU_CONSO: "0123456789", CONF_NOM_LIEU: "  Maison "}
+        )
+        await hass.async_block_till_done()
+
+    assert result["title"] == "Maison"
+
+
+async def test_user_flow_bad_format_skips_unique_id(hass: HomeAssistant) -> None:
+    """A malformed number is refused before the flow claims it as unique id or calls the API."""
+    result = await _start(hass, "numero")
+    with patch(_VALIDATE) as validate:
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"], {CONF_LIEU_CONSO: "123", CONF_NOM_LIEU: "Maison"}
+        )
+
+    assert result["errors"] == {CONF_LIEU_CONSO: "invalid_format"}
+    assert validate.call_count == 0
+    flow = hass.config_entries.flow.async_get(result["flow_id"])
+    assert flow["context"].get("unique_id") is None
 
 
 @pytest.mark.parametrize(
