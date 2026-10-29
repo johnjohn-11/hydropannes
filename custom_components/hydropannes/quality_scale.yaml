@@ -1,0 +1,92 @@
+rules:
+  # Bronze
+  action-setup:
+    status: exempt
+    comment: The integration registers no actions.
+  appropriate-polling: done
+  brands: done
+  common-modules: done
+  config-flow: done
+  config-flow-test-coverage: done
+  dependency-transparency:
+    status: exempt
+    comment: No requirements, the API is called with the shared aiohttp session.
+  docs-actions:
+    status: exempt
+    comment: The integration registers no actions.
+  docs-conditions:
+    status: exempt
+    comment: No device conditions.
+  docs-high-level-description: done
+  docs-installation-instructions: done
+  docs-removal-instructions: done
+  docs-triggers:
+    status: exempt
+    comment: No device triggers.
+  entity-event-setup:
+    status: exempt
+    comment: Entities only listen to the coordinator.
+  entity-unique-id: done
+  has-entity-name: done
+  runtime-data: done
+  test-before-configure: done
+  test-before-setup: done
+  unique-config-entry: done
+
+  # Silver
+  action-exceptions:
+    status: exempt
+    comment: The integration registers no actions.
+  config-entry-unloading: done
+  docs-configuration-parameters:
+    status: exempt
+    comment: No options flow.
+  docs-installation-parameters: done
+  entity-unavailable: done
+  integration-owner: done
+  log-when-unavailable: done
+  parallel-updates: done
+  reauthentication-flow:
+    status: exempt
+    comment: The public API needs no authentication.
+  test-coverage: done
+
+  # Gold
+  devices: done
+  diagnostics: done
+  discovery:
+    status: exempt
+    comment: A cloud service with nothing to discover.
+  discovery-update-info:
+    status: exempt
+    comment: A cloud service with nothing to discover.
+  docs-data-update: done
+  docs-examples: done
+  docs-known-limitations: done
+  docs-supported-devices:
+    status: exempt
+    comment: A service, not a device.
+  docs-supported-functions: done
+  docs-troubleshooting: done
+  docs-use-cases: done
+  dynamic-devices:
+    status: exempt
+    comment: One device per config entry.
+  entity-category: done
+  entity-device-class: done
+  entity-disabled-by-default: done
+  entity-translations: done
+  exception-translations: done
+  icon-translations: done
+  reconfiguration-flow: done
+  repair-issues: done
+  stale-devices:
+    status: exempt
+    comment: One device per config entry, removed with it.
+
+  # Platinum
+  async-dependency:
+    status: exempt
+    comment: No dependency.
+  inject-websession: done
+  strict-typing: done
