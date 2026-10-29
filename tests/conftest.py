@@ -9,9 +9,8 @@ from datetime import datetime, timedelta
 from typing import Any
 
 from homeassistant.util import dt as dt_util
+from pyhydropannes import LocationState
 import pytest
-
-from custom_components.hydropannes.model import EtatLieu
 
 
 class FakeCoordinator:
@@ -27,7 +26,7 @@ class FakeCoordinator:
     ) -> None:
         """Store the API payload the mixin will interpret."""
         self.data = data
-        self.etat = EtatLieu.depuis(data)
+        self.etat = LocationState.from_payload(data or {})
         self.last_success_time = last_success_time
 
 
