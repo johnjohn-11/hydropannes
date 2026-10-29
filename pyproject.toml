@@ -37,10 +37,8 @@ asyncio_mode = "auto"
 
 [tool.mypy]
 python_version = "3.14"
-warn_return_any = true
-warn_unused_configs = true
 ignore_missing_imports = true
-strict = false
+strict = true
 
 [[tool.mypy.overrides]]
 module = "homeassistant.*"

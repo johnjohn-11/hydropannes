@@ -123,6 +123,20 @@ actions:
 
 Fired whenever a location's data changes, with `entry_id`, `lieu_consommation`, `timestamp` and the full payload in `data`. Useful to log changes. The first poll after a start fires nothing.
 
+## Known limitations
+
+- The integration reads the public API of the Info-pannes site, which is not documented. Hydro-Québec can change it without notice. A card then appears in **Repairs**.
+- The calendar only shows the interruptions the API still lists. Hydro-Québec drops an interruption some time after it ends, and it then disappears from the calendar.
+- The gradual restoration the site announces during an ongoing outage is not covered yet.
+- Attribute and calendar texts are in French, or in English when Home Assistant is set to another language.
+
+## Removal
+
+1. **Settings** → **Devices & services** → "Hydro-Pannes".
+2. For each location: the 3 dots → **Delete**.
+3. With HACS: uninstall "Hydro-Pannes" in HACS. Without HACS: delete the `config/custom_components/hydropannes` folder.
+4. Restart Home Assistant.
+
 ## Troubleshooting
 
 - **The number is rejected**: it must have exactly 10 digits.

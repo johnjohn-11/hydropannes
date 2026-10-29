@@ -65,7 +65,7 @@ Dans les exemples, `maison` est le nom donné au lieu.
 | `sensor.maison_derniere_maj` | Dernière mise à jour des données *(désactivé par défaut)* |
 | `sensor.maison_lieu_consommation` | Numéro de lieu de consommation, pour distinguer les lieux dans les journaux *(diagnostic, désactivé par défaut)* |
 | `binary_sensor.maison_etat_du_service` | `on` pendant une panne ou une interruption planifiée en cours |
-| `binary_sensor.maison_intervention_planifiee` | `on` quand une interruption planifiée est à venir ou en cours. Ses attributs donnent `debut`, `fin`, `duree_prevue`, le créneau `report_debut` / `report_fin` affiché « En cas de report », et `interruptions_suivantes` |
+| `binary_sensor.maison_intervention_planifiee` | `on` quand une interruption planifiée est à venir ou en cours. Ses attributs donnent `debut`, `fin`, `duree_prevue`, le créneau `report_debut` / `report_fin` affiché « En cas de report » et `interruptions_suivantes` |
 | `calendar.maison_interruptions_planifiees` | Les interruptions planifiées non annulées, visibles dans le panneau Calendrier |
 
 Les textes des attributs `description` et `arrondi` suivent la langue de Home Assistant (français ou anglais).
@@ -123,10 +123,24 @@ actions:
 
 Émis à chaque changement des données d'un lieu, avec `entry_id`, `lieu_consommation`, `timestamp` et le payload complet dans `data`. Utile pour journaliser les changements. Le premier relevé après un démarrage n'émet rien.
 
+## Limites connues
+
+- L'intégration lit l'API publique du site Info-pannes, qui n'est pas documentée. Hydro-Québec peut la changer sans préavis. Une carte apparaît alors dans **Réparations**.
+- Le calendrier montre seulement les interruptions que l'API liste encore. Hydro-Québec retire une interruption quelque temps après sa fin et elle disparaît alors du calendrier.
+- Le rétablissement graduel annoncé par le site pendant une panne en cours n'est pas encore repris.
+- Les textes des attributs et du calendrier sont en français, ou en anglais quand Home Assistant est configuré dans une autre langue.
+
+## Retrait
+
+1. **Paramètres** → **Appareils et services** → « Hydro-Pannes ».
+2. Pour chaque lieu : les 3 points → **Supprimer**.
+3. Avec HACS : désinstaller « Hydro-Pannes » dans HACS. Sans HACS : supprimer le dossier `config/custom_components/hydropannes`.
+4. Redémarrer Home Assistant.
+
 ## Dépannage
 
 - **Le numéro est refusé** : il doit comporter exactement 10 chiffres.
-- **Les entités sont indisponibles** : l'API d'Hydro-Québec ne répond pas ou a répondu dans un format inattendu. Le message d'erreur est dans les journaux, et une carte apparaît dans **Réparations** si la structure de l'API a changé.
+- **Les entités sont indisponibles** : l'API d'Hydro-Québec ne répond pas ou a répondu dans un format inattendu. Le message d'erreur est dans les journaux et une carte apparaît dans **Réparations** si la structure de l'API a changé.
 - **Signaler un problème** : joignez le rapport de diagnostic (les 3 points du lieu → **Télécharger les diagnostics**, le numéro de lieu y est masqué) à une [issue](https://github.com/johnjohn-11/hydropannes/issues).
 
 ## Crédits
