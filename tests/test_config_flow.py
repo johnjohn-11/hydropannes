@@ -20,8 +20,10 @@ from custom_components.hydropannes.config_flow import (
     InvalidFormat,
     InvalidLieuConso,
     search_lieux_conso,
+    validate_lieu_conso,
 )
 from custom_components.hydropannes.const import (
+    API_URL,
     CONF_CODE_POSTAL,
     CONF_LIEU_CONSO,
     CONF_NOM_LIEU,
@@ -338,6 +340,39 @@ async def test_search_lieux_conso_errors(
 
     with pytest.raises(error):
         await search_lieux_conso(hass, "J7V 8K8", "67", "")
+
+
+async def test_validate_lieu_conso_accepts_a_known_number(
+    hass: HomeAssistant, aioclient_mock: AiohttpClientMocker
+) -> None:
+    """A number the API answers with a payload is accepted."""
+    aioclient_mock.get(API_URL.format("0123456789"), json=[{"etat": "A"}])
+
+    await validate_lieu_conso(hass, "0123456789")
+
+
+@pytest.mark.parametrize(
+    ("mock_kwargs", "error"),
+    [
+        pytest.param({"json": []}, InvalidLieuConso, id="reponse_vide"),
+        pytest.param({"status": 503}, CannotConnect, id="http_503"),
+        pytest.param({"exc": TimeoutError()}, CannotConnect, id="delai"),
+    ],
+)
+async def test_validate_lieu_conso_errors(
+    hass: HomeAssistant, aioclient_mock: AiohttpClientMocker, mock_kwargs, error
+) -> None:
+    """Each API answer maps to the exception the number step turns into a form error."""
+    aioclient_mock.get(API_URL.format("0123456789"), **mock_kwargs)
+
+    with pytest.raises(error):
+        await validate_lieu_conso(hass, "0123456789")
+
+
+async def test_validate_lieu_conso_rejects_a_malformed_number(hass: HomeAssistant) -> None:
+    """A number that is not 10 digits is refused without calling the API."""
+    with pytest.raises(InvalidFormat):
+        await validate_lieu_conso(hass, "123")
 
 
 async def test_reconfigure_updates_number(hass: HomeAssistant) -> None:
