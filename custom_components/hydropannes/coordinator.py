@@ -105,6 +105,11 @@ KNOWN_ROOT_FIELDS = {
 }
 
 
+def issue_ids(entry_id: str) -> tuple[str, str]:
+    """Return the ids of the schema-change and invalid-response repair issues of an entry."""
+    return f"api_incompatible_{entry_id}", f"api_invalid_response_{entry_id}"
+
+
 class HydroPannesDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     """Coordinator managing data fetching, caching, and change notification."""
 
@@ -124,8 +129,7 @@ class HydroPannesDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self.api_compatible: bool = True
 
         # Stable ids for the repair issues raised for this location: one for a payload whose shape is not the expected list, one for a payload that is a list but no longer carries the expected root fields.
-        self._api_issue_id: str = f"api_incompatible_{entry.entry_id}"
-        self._invalid_response_issue_id: str = f"api_invalid_response_{entry.entry_id}"
+        self._api_issue_id, self._invalid_response_issue_id = issue_ids(entry.entry_id)
 
         self._invalid_response_flagged: bool = False
 
