@@ -3,8 +3,6 @@
 Enumerated sensors expose language-neutral slugs as their state, following the Home Assistant ``SensorDeviceClass.ENUM`` convention. The code-to-slug maps live here; the human-readable labels live in ``strings.json`` under ``entity.sensor.<translation_key>.state`` and are translated per language.
 """
 
-from datetime import timedelta
-
 DOMAIN = "hydropannes"
 
 CONF_LIEU_CONSO = "lieu_consommation"
@@ -15,11 +13,6 @@ CONF_APPARTEMENT = "appartement"
 
 # Bus event fired whenever a location's API payload changes. Carries the full payload so users can log or react to changes from their own automations.
 EVENT_DATA_CHANGED = f"{DOMAIN}_data_changed"
-
-API_URL = "https://services-bs.solutions.hydroquebec.com/pan/web/api/v1/lieux-conso/etats/{}"
-
-# Address lookup used by the Info-pannes site. Hydro-Québec does not document it, so the config flow keeps manual number entry as a fallback.
-SEARCH_URL = "https://services-bs.solutions.hydroquebec.com/pan/web/api/v1/lieux-conso"
 
 UPDATE_INTERVAL = 180  # seconds — default polling interval (no active outage)
 
@@ -299,32 +292,14 @@ RETABLISSEMENT_DESCRIPTIONS_MAJEUR_EN = {
 }
 
 # ---------------------------------------------------------------------------
-# Interruption bookkeeping (not sensor states)
+# sensor.*_info_pannes raison_annulation attribute
 # ---------------------------------------------------------------------------
 
-# Planned interruption etat values, as the Info-pannes site names them. The etat alone says whether a planned interruption is confirmed, postponed, shifted or cancelled.
-ETAT_PLANIFIE_REPORTE = "R"  # new window in dateDebutReport/dateFinReport
-ETAT_PLANIFIE_DECALE = "E"  # new window in dateDebutDecalage/dateFinDecalage
-ETAT_PLANIFIE_ANNULE = "A"
-
-# Unplanned interruption etat values. The site takes C (courante), I (non confirmée isolée) and N (non confirmée) as an outage under way whatever the root etat, and T as terminated.
-ETATS_PANNE_EN_COURS = frozenset({"C", "I", "N"})
-ETAT_PANNE_TERMINEE = "T"
-
-# codeRemarque → raison_annulation slug, as the Info-pannes site maps them. It is only the reason shown next to a cancelled or postponed interruption, never its state: dateDebutReport is present even on confirmed ones, and a cancellation with code 91 was followed by no new interruption in recorded payloads. Any other code is "Modification de la planification des travaux" on the site.
-RAISON_ANNULATION_CODES = {
-    "45": "travaux_deja_realises",
-    "50": "demande_tiers",
-    "60": "demande_tiers",
-    "91": "demande_tiers",
-    "92": "conditions_meteorologiques",
-    "93": "autres_travaux_urgents",
-    "94": "autres_travaux_urgents",
+# pyhydropannes cancellation reason → the raison_annulation value the attribute has always carried.
+RAISON_ANNULATION = {
+    "work_already_done": "travaux_deja_realises",
+    "third_party_request": "demande_tiers",
+    "weather_conditions": "conditions_meteorologiques",
+    "other_urgent_work": "autres_travaux_urgents",
+    "schedule_changed": "planification_modifiee",
 }
-RAISON_ANNULATION_DEFAUT = "planification_modifiee"
-
-# dureePrevu (minutes) from which the Info-pannes site warns that a planned interruption may end with a gradual restoration.
-GRAP_DUREE_PREVUE_MINUTES = 480
-
-# For such an interruption the site shows the end as a window from dateFin to this much later.
-GRAP_FIN_MARGE = timedelta(hours=5)

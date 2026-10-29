@@ -7,13 +7,9 @@ There is no options flow: the location name is the config entry title, which Hom
 
 from __future__ import annotations
 
-import asyncio
-import html
 import logging
-import re
 from typing import TYPE_CHECKING, Any
 
-import aiohttp
 from homeassistant import config_entries
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
@@ -24,16 +20,25 @@ from homeassistant.helpers.selector import (
     SelectSelectorMode,
 )
 import probatio
+from pyhydropannes import (
+    HydroPannesAmbiguousAddressError,
+    HydroPannesClient,
+    HydroPannesError,
+    HydroPannesInvalidLocationIdError,
+    HydroPannesInvalidPostalCodeError,
+    HydroPannesLocationNotFoundError,
+    Location,
+    normalize_postal_code,
+    validate_location_id,
+)
 
 from .const import (
-    API_URL,
     CONF_APPARTEMENT,
     CONF_CODE_POSTAL,
     CONF_LIEU_CONSO,
     CONF_NOM_LIEU,
     CONF_NUMERO_CIVIQUE,
     DOMAIN,
-    SEARCH_URL,
 )
 
 if TYPE_CHECKING:
@@ -41,16 +46,6 @@ if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
 
 _LOGGER = logging.getLogger(__name__)
-
-# Hydro-Québec lieu de consommation identifiers are always exactly 10 digits.
-_LIEU_CONSO_RE = re.compile(r"^\d{10}$")
-
-REQUEST_TIMEOUT = 10  # seconds
-
-_CODE_POSTAL_RE = re.compile(r"^[A-Z]\d[A-Z]\d[A-Z]\d$")
-
-# Error code the lookup returns with HTTP 400 when one address maps to several locations it cannot tell apart.
-_SEARCH_DUPLICATES_CODE = "BSSP0001"
 
 STEP_NUMERO_DATA_SCHEMA = probatio.Schema(
     {
@@ -94,50 +89,34 @@ async def validate_lieu_conso(hass: HomeAssistant, lieu_conso: str) -> None:
         InvalidLieuConso: The API returned an empty payload for this number.
 
     """
-    if not _LIEU_CONSO_RE.match(lieu_conso):
-        raise InvalidFormat
-
-    url = API_URL.format(lieu_conso)
-    session = async_get_clientsession(hass)
-
     try:
-        async with asyncio.timeout(REQUEST_TIMEOUT), session.get(url) as response:
-            if response.status != 200:
-                raise CannotConnect
-            json_data = await response.json()
-            if not json_data:
-                raise InvalidLieuConso
-    except (TimeoutError, aiohttp.ClientError) as err:
-        # TimeoutError is not a ClientError subclass, so both are listed.
-        _LOGGER.debug("HydroPannes config_flow network error: %s", err)
+        await _client(hass).async_get_payload(lieu_conso)
+    except HydroPannesInvalidLocationIdError as err:
+        raise InvalidFormat from err
+    except HydroPannesLocationNotFoundError as err:
+        raise InvalidLieuConso from err
+    except HydroPannesError as err:
+        _LOGGER.debug("HydroPannes config_flow error: %s", err)
         raise CannotConnect from err
 
 
 def normalize_code_postal(code_postal: str) -> str:
     """Return a postal code as ``A1A 1A1``, the only form the lookup accepts.
 
-    Without the space the lookup answers HTTP 500.
-
     Raises:
         InvalidCodePostal: The input is not a Canadian postal code.
 
     """
-    compact = re.sub(r"\s", "", code_postal).upper()
-    if not _CODE_POSTAL_RE.match(compact):
-        raise InvalidCodePostal
-    return f"{compact[:3]} {compact[3:]}"
+    try:
+        return normalize_postal_code(code_postal)
+    except HydroPannesInvalidPostalCodeError as err:
+        raise InvalidCodePostal from err
 
 
 async def search_lieux_conso(
     hass: HomeAssistant, code_postal: str, numero_civique: str, appartement: str
-) -> list[dict[str, Any]]:
+) -> list[Location]:
     """Look up the consumption locations at an address.
-
-    Args:
-        hass: The Home Assistant instance.
-        code_postal: Postal code already normalized to ``A1A 1A1``.
-        numero_civique: Civic number, already stripped.
-        appartement: Apartment number, empty when there is none.
 
     Returns: The eligible locations found, one per distinct number, possibly empty.
 
@@ -146,49 +125,26 @@ async def search_lieux_conso(
         AmbiguousAddress: The API found several locations it cannot tell apart.
 
     """
-    params = {
-        "codePostal": code_postal,
-        "numeroAppartement": appartement,
-        "numeroCivique": numero_civique,
-        "nomRue": "",
-    }
-    session = async_get_clientsession(hass)
-
     try:
-        async with (
-            asyncio.timeout(REQUEST_TIMEOUT),
-            session.get(SEARCH_URL, params=params) as response,
-        ):
-            if response.status == 400:
-                body = await response.json(content_type=None)
-                error = body.get("error") if isinstance(body, dict) else None
-                if isinstance(error, dict) and error.get("code") == _SEARCH_DUPLICATES_CODE:
-                    raise AmbiguousAddress
-                raise CannotConnect
-            if response.status != 200:
-                raise CannotConnect
-            json_data = await response.json(content_type=None)
-    except (TimeoutError, aiohttp.ClientError, ValueError) as err:
+        return await _client(hass).async_search_locations(code_postal, numero_civique, appartement)
+    except HydroPannesAmbiguousAddressError as err:
+        raise AmbiguousAddress from err
+    except HydroPannesError as err:
         _LOGGER.debug("HydroPannes address lookup error: %s", err)
         raise CannotConnect from err
 
-    if not isinstance(json_data, list):
-        raise CannotConnect
 
-    lieux: dict[str, dict[str, Any]] = {}
-    for item in json_data:
-        if not isinstance(item, dict) or item.get("eligible") is False:
-            continue
-        numero = item.get("lieuConsommation")
-        if isinstance(numero, str) and _LIEU_CONSO_RE.match(numero):
-            lieux.setdefault(numero, item)
-    return list(lieux.values())
+def _is_location_id(lieu: str) -> bool:
+    try:
+        validate_location_id(lieu)
+    except HydroPannesInvalidLocationIdError:
+        return False
+    return True
 
 
-def _format_adresse(lieu: dict[str, Any], key: str) -> str:
-    """Return one of the lookup's address fields as plain text, empty when missing."""
-    # The API embeds HTML entities such as &nbsp; in its formatted addresses.
-    return html.unescape(str(lieu.get(key) or "")).replace("\xa0", " ").strip()
+def _client(hass: HomeAssistant) -> HydroPannesClient:
+    # No retry while the user waits on the form: a failure is shown at once and the user can submit again.
+    return HydroPannesClient(async_get_clientsession(hass), max_retries=0)
 
 
 class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
@@ -218,8 +174,8 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
     def __init__(self) -> None:
         """Initialize the flow state shared between the address steps."""
-        self._lieux: dict[str, dict[str, Any]] = {}
-        self._lieu: dict[str, Any] = {}
+        self._lieux: dict[str, Location] = {}
+        self._lieu: Location | None = None
 
     async def async_step_user(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         """Let the user find the location by address or type its number."""
@@ -256,7 +212,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 elif len(lieux) == 1:
                     return await self._async_select_lieu(lieux[0])
                 else:
-                    self._lieux = {lieu["lieuConsommation"]: lieu for lieu in lieux}
+                    self._lieux = {lieu.id: lieu for lieu in lieux}
                     return await self.async_step_choix()
 
         return self.async_show_form(
@@ -275,7 +231,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         options = [
             SelectOptionDict(
                 value=numero,
-                label=f"{_format_adresse(lieu, 'adresseFormateePourChoixAppartementFr') or _format_adresse(lieu, 'adresseCompleteFr')} ({numero})",
+                label=f"{lieu.apartment_address or lieu.full_address or ''} ({numero})",
             )
             for numero, lieu in self._lieux.items()
         ]
@@ -290,30 +246,31 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             ),
         )
 
-    async def _async_select_lieu(self, lieu: dict[str, Any]) -> ConfigFlowResult:
+    async def _async_select_lieu(self, lieu: Location) -> ConfigFlowResult:
         """Claim the found number, aborting when it is already configured, then ask for a name."""
-        await self.async_set_unique_id(lieu["lieuConsommation"])
+        await self.async_set_unique_id(lieu.id)
         self._abort_if_unique_id_configured()
         self._lieu = lieu
         return await self.async_step_nom()
 
     async def async_step_nom(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         """Name the location found by address, suggesting its street address."""
+        assert self._lieu is not None
         if user_input is not None:
             return self.async_create_entry(
                 title=user_input[CONF_NOM_LIEU],
-                data={CONF_LIEU_CONSO: self._lieu["lieuConsommation"]},
+                data={CONF_LIEU_CONSO: self._lieu.id},
             )
 
         return self.async_show_form(
             step_id="nom",
             data_schema=self.add_suggested_values_to_schema(
                 STEP_NOM_DATA_SCHEMA,
-                {CONF_NOM_LIEU: _format_adresse(self._lieu, "adresseFormateePourChoixRue")},
+                {CONF_NOM_LIEU: self._lieu.street_address or ""},
             ),
             description_placeholders={
-                "adresse": _format_adresse(self._lieu, "adresseCompleteFr"),
-                "lieu_consommation": self._lieu["lieuConsommation"],
+                "adresse": self._lieu.full_address or "",
+                "lieu_consommation": self._lieu.id,
             },
         )
 
@@ -325,7 +282,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         errors: dict[str, str] = {}
         if user_input is not None:
             lieu = user_input[CONF_LIEU_CONSO].strip()
-            if not _LIEU_CONSO_RE.match(lieu):
+            if not _is_location_id(lieu):
                 errors = {CONF_LIEU_CONSO: "invalid_format"}
             else:
                 # Before calling the API, so a duplicate aborts without it.
