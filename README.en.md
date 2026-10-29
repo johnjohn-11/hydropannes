@@ -86,7 +86,8 @@ In automations, use the state (`states()`). The translated label comes from `sta
 
 ## Automation examples
 
-### Notify on an outage
+<details>
+<summary><b>Notify on an outage</b></summary>
 
 ```yaml
 triggers:
@@ -102,7 +103,10 @@ actions:
         Estimated restoration: {{ states('sensor.home_end_date') }}.
 ```
 
-### Reminder the day before a planned interruption
+</details>
+
+<details>
+<summary><b>Reminder the day before a planned interruption</b></summary>
 
 ```yaml
 triggers:
@@ -119,6 +123,132 @@ actions:
         to {{ as_timestamp(trigger.calendar_event.end) | timestamp_custom('%H:%M') }}.
 ```
 
+</details>
+
+<details>
+<summary><b>Service restored</b></summary>
+
+```yaml
+triggers:
+  - trigger: state
+    entity_id: sensor.maison_info_pannes
+    to: service_retabli
+    not_from:
+      - unknown
+      - unavailable
+actions:
+  - action: notify.mobile_app
+    data:
+      title: "✅ Service restored"
+      message: >
+        ⏱️ Duration: {{ states('sensor.maison_duree', with_unit=True) }}
+        ⚠️ Cause: {{ state_translated('sensor.maison_cause') }}
+```
+
+</details>
+
+<details>
+<summary><b>Planned interruption cancelled or postponed</b></summary>
+
+```yaml
+triggers:
+  - trigger: state
+    entity_id: sensor.maison_info_pannes
+    to:
+      - interruption_planifiee_annulee
+      - interruption_planifiee_reportee
+    not_from:
+      - unknown
+      - unavailable
+actions:
+  - action: notify.mobile_app
+    data:
+      title: "{{ '🚫' if trigger.to_state.state == 'interruption_planifiee_annulee' else '📅' }} {{ state_translated('sensor.maison_info_pannes') }}"
+      message: >
+        {% set reasons = {
+          'planification_modifiee': 'Work schedule changed',
+          'travaux_deja_realises': 'Work already done',
+          'demande_tiers': 'Changed at the request of a third party',
+          'conditions_meteorologiques': 'Weather conditions',
+          'autres_travaux_urgents': 'Other urgent work'} %}
+        {% set reason = state_attr('sensor.maison_info_pannes', 'raison_annulation') %}
+        📝 Reason: {{ reasons.get(reason, reason) if reason else 'not given' }}
+```
+
+</details>
+
+<details>
+<summary><b>End time changed during an outage</b></summary>
+
+```yaml
+triggers:
+  - trigger: state
+    entity_id: sensor.maison_date_fin
+    not_from:
+      - unknown
+      - unavailable
+    not_to:
+      - unknown
+      - unavailable
+conditions:
+  - condition: state
+    entity_id: sensor.maison_info_pannes
+    state:
+      - panne_en_cours
+      - panne_majeure
+      - reprise_graduelle
+actions:
+  - action: notify.mobile_app
+    data:
+      title: "🕐 New restoration time"
+      message: >
+        {{ as_timestamp(trigger.from_state.state) | timestamp_custom('%H:%M') }}
+        → {{ as_timestamp(trigger.to_state.state) | timestamp_custom('%H:%M') }}
+```
+
+</details>
+
+## Card example
+
+A Markdown card shown only during an outage or a planned interruption:
+
+<details>
+<summary><b>YAML</b></summary>
+
+```yaml
+type: markdown
+visibility:
+  - condition: state
+    entity: sensor.maison_info_pannes
+    state_not: aucune_panne
+  - condition: state
+    entity: sensor.maison_info_pannes
+    state_not: unavailable
+content: >
+  {% set etat = states('sensor.maison_info_pannes') %}
+  {% set emojis = {'panne_en_cours': '❌', 'panne_majeure': '🚨',
+    'reprise_graduelle': '🔁', 'service_retabli': '✅',
+    'interruption_planifiee_a_venir': '📅', 'interruption_planifiee_en_cours': '🔧',
+    'interruption_planifiee_terminee': '✅', 'interruption_planifiee_annulee': '🚫',
+    'interruption_planifiee_reportee': '📅'} %}
+  {% set debut = as_timestamp(states('sensor.maison_date_debut'), 0) %}
+  {% set fin = as_timestamp(states('sensor.maison_date_fin'), 0) %}
+
+  ## {{ emojis.get(etat, '⚡') }} {{ state_translated('sensor.maison_info_pannes') }}
+
+  🕐 **Start**: {{ debut | timestamp_custom('%d/%m %H:%M') if debut else 'Unknown' }}
+
+  ⏳ **Estimated end**: {{ fin | timestamp_custom('%d/%m %H:%M') if fin else 'Unknown' }}
+
+  {% if has_value('sensor.maison_cause') %}⚠️ **Cause**: {{ state_translated('sensor.maison_cause') }}{% endif %}
+
+  {% if has_value('sensor.maison_statut_intervention') %}🚧 **Status**: {{ state_translated('sensor.maison_statut_intervention') }}{% endif %}
+
+  {% if has_value('sensor.maison_adresses_touchees') %}🏠 **Affected addresses**: {{ states('sensor.maison_adresses_touchees') }}{% endif %}
+```
+
+</details>
+
 ## `hydropannes_data_changed` event
 
 Fired whenever a location's data changes, with `entry_id`, `lieu_consommation`, `timestamp` and the full payload in `data`. Useful to log changes. The first poll after a start fires nothing.
@@ -130,7 +260,7 @@ Fired whenever a location's data changes, with `entry_id`, `lieu_consommation`, 
 - The gradual restoration the site announces during an ongoing outage is not covered yet.
 - Attribute and calendar texts are in French, or in English when Home Assistant is set to another language.
 
-## Removal
+## Uninstalling
 
 1. **Settings** → **Devices & services** → "Hydro-Pannes".
 2. For each location: the 3 dots → **Delete**.
