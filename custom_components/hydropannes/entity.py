@@ -14,8 +14,9 @@ from .coordinator import HydroPannesDataUpdateCoordinator
 if TYPE_CHECKING:
     from asyncio import Handle
 
+    from pyhydropannes import LocationState
+
     from . import HydroPannesConfigEntry
-    from .model import EtatLieu
 
 
 class HydroPannesEntity(CoordinatorEntity[HydroPannesDataUpdateCoordinator]):
@@ -72,7 +73,7 @@ class HydroPannesEntity(CoordinatorEntity[HydroPannesDataUpdateCoordinator]):
         await super().async_will_remove_from_hass()
 
     @property
-    def _etat(self) -> EtatLieu:
+    def _etat(self) -> LocationState:
         """Return the reading of the last successful payload, computed once per poll by the coordinator."""
         return self.coordinator.etat
 

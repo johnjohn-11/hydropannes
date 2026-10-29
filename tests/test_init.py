@@ -17,11 +17,11 @@ from homeassistant.helpers import (
     issue_registry as ir,
 )
 from homeassistant.util import dt as dt_util
+from pyhydropannes.const import API_URL
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.hydropannes.const import (
-    API_URL,
     CAUSE_DESCRIPTIONS,
     CAUSE_DESCRIPTIONS_EN,
     CONF_LIEU_CONSO,
@@ -168,7 +168,7 @@ async def test_setup_retry_on_api_error(hass: HomeAssistant, aioclient_mock) -> 
     entry.add_to_hass(hass)
 
     # Zero the coordinator's inter-retry backoff to keep the test fast.
-    with patch("custom_components.hydropannes.coordinator.RETRY_DELAY", 0):
+    with patch("pyhydropannes.client.asyncio.sleep"):
         assert not await hass.config_entries.async_setup(entry.entry_id)
         await hass.async_block_till_done()
 

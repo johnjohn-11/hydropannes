@@ -5,3 +5,6 @@ pytest-homeassistant-custom-component==0.13.372
 
 # Same version as the ruff-pre-commit hook in .pre-commit-config.yaml. CI installs ruff from this line.
 ruff==0.17.0
+
+# Same version as the requirement in manifest.json: Home Assistant installs it, the test environment does not.
+pyhydropannes==0.1.1

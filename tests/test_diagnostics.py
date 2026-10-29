@@ -4,10 +4,11 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from pyhydropannes.const import API_URL
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-from custom_components.hydropannes.const import API_URL, CONF_LIEU_CONSO, DOMAIN
+from custom_components.hydropannes.const import CONF_LIEU_CONSO, DOMAIN
 from custom_components.hydropannes.diagnostics import async_get_config_entry_diagnostics
 
 if TYPE_CHECKING:

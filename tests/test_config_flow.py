@@ -11,6 +11,8 @@ from unittest.mock import patch
 
 from homeassistant import config_entries
 from homeassistant.data_entry_flow import FlowResultType, InvalidData
+from pyhydropannes import Location
+from pyhydropannes.const import API_URL, SEARCH_URL
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
@@ -23,13 +25,11 @@ from custom_components.hydropannes.config_flow import (
     validate_lieu_conso,
 )
 from custom_components.hydropannes.const import (
-    API_URL,
     CONF_CODE_POSTAL,
     CONF_LIEU_CONSO,
     CONF_NOM_LIEU,
     CONF_NUMERO_CIVIQUE,
     DOMAIN,
-    SEARCH_URL,
 )
 
 if TYPE_CHECKING:
@@ -56,7 +56,12 @@ async def _start(hass: HomeAssistant, path: str):
     return await hass.config_entries.flow.async_configure(result["flow_id"], {"next_step_id": path})
 
 
-def _lieu(numero: str, appartement: str = "") -> dict:
+def _lieu(numero: str, appartement: str = "") -> Location:
+    """Build one lookup result as the client returns it."""
+    return Location.from_dict(_lieu_data(numero, appartement))
+
+
+def _lieu_data(numero: str, appartement: str = "") -> dict:
     """Build one lookup result shaped like the API's answer."""
     rue = "67, place des Outaouais"
     return {
@@ -306,16 +311,16 @@ async def test_search_lieux_conso_parses_answer(
     aioclient_mock.get(
         SEARCH_URL,
         json=[
-            _lieu("0502021502"),
-            _lieu("0502021502"),
-            {**_lieu("3333333333"), "eligible": False},
+            _lieu_data("0502021502"),
+            _lieu_data("0502021502"),
+            {**_lieu_data("3333333333"), "eligible": False},
             {"lieuConsommation": "abc"},
         ],
     )
 
     lieux = await search_lieux_conso(hass, "J7V 8K8", "67", "")
 
-    assert [lieu["lieuConsommation"] for lieu in lieux] == ["0502021502"]
+    assert [lieu.id for lieu in lieux] == ["0502021502"]
     params = aioclient_mock.mock_calls[0][1].query
     assert params["codePostal"] == "J7V 8K8"
     assert params["numeroCivique"] == "67"

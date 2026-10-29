@@ -12,14 +12,22 @@ from typing import TYPE_CHECKING, Any
 
 from homeassistant.components.binary_sensor import BinarySensorEntity
 from homeassistant.components.binary_sensor.const import BinarySensorDeviceClass
+from homeassistant.util import dt as dt_util
+from pyhydropannes import parse_datetime
+from pyhydropannes.const import (
+    GRADUAL_RESTORATION_END_MARGIN,
+    GRADUAL_RESTORATION_PLANNED_MINUTES,
+    ROOT_OFF,
+)
 
-from .const import ETAT_PLANIFIE_REPORTE, GRAP_DUREE_PREVUE_MINUTES, GRAP_FIN_MARGE
 from .entity import HydroPannesEntity
-from .model import effective_dates, interruption_attributes, parse_dt
 
 if TYPE_CHECKING:
+    from datetime import datetime
+
     from homeassistant.core import HomeAssistant
     from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
+    from pyhydropannes import Interruption
 
     from . import HydroPannesConfigEntry
 
@@ -34,6 +42,24 @@ INTERVENTION_PLANIFIEE_ATTRIBUTE_KEYS = (
     "dureePrevu",
     "interruptionPlanifiee",
 )
+
+
+def _iso(value: datetime | None) -> str | None:
+    return dt_util.as_local(value).isoformat() if value else None
+
+
+def _interruption_attributes(intr: Interruption, keys: tuple[str, ...]) -> dict[str, Any]:
+    """Return the given raw interruption fields, dates as local ISO strings and None values left out."""
+    attrs: dict[str, Any] = {}
+    for key in keys:
+        val = intr.raw.get(key)
+        if val is None:
+            continue
+        if key.startswith("date") and val:
+            attrs[key] = _iso(parse_datetime(val)) or val
+        else:
+            attrs[key] = val
+    return attrs
 
 
 async def async_setup_entry(
@@ -73,7 +99,7 @@ class HydroPannesEtatServiceBinarySensor(HydroPannesBinarySensorBase):
         if not self.coordinator.data:
             return None
         # "N" means the service point is not fed, whether or not an interruption object can be matched to it. An unplanned interruption under way also counts, as the site shows it as an outage even while the root etat still says "A".
-        return self._etat.root_etat == "N" or self._etat.panne_active is not None
+        return self._etat.status == ROOT_OFF or self._etat.active_outage is not None
 
 
 class HydroPannesInterventionPlanifieeBinarySensor(HydroPannesBinarySensorBase):
@@ -92,39 +118,36 @@ class HydroPannesInterventionPlanifieeBinarySensor(HydroPannesBinarySensorBase):
         """Return True if a planned intervention that is neither cancelled nor terminated exists."""
         if not self.coordinator.data:
             return None
-        return bool(self._etat.planifiees_en_attente)
+        return bool(self._etat.pending_planned)
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
         """Return key fields from the first planned interruption that is neither cancelled nor terminated."""
-        pending = self._etat.planifiees_en_attente
+        pending = self._etat.pending_planned
         if not pending:
             return {}
-        attrs = interruption_attributes(pending[0], INTERVENTION_PLANIFIEE_ATTRIBUTE_KEYS)
+        attrs = _interruption_attributes(pending[0], INTERVENTION_PLANIFIEE_ATTRIBUTE_KEYS)
         attrs.update(self._resume(pending[0]))
         if len(pending) > 1:
             attrs["interruptions_suivantes"] = [self._resume(i) for i in pending[1:]]
         return attrs
 
-    def _resume(self, intr: dict[str, Any]) -> dict[str, Any]:
+    def _resume(self, intr: Interruption) -> dict[str, Any]:
         """Summarize a planned interruption the way the site's planned-interruption card shows it."""
-        debut, fin = effective_dates(intr)
-        duree = intr.get("dureePrevu")
+        fin = intr.effective_end
+        duree = intr.planned_duration_minutes
         item: dict[str, Any] = {
-            "debut": debut.isoformat() if debut else None,
-            "fin": fin.isoformat() if fin else None,
+            "debut": _iso(intr.effective_start),
+            "fin": _iso(fin),
             "duree_prevue": duree,
         }
         # From 480 minutes of planned work the site warns about a gradual restoration and shows the end as a window up to 5 hours later.
-        if isinstance(duree, int | float) and duree >= GRAP_DUREE_PREVUE_MINUTES:
+        if duree is not None and duree >= GRADUAL_RESTORATION_PLANNED_MINUTES:
             item["reprise_graduelle_possible"] = True
             if fin:
-                item["fin_au_plus_tard"] = (fin + GRAP_FIN_MARGE).isoformat()
+                item["fin_au_plus_tard"] = _iso(fin + GRADUAL_RESTORATION_END_MARGIN)
         # On an interruption not yet postponed, the report dates are the fallback slot the site lists under "En cas de report".
-        if intr.get("etat") != ETAT_PLANIFIE_REPORTE:
-            report_debut = parse_dt(intr.get("dateDebutReport"))
-            if report_debut:
-                report_fin = parse_dt(intr.get("dateFinReport"))
-                item["report_debut"] = report_debut.isoformat()
-                item["report_fin"] = report_fin.isoformat() if report_fin else None
+        if not intr.is_postponed and intr.postponed_start:
+            item["report_debut"] = _iso(intr.postponed_start)
+            item["report_fin"] = _iso(intr.postponed_end)
         return item

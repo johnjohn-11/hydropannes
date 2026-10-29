@@ -12,11 +12,11 @@ from unittest.mock import MagicMock, patch
 
 from homeassistant.helpers import issue_registry as ir
 from homeassistant.helpers.update_coordinator import UpdateFailed
+from pyhydropannes.const import API_URL
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry, async_capture_events
 
 from custom_components.hydropannes.const import (
-    API_URL,
     CONF_LIEU_CONSO,
     CONF_NOM_LIEU,
     DOMAIN,
@@ -75,7 +75,7 @@ class _FakeResponse:
     async def __aexit__(self, *exc: object) -> None:
         return None
 
-    async def json(self) -> object:
+    async def json(self, **_kwargs: object) -> object:
         return self._payload
 
 
@@ -147,7 +147,7 @@ async def test_persistent_server_error_raises_and_records(
     coordinator = _coordinator(hass)
 
     with (
-        patch("custom_components.hydropannes.coordinator.RETRY_DELAY", 0),
+        patch("pyhydropannes.client.asyncio.sleep"),
         pytest.raises(UpdateFailed),
     ):
         await coordinator._async_update_data()
@@ -166,7 +166,7 @@ async def test_persistent_timeout_is_retried_then_fails(
     coordinator = _coordinator(hass)
 
     with (
-        patch("custom_components.hydropannes.coordinator.RETRY_DELAY", 0),
+        patch("pyhydropannes.client.asyncio.sleep"),
         pytest.raises(UpdateFailed),
     ):
         await coordinator._async_update_data()
@@ -177,18 +177,18 @@ async def test_persistent_timeout_is_retried_then_fails(
 
 async def test_transient_server_error_recovers_on_retry(hass: HomeAssistant) -> None:
     """A 5xx followed by a good answer succeeds within the same update."""
-    coordinator = _coordinator(hass)
     responses = iter([_FakeResponse(503), _FakeResponse(200, IDLE_PAYLOAD)])
     session = MagicMock()
-    session.get.side_effect = lambda _url: next(responses)
+    session.get.side_effect = lambda _url, **_kwargs: next(responses)
 
     with (
-        patch("custom_components.hydropannes.coordinator.RETRY_DELAY", 0),
+        patch("pyhydropannes.client.asyncio.sleep"),
         patch(
             "custom_components.hydropannes.coordinator.async_get_clientsession",
             return_value=session,
         ),
     ):
+        coordinator = _coordinator(hass)
         result = await coordinator._async_update_data()
 
     assert result == IDLE_PAYLOAD[0]
@@ -355,7 +355,7 @@ async def test_failure_carries_a_translation_key(
     coordinator = _coordinator(hass)
 
     with (
-        patch("custom_components.hydropannes.coordinator.RETRY_DELAY", 0),
+        patch("pyhydropannes.client.asyncio.sleep"),
         pytest.raises(UpdateFailed) as err,
     ):
         await coordinator._async_update_data()

@@ -7,6 +7,7 @@ from typing import Any
 from unittest.mock import patch
 
 from homeassistant.util import dt as dt_util
+from pyhydropannes import parse_datetime, round_up_quarter
 import pytest
 
 from custom_components.hydropannes.binary_sensor import (
@@ -17,7 +18,6 @@ from custom_components.hydropannes.const import (
     RETABLISSEMENT_DESCRIPTIONS,
     RETABLISSEMENT_DESCRIPTIONS_MAJEUR,
 )
-from custom_components.hydropannes.model import round_up_quarter
 from custom_components.hydropannes.sensor import (
     HydroPannesAdressesToucheesSensor,
     HydroPannesDateFinSensor,
@@ -49,7 +49,7 @@ def test_major_outage_wins_over_later_ending_one() -> None:
     sensor = build(
         HydroPannesRetablissementSensor, make_payload(etat="N", interruptions=[normal, majeure])
     )
-    assert sensor._etat.panne_active["niveauUrgence"] == "P"
+    assert sensor._etat.active_outage.raw is majeure
 
 
 def test_latest_ending_outage_wins() -> None:
@@ -58,7 +58,7 @@ def test_latest_ending_outage_wins() -> None:
     sensor = build(
         HydroPannesRetablissementSensor, make_payload(etat="N", interruptions=[early, late])
     )
-    assert sensor._etat.panne_active["nbClient"] == 20
+    assert sensor._etat.active_outage.customers == 20
 
 
 def test_overlapping_outage_moves_start_back() -> None:
@@ -69,8 +69,8 @@ def test_overlapping_outage_moves_start_back() -> None:
         dateDebut=hours_from_now(-3), dateFin=None, dateFinEstimeeMax=hours_from_now(2)
     )
     payload = make_payload(etat="N", interruptions=[kept, earlier])
-    chosen = build(HydroPannesRetablissementSensor, payload)._etat.panne_active
-    assert chosen["dateDebut"] == earlier["dateDebut"]
+    chosen = build(HydroPannesRetablissementSensor, payload)._etat.active_outage
+    assert chosen.start == parse_datetime(earlier["dateDebut"])
     # The payload itself is left untouched.
     assert kept["dateDebut"] != earlier["dateDebut"]
 
@@ -81,7 +81,7 @@ def test_non_overlapping_outage_keeps_start() -> None:
     )
     finished_before = make_interruption(dateDebut=hours_from_now(-6), dateFin=hours_from_now(-4))
     payload = make_payload(etat="N", interruptions=[kept, finished_before])
-    assert build(HydroPannesRetablissementSensor, payload)._etat.panne_active is kept
+    assert build(HydroPannesRetablissementSensor, payload)._etat.active_outage.raw is kept
 
 
 # ---------------------------------------------------------------------------
