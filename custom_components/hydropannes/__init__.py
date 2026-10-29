@@ -12,10 +12,14 @@ from typing import TYPE_CHECKING
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
-from homeassistant.helpers import config_validation as cv, entity_registry as er
+from homeassistant.helpers import (
+    config_validation as cv,
+    entity_registry as er,
+    issue_registry as ir,
+)
 
 from .const import CONF_NOM_LIEU, DOMAIN
-from .coordinator import HydroPannesDataUpdateCoordinator
+from .coordinator import HydroPannesDataUpdateCoordinator, issue_ids
 
 if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
@@ -91,3 +95,9 @@ async def _async_update_listener(hass: HomeAssistant, entry: HydroPannesConfigEn
 async def async_unload_entry(hass: HomeAssistant, entry: HydroPannesConfigEntry) -> bool:
     """Unload a config entry."""
     return await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
+
+
+async def async_remove_entry(hass: HomeAssistant, entry: HydroPannesConfigEntry) -> None:
+    """Delete the entry's repair issues, which would otherwise stay in Repairs until a restart."""
+    for issue_id in issue_ids(entry.entry_id):
+        ir.async_delete_issue(hass, DOMAIN, issue_id)

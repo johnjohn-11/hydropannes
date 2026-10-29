@@ -343,6 +343,29 @@ async def test_broken_payload_raises_a_repair_issue(hass: HomeAssistant, aioclie
     assert issue_registry.async_get_issue(DOMAIN, issue_id) is None
 
 
+async def test_removing_the_entry_clears_its_repair_issue(
+    hass: HomeAssistant, aioclient_mock
+) -> None:
+    """An open repair issue goes away with its entry instead of waiting for a restart."""
+    aioclient_mock.get(API_URL.format(LIEU), json=PAYLOAD)
+    entry = _entry()
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    aioclient_mock.clear_requests()
+    aioclient_mock.get(API_URL.format(LIEU), json={"not": "a list"})
+    await entry.runtime_data.async_refresh()
+    await hass.async_block_till_done()
+    issue_id = f"api_invalid_response_{entry.entry_id}"
+    assert ir.async_get(hass).async_get_issue(DOMAIN, issue_id) is not None
+
+    await hass.config_entries.async_remove(entry.entry_id)
+    await hass.async_block_till_done()
+
+    assert ir.async_get(hass).async_get_issue(DOMAIN, issue_id) is None
+
+
 async def test_removed_entities_leave_the_registry(hass: HomeAssistant, aioclient_mock) -> None:
     """The API-compatibility entity of an older version is removed by the migration, the consumption location is kept."""
     aioclient_mock.get(API_URL.format(LIEU), json=PAYLOAD)
