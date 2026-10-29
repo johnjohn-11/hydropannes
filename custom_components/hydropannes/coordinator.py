@@ -13,13 +13,11 @@ The coordinator is responsible for:
 
 from __future__ import annotations
 
-import asyncio
 from collections import deque
 from datetime import timedelta
 import logging
 from typing import TYPE_CHECKING, Any, NoReturn
 
-import aiohttp
 from homeassistant.helpers import issue_registry as ir
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.update_coordinator import (
@@ -27,16 +25,28 @@ from homeassistant.helpers.update_coordinator import (
     UpdateFailed,
 )
 from homeassistant.util import dt as dt_util
+from pyhydropannes import (
+    HydroPannesClient,
+    HydroPannesConnectionError,
+    HydroPannesError,
+    HydroPannesInvalidResponseError,
+    HydroPannesLocationNotFoundError,
+    HydroPannesServerError,
+    HydroPannesStatusError,
+    HydroPannesTimeoutError,
+    LocationState,
+    missing_root_fields,
+    unknown_interruption_fields,
+    unknown_root_fields,
+)
+from pyhydropannes.const import OUTAGE_ONGOING
 
 from .const import (
-    API_URL,
     CONF_LIEU_CONSO,
     DOMAIN,
-    ETATS_PANNE_EN_COURS,
     EVENT_DATA_CHANGED,
     UPDATE_INTERVAL,
 )
-from .model import EtatLieu
 
 if TYPE_CHECKING:
     from datetime import datetime
@@ -59,50 +69,6 @@ ACTIVE_OUTAGE_UPDATE_INTERVAL = 60  # seconds
 
 # Maximum number of distinct API payloads retained in the in-memory ring buffer.
 API_HISTORY_SIZE = 5
-
-# ---------------------------------------------------------------------------
-# API schema validation
-# ---------------------------------------------------------------------------
-
-# Fields that the Hydro-Québec API must always return at the root level. Their absence indicates a breaking schema change.
-EXPECTED_ROOT_FIELDS = {"etat", "interruptions", "idLieuConso"}
-
-# All interruption-level fields currently consumed by the integration. Any field returned by HQ that is NOT in this set triggers a warning log, signalling that the API has evolved and the integration may need updating. Only fires while a panne is listed: the interruptions list is empty otherwise.
-KNOWN_INTERRUPTION_FIELDS = {
-    "dateDebut",
-    "dateFin",
-    "etat",
-    "dateFinEstimeeMin",
-    "dateFinEstimeeMax",
-    "dateDebutReport",
-    "dateFinReport",
-    "dateDebutDecalage",
-    "dateFinDecalage",
-    "codeIntervention",
-    "niveauUrgence",
-    "nbClient",
-    "codeCause",
-    "codeMunicipal",
-    "datePublication",
-    "codeRemarque",
-    "dureePrevu",
-    "probabilite",
-    "interruptionPlanifiee",
-    "typeFinPrevue",
-    "idInterruption",
-    "nbClientsInclusDansAutrePanne",
-    "repriseGraduellePossible",
-}
-
-# Root fields seen in recorded payloads. The Info-pannes site also reads etatReprise, dureePrevueDelestage, dureeResiduelleDelestage, remiseEnServicePrevue and remiseEnServiceConfirmee to compute a gradual restoration, which the integration does not do yet: none of them appeared in recorded payloads, so the warning below flags their arrival.
-KNOWN_ROOT_FIELDS = {
-    "etat",
-    "idLieuConso",
-    "interruptions",
-    "date",
-    "repriseGraduellePossible",
-    "declencheurReprise",
-}
 
 
 def issue_ids(entry_id: str) -> tuple[str, str]:
@@ -148,7 +114,14 @@ class HydroPannesDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self.last_success_time: datetime | None = None
 
         # Reading of the last successful payload. Kept, like data, when an update fails.
-        self.etat: EtatLieu = EtatLieu.depuis(None)
+        self.etat: LocationState = LocationState.from_payload({})
+
+        self.client = HydroPannesClient(
+            async_get_clientsession(hass),
+            request_timeout=REQUEST_TIMEOUT,
+            max_retries=MAX_RETRIES,
+            retry_delay=RETRY_DELAY,
+        )
 
         # Interruption field names already reported as unknown, so a schema change is logged once instead of on every poll.
         self._warned_unknown_fields: set[str] = set()
@@ -179,61 +152,32 @@ class HydroPannesDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             _LOGGER.debug("Unparseable payload for lieu %s", self.lieu_conso, exc_info=True)
             self._raise_failure(f"Unexpected payload: {err}", "unexpected_payload")
 
-    async def _async_fetch(self) -> Any:
-        """Return the decoded API response, retrying 5xx errors, timeouts and connection errors.
+    async def _async_fetch(self) -> dict[str, Any]:
+        """Return the payload, the client retrying 5xx errors, timeouts and connection errors.
 
         A 4xx fails at once: retrying would not change the answer.
         """
-        url = API_URL.format(self.lieu_conso)
-        session = async_get_clientsession(self.hass)
-
-        for attempt in range(1, MAX_RETRIES + 2):
-            try:
-                async with asyncio.timeout(REQUEST_TIMEOUT), session.get(url) as response:
-                    if response.status == 200:
-                        try:
-                            return await response.json()
-                        except ValueError:
-                            self._raise_failure(
-                                "API returned a body that is not JSON", "invalid_response"
-                            )
-                    if not 500 <= response.status < 600:
-                        self._raise_failure(
-                            f"API returned status {response.status}",
-                            "api_status",
-                            status=str(response.status),
-                        )
-                    reason = f"API returned {response.status}"
-                    key, extra = "api_server_error", {"status": str(response.status)}
-            except TimeoutError:
-                reason = "Timeout"
-                key, extra = "api_timeout", {}
-            except aiohttp.ClientError as err:
-                reason = f"Connection error: {err}"
-                key, extra = "connection_error", {}
-
-            if attempt > MAX_RETRIES:
-                self._raise_failure(
-                    f"{reason} after {attempt} attempts", key, attempts=str(attempt), **extra
-                )
-            _LOGGER.debug(
-                "%s for lieu %s, retry %s/%s", reason, self.lieu_conso, attempt, MAX_RETRIES
+        try:
+            return await self.client.async_get_payload(self.lieu_conso)
+        except HydroPannesServerError as err:
+            self._raise_failure(
+                str(err), "api_server_error", attempts=str(err.attempts), status=str(err.status)
             )
-            # Outside the response context so the connection is released during the wait.
-            await asyncio.sleep(RETRY_DELAY)
-
-        raise AssertionError("unreachable")
-
-    def _process_payload(self, data: Any) -> dict[str, Any]:
-        """Validate a decoded response and update the coordinator's bookkeeping."""
-        if not data or not isinstance(data, list) or not isinstance(data[0], dict):
+        except HydroPannesTimeoutError as err:
+            self._raise_failure(str(err), "api_timeout", attempts=str(err.attempts))
+        except HydroPannesConnectionError as err:
+            self._raise_failure(str(err), "connection_error", attempts=str(err.attempts))
+        except HydroPannesStatusError as err:
+            self._raise_failure(str(err), "api_status", status=str(err.status))
+        except (HydroPannesInvalidResponseError, HydroPannesLocationNotFoundError) as err:
             # Surface this through Repairs too: the update fails, so every entity goes unavailable and none can report it.
             self._flag_invalid_response()
-            self._raise_failure(
-                "API returned invalid data format (expected a list of objects)", "invalid_response"
-            )
+            self._raise_failure(str(err) or "API returned an empty list", "invalid_response")
+        except HydroPannesError as err:
+            self._raise_failure(str(err), "unexpected_payload")
 
-        result: dict[str, Any] = data[0]
+    def _process_payload(self, result: dict[str, Any]) -> dict[str, Any]:
+        """Update the coordinator's bookkeeping from a payload."""
         self._clear_invalid_response()
         self._check_root_fields(result)
         self._warn_unknown_root_fields(result)
@@ -246,7 +190,7 @@ class HydroPannesDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             if self.data is not None:
                 self._fire_change_event(result)
 
-        self.etat = EtatLieu.depuis(result)
+        self.etat = LocationState.from_payload(result, now=dt_util.utcnow())
         self._adjust_update_interval(result)
         self.last_success_time = dt_util.utcnow()
         return result
@@ -257,7 +201,7 @@ class HydroPannesDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
     def _check_root_fields(self, result: dict[str, Any]) -> None:
         """Raise or clear the schema-change repair issue from the root fields present."""
-        missing_root = EXPECTED_ROOT_FIELDS - result.keys()
+        missing_root = missing_root_fields(result)
         if not missing_root:
             if not self.api_compatible:
                 ir.async_delete_issue(self.hass, DOMAIN, self._api_issue_id)
@@ -285,7 +229,7 @@ class HydroPannesDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
     def _warn_unknown_root_fields(self, result: dict[str, Any]) -> None:
         """Log root fields the integration does not know yet, once per field name."""
-        new_fields = result.keys() - KNOWN_ROOT_FIELDS - self._warned_unknown_root_fields
+        new_fields = unknown_root_fields(result) - self._warned_unknown_root_fields
         if new_fields:
             self._warned_unknown_root_fields |= new_fields
             _LOGGER.warning(
@@ -300,16 +244,15 @@ class HydroPannesDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         Warns once per field name: during an outage the coordinator polls every 60 s, so warning on each poll would flood the log for as long as it lasts.
         """
-        for intr in result.get("interruptions", []):
-            new_fields = intr.keys() - KNOWN_INTERRUPTION_FIELDS - self._warned_unknown_fields
-            if new_fields:
-                self._warned_unknown_fields |= new_fields
-                _LOGGER.warning(
-                    "New API fields detected in an interruption (lieu %s): "
-                    "%s — the Hydro-Québec schema may have evolved.",
-                    self.lieu_conso,
-                    new_fields,
-                )
+        new_fields = unknown_interruption_fields(result) - self._warned_unknown_fields
+        if new_fields:
+            self._warned_unknown_fields |= new_fields
+            _LOGGER.warning(
+                "New API fields detected in an interruption (lieu %s): "
+                "%s — the Hydro-Québec schema may have evolved.",
+                self.lieu_conso,
+                new_fields,
+            )
 
     def _flag_invalid_response(self) -> None:
         """Mark the API incompatible and raise a repair issue.
@@ -411,7 +354,7 @@ class HydroPannesDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         """
         interruptions = data.get("interruptions", [])
         if any(
-            not i.get("interruptionPlanifiee") and i.get("etat") in ETATS_PANNE_EN_COURS
+            not i.get("interruptionPlanifiee") and i.get("etat") in OUTAGE_ONGOING
             for i in interruptions
         ):
             return True

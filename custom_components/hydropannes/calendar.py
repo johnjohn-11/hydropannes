@@ -3,18 +3,18 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from homeassistant.components.calendar import CalendarEntity, CalendarEvent
 from homeassistant.util import dt as dt_util
+from pyhydropannes.const import GRADUAL_RESTORATION_END_MARGIN, GRADUAL_RESTORATION_PLANNED_MINUTES
 
-from .const import ETAT_PLANIFIE_REPORTE, GRAP_DUREE_PREVUE_MINUTES, GRAP_FIN_MARGE
 from .entity import HydroPannesEntity
-from .model import effective_dates, is_planned, is_planned_cancelled, parse_dt
 
 if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
     from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
+    from pyhydropannes import Interruption
 
     from . import HydroPannesConfigEntry
 
@@ -59,52 +59,47 @@ class HydroPannesCalendar(HydroPannesEntity, CalendarEntity):
     def _events(self) -> list[CalendarEvent]:
         events = []
         for intr in self._etat.interruptions:
-            if not is_planned(intr) or is_planned_cancelled(intr):
+            if not intr.planned or intr.is_cancelled:
                 continue
             event = self._event(intr)
             if event:
                 events.append(event)
         return sorted(events, key=lambda e: e.start)
 
-    def _event(self, intr: dict[str, Any]) -> CalendarEvent | None:
-        debut, fin = effective_dates(intr)
+    def _event(self, intr: Interruption) -> CalendarEvent | None:
+        debut, fin = intr.effective_start, intr.effective_end
         if debut is None:
             return None
-        duree = intr.get("dureePrevu")
+        debut = dt_util.as_local(debut)
+        duree = intr.planned_duration_minutes
         if fin is None or fin <= debut:
             fin = debut + (
-                timedelta(minutes=duree)
-                if isinstance(duree, int | float) and duree > 0
-                else _DEFAULT_LENGTH
+                timedelta(minutes=duree) if duree is not None and duree > 0 else _DEFAULT_LENGTH
             )
+        fin = dt_util.as_local(fin)
         en = self._english
         lines = []
-        if isinstance(duree, int | float) and duree >= GRAP_DUREE_PREVUE_MINUTES:
-            au_plus_tard = _format(fin + GRAP_FIN_MARGE)
+        if duree is not None and duree >= GRADUAL_RESTORATION_PLANNED_MINUTES:
+            au_plus_tard = _format(fin + GRADUAL_RESTORATION_END_MARGIN)
             lines.append(
                 f"Power may be restored gradually, until {au_plus_tard} at the latest."
                 if en
                 else f"Le service pourrait être rétabli graduellement, au plus tard à {au_plus_tard}."
             )
         # On an interruption not yet postponed, the report dates are the fallback slot the site lists under "En cas de report".
-        if intr.get("etat") != ETAT_PLANIFIE_REPORTE:
-            report_debut = parse_dt(intr.get("dateDebutReport"))
-            if report_debut:
-                lines.append(
-                    f"In case of postponement: {_format(report_debut)}."
-                    if en
-                    else f"En cas de report : {_format(report_debut)}."
-                )
-        ident = intr.get("idInterruption") or {}
-        uid = "-".join(
-            str(ident.get(k, "")) for k in ("site", "typeObjet", "noInterruption", "noSection")
-        )
+        if not intr.is_postponed and intr.postponed_start:
+            report_debut = _format(intr.postponed_start)
+            lines.append(
+                f"In case of postponement: {report_debut}."
+                if en
+                else f"En cas de report : {report_debut}."
+            )
         return CalendarEvent(
             start=debut,
             end=fin,
             summary="Planned service interruption" if en else "Interruption planifiée",
             description="\n".join(lines) or None,
-            uid=uid if uid.strip("-") else None,
+            uid=intr.id,
         )
 
 
