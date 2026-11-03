@@ -195,11 +195,11 @@ async def test_address_flow_single_match(hass: HomeAssistant) -> None:
     with patch(_SEARCH, return_value=[_lieu("0502021502")]) as search:
         result = await hass.config_entries.flow.async_configure(
             result["flow_id"],
-            {CONF_CODE_POSTAL: "h2z1a4", CONF_NUMERO_CIVIQUE: " 67 "},
+            {CONF_CODE_POSTAL: "h2z1a4", CONF_NUMERO_CIVIQUE: " 75 "},
         )
 
     # The postal code reaches the lookup in the only form it accepts.
-    assert search.call_args.args[1:] == ("H2Z 1A4", "67", "")
+    assert search.call_args.args[1:] == ("H2Z 1A4", "75", "")
     assert result["type"] is FlowResultType.FORM
     assert result["step_id"] == "nom"
     assert result["description_placeholders"] == {
@@ -231,7 +231,7 @@ async def test_address_flow_several_matches(hass: HomeAssistant) -> None:
     with patch(_SEARCH, return_value=[_lieu("1111111111", "1"), _lieu("2222222222", "2")]):
         result = await hass.config_entries.flow.async_configure(
             result["flow_id"],
-            {CONF_CODE_POSTAL: "H2Z 1A4", CONF_NUMERO_CIVIQUE: "67"},
+            {CONF_CODE_POSTAL: "H2Z 1A4", CONF_NUMERO_CIVIQUE: "75"},
         )
 
     assert result["step_id"] == "choix"
@@ -276,7 +276,7 @@ async def test_address_flow_errors(hass: HomeAssistant, search, code_postal, exp
     with patch(_SEARCH, **search):
         result = await hass.config_entries.flow.async_configure(
             result["flow_id"],
-            {CONF_CODE_POSTAL: code_postal, CONF_NUMERO_CIVIQUE: "67"},
+            {CONF_CODE_POSTAL: code_postal, CONF_NUMERO_CIVIQUE: "75"},
         )
 
     assert result["type"] is FlowResultType.FORM
@@ -297,7 +297,7 @@ async def test_address_flow_duplicate_aborts(hass: HomeAssistant) -> None:
     with patch(_SEARCH, return_value=[_lieu("0502021502")]):
         result = await hass.config_entries.flow.async_configure(
             result["flow_id"],
-            {CONF_CODE_POSTAL: "H2Z 1A4", CONF_NUMERO_CIVIQUE: "67"},
+            {CONF_CODE_POSTAL: "H2Z 1A4", CONF_NUMERO_CIVIQUE: "75"},
         )
 
     assert result["type"] is FlowResultType.ABORT
@@ -318,12 +318,12 @@ async def test_search_lieux_conso_parses_answer(
         ],
     )
 
-    lieux = await search_lieux_conso(hass, "H2Z 1A4", "67", "")
+    lieux = await search_lieux_conso(hass, "H2Z 1A4", "75", "")
 
     assert [lieu.id for lieu in lieux] == ["0502021502"]
     params = aioclient_mock.mock_calls[0][1].query
     assert params["codePostal"] == "H2Z 1A4"
-    assert params["numeroCivique"] == "67"
+    assert params["numeroCivique"] == "75"
 
 
 @pytest.mark.parametrize(
@@ -344,7 +344,7 @@ async def test_search_lieux_conso_errors(
     aioclient_mock.get(SEARCH_URL, status=status, json=body)
 
     with pytest.raises(error):
-        await search_lieux_conso(hass, "H2Z 1A4", "67", "")
+        await search_lieux_conso(hass, "H2Z 1A4", "75", "")
 
 
 async def test_validate_lieu_conso_accepts_a_known_number(
