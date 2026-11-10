@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from homeassistant.core import callback
-from homeassistant.helpers.device_registry import DeviceInfo
+from homeassistant.helpers.device_registry import DeviceEntryType, DeviceInfo
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import ATTRIBUTION, DOMAIN
@@ -42,6 +42,7 @@ class HydroPannesEntity(CoordinatorEntity[HydroPannesDataUpdateCoordinator]):
         self._attr_unique_id = f"{entry.entry_id}_{self._unique_id_suffix}"
         # The device is named after the location alone: Home Assistant already shows the integration name around it, and with has_entity_name the device name prefixes every entity name.
         self._attr_device_info = DeviceInfo(
+            entry_type=DeviceEntryType.SERVICE,
             identifiers={(DOMAIN, entry.entry_id)},
             name=entry.title,
             manufacturer="Hydro-Québec",
