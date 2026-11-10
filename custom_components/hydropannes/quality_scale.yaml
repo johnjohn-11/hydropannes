@@ -8,9 +8,7 @@ rules:
   common-modules: done
   config-flow: done
   config-flow-test-coverage: done
-  dependency-transparency:
-    status: exempt
-    comment: No requirements, the API is called with the shared aiohttp session.
+  dependency-transparency: done
   docs-actions:
     status: exempt
     comment: The integration registers no actions.
@@ -85,8 +83,6 @@ rules:
     comment: One device per config entry, removed with it.
 
   # Platinum
-  async-dependency:
-    status: exempt
-    comment: No dependency.
+  async-dependency: done
   inject-websession: done
   strict-typing: done
