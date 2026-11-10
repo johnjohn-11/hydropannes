@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 
 from homeassistant.components.calendar import CalendarEntity, CalendarEvent
 from homeassistant.util import dt as dt_util
-from pyhydropannes.const import GRADUAL_RESTORATION_END_MARGIN, GRADUAL_RESTORATION_PLANNED_MINUTES
+from pyhydropannes.const import GRADUAL_RESTORATION_END_MARGIN
 
 from .entity import HydroPannesEntity
 
@@ -79,7 +79,7 @@ class HydroPannesCalendar(HydroPannesEntity, CalendarEntity):
         fin = dt_util.as_local(fin)
         en = self._english
         lines = []
-        if duree is not None and duree >= GRADUAL_RESTORATION_PLANNED_MINUTES:
+        if intr.may_restore_gradually:
             au_plus_tard = _format(fin + GRADUAL_RESTORATION_END_MARGIN)
             lines.append(
                 f"Power may be restored gradually, until {au_plus_tard} at the latest."
@@ -87,8 +87,8 @@ class HydroPannesCalendar(HydroPannesEntity, CalendarEntity):
                 else f"Le service pourrait être rétabli graduellement, au plus tard à {au_plus_tard}."
             )
         # On an interruption not yet postponed, the report dates are the fallback slot the site lists under "En cas de report".
-        if not intr.is_postponed and intr.postponed_start:
-            report_debut = _format(intr.postponed_start)
+        if fallback := intr.fallback_window:
+            report_debut = _format(fallback[0])
             lines.append(
                 f"In case of postponement: {report_debut}."
                 if en

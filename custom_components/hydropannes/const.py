@@ -3,6 +3,8 @@
 Enumerated sensors expose language-neutral slugs as their state, following the Home Assistant ``SensorDeviceClass.ENUM`` convention. The code-to-slug maps live here; the human-readable labels live in ``strings.json`` under ``entity.sensor.<translation_key>.state`` and are translated per language.
 """
 
+from pyhydropannes import Cause, InterventionStep, RestorationStep, ServiceStatus, UrgencyLevel
+
 DOMAIN = "hydropannes"
 
 CONF_LIEU_CONSO = "lieu_consommation"
@@ -36,18 +38,28 @@ INFO_PANNES_OPTIONS = [
     "interruption_planifiee_reportee",
 ]
 
+# What pyhydropannes reads from the payload → the state.
+INFO_PANNES_SLUGS = {
+    ServiceStatus.NO_OUTAGE: "aucune_panne",
+    ServiceStatus.OUTAGE: "panne_en_cours",
+    ServiceStatus.MAJOR_OUTAGE: "panne_majeure",
+    ServiceStatus.GRADUAL_RESTORATION: "reprise_graduelle",
+    ServiceStatus.RESTORED: "service_retabli",
+    ServiceStatus.PLANNED_IN_PROGRESS: "interruption_planifiee_en_cours",
+    ServiceStatus.PLANNED_UPCOMING: "interruption_planifiee_a_venir",
+    ServiceStatus.PLANNED_TERMINATED: "interruption_planifiee_terminee",
+    ServiceStatus.PLANNED_CANCELLED: "interruption_planifiee_annulee",
+    ServiceStatus.PLANNED_POSTPONED: "interruption_planifiee_reportee",
+}
+
 # ---------------------------------------------------------------------------
 # sensor.*_niveau_urgence
 # ---------------------------------------------------------------------------
 
-# The Info-pannes site names "M" panne majeure and "P" PURS, and handles both the same way. Only "N" and "P" have been observed in the API so far.
-NIVEAU_URGENCE_CODES = {
-    "N": "normal",
-    "M": "panne_majeure",
-    "P": "panne_majeure",
+NIVEAU_URGENCE_SLUGS = {
+    UrgencyLevel.NORMAL: "normal",
+    UrgencyLevel.MAJOR: "panne_majeure",
 }
-
-NIVEAU_URGENCE_MAJEURS = {"M", "P"}
 
 NIVEAU_URGENCE_OPTIONS = ["normal", "panne_majeure"]
 
@@ -55,51 +67,31 @@ NIVEAU_URGENCE_OPTIONS = ["normal", "panne_majeure"]
 # sensor.*_cause
 # ---------------------------------------------------------------------------
 
-# codeCause → slug, as the Info-pannes site maps them. Any other code, 58 included, is "Indéterminée" on the site too. The raw code is exposed as the ``code_cause`` attribute so no information is lost by mapping several codes onto one slug.
-CAUSE_CODES = {
-    "11": "defaillance_equipement",
-    "12": "surcharge_reseau",
-    "13": "bris_equipement",
-    "14": "bris_equipement",
-    "15": "bris_equipement",
-    "72": "bris_equipement",
-    "79": "bris_equipement",
-    "21": "foudre",
-    "22": "precipitations",
-    "24": "sinistre_naturel",
-    "25": "vents_violents",
-    "26": "temperature_extreme",
-    "31": "accident_ou_incident",
-    "32": "accident_ou_incident",
-    "41": "accident_ou_incident",
-    "43": "accident_ou_incident",
-    "56": "accident_ou_incident",
-    "57": "accident_ou_incident",
-    "33": "usure_materiel",
-    "34": "incendie_ou_fuite_gaz",
-    "42": "contact_accidentel",
-    "55": "contact_accidentel",
-    "44": "securite_publique",
-    "51": "dommages_vegetation",
-    "52": "dommages_oiseaux",
-    "53": "dommages_animaux",
-    "54": "collision_poteau",
-    "60": "entretien_urgent",
-    "70": "entretien_urgent",
-    "61": "amelioration_entretien_reseau",
-    "62": "amelioration_entretien_reseau",
-    "63": "amelioration_entretien_reseau",
-    "64": "amelioration_entretien_reseau",
-    "65": "amelioration_entretien_reseau",
-    "67": "amelioration_entretien_reseau",
-    "68": "amelioration_entretien_reseau",
-    "69": "amelioration_entretien_reseau",
-    "71": "amelioration_entretien_reseau",
-    "66": "securite_travaux",
-    "73": "mesure_protection",
-    "74": "mesure_protection",
-    "77": "travaux_vegetation_elagage",
-    "78": "travaux_vegetation_elagage",
+# Several cause codes share one cause. The raw code is exposed as the ``code_cause`` attribute so no information is lost.
+CAUSE_SLUGS = {
+    Cause.ACCIDENT_OR_INCIDENT: "accident_ou_incident",
+    Cause.ACCIDENTAL_CONTACT: "contact_accidentel",
+    Cause.ANIMAL_DAMAGE: "dommages_animaux",
+    Cause.BIRD_DAMAGE: "dommages_oiseaux",
+    Cause.EQUIPMENT_DAMAGE: "bris_equipement",
+    Cause.EQUIPMENT_FAILURE: "defaillance_equipement",
+    Cause.EXTREME_TEMPERATURE: "temperature_extreme",
+    Cause.FIRE_OR_GAS_LEAK: "incendie_ou_fuite_gaz",
+    Cause.GRID_MAINTENANCE: "amelioration_entretien_reseau",
+    Cause.GRID_OVERLOAD: "surcharge_reseau",
+    Cause.HIGH_WINDS: "vents_violents",
+    Cause.LIGHTNING: "foudre",
+    Cause.NATURAL_DISASTER: "sinistre_naturel",
+    Cause.POLE_COLLISION: "collision_poteau",
+    Cause.PRECIPITATION: "precipitations",
+    Cause.PROTECTIVE_MEASURE: "mesure_protection",
+    Cause.PUBLIC_SAFETY: "securite_publique",
+    Cause.TREE_TRIMMING: "travaux_vegetation_elagage",
+    Cause.UNDETERMINED: "indeterminee",
+    Cause.URGENT_MAINTENANCE: "entretien_urgent",
+    Cause.VEGETATION_DAMAGE: "dommages_vegetation",
+    Cause.WORK_SAFETY: "securite_travaux",
+    Cause.WORN_EQUIPMENT: "usure_materiel",
 }
 
 CAUSE_OPTIONS = [
@@ -132,27 +124,19 @@ CAUSE_OPTIONS = [
 # sensor.*_statut_intervention
 # ---------------------------------------------------------------------------
 
-# codeIntervention → slug, following the Info-pannes steps: N (aucune) and A (attribuée) are both shown as the assessment step, R (en route) as "Équipe désignée".
-INTERVENTION_CODES = {
-    "N": "evaluation_travaux",
-    "A": "evaluation_travaux",
-    "R": "equipe_designee",
-    "L": "travaux_en_cours",
-}
-
-# Overrides INTERVENTION_CODES["L"] for major outages (niveauUrgence in NIVEAU_URGENCE_MAJEURS).
-INTERVENTION_CODES_MAJEUR = {
-    "L": "travaux_par_priorite",
-}
-
-# typeFinPrevue → slug. U, D, P: documented by HQ. F, E, X: observed empirically; meanings are provisional.
-TYPE_FIN_PREVUE_CODES = {
-    "U": "retablissement_en_evaluation",  # no estimated date
-    "D": "retablissement_prevu",  # reliable date
-    "P": "retablissement_prevu",  # major outage, delays not guaranteed
-    "F": "fin_non_determinee",  # major outage, no dateFinEstimeeMax
-    "E": "retablissement_prevu",  # major outage, dateFinEstimeeMax present
-    "X": "retablissement_prevu",  # observed near end of major outage
+STATUT_INTERVENTION_SLUGS = {
+    InterventionStep.PLANNED_UPCOMING: "interruption_planifiee_a_venir",
+    InterventionStep.PLANNED_POSTPONED: "interruption_planifiee_reportee",
+    InterventionStep.PLANNED_CANCELLED: "interruption_planifiee_annulee",
+    InterventionStep.ASSESSMENT: "evaluation_travaux",
+    InterventionStep.CREW_ASSIGNED: "equipe_designee",
+    InterventionStep.WORK_IN_PROGRESS: "travaux_en_cours",
+    InterventionStep.WORK_BY_PRIORITY: "travaux_par_priorite",
+    InterventionStep.RESTORATION_UNDER_ASSESSMENT: "retablissement_en_evaluation",
+    InterventionStep.RESTORATION_EXPECTED: "retablissement_prevu",
+    InterventionStep.END_UNDETERMINED: "fin_non_determinee",
+    InterventionStep.GRADUAL_RESTORATION: "reprise_graduelle",
+    InterventionStep.RESTORED: "service_retabli",
 }
 
 # The intervention-status sensor also reuses several info-pannes slugs when the interruption is over, postponed, upcoming, or being gradually restored.
@@ -253,7 +237,7 @@ STATUT_INTERVENTION_DESCRIPTIONS_EN = {
     "service_retabli": "If the power is still not back, report the outage to Hydro-Québec again.",
 }
 
-# Overrides STATUT_INTERVENTION_DESCRIPTIONS during a major outage (niveauUrgence in NIVEAU_URGENCE_MAJEURS).
+# Overrides STATUT_INTERVENTION_DESCRIPTIONS during a major outage.
 STATUT_INTERVENTION_DESCRIPTIONS_MAJEUR = {
     "evaluation_travaux": "Hydro-Québec tente de rétablir le service à distance, évalue les dommages et envoie les équipes selon les priorités. Pendant une panne majeure, cette évaluation peut être plus longue.",
     "retablissement_en_evaluation": STATUT_INTERVENTION_DESCRIPTIONS["fin_non_determinee"],
@@ -269,6 +253,12 @@ STATUT_INTERVENTION_DESCRIPTIONS_MAJEUR_EN = {
 # ---------------------------------------------------------------------------
 
 # The restoration step of the Info-pannes outage tracker, separate from the intervention step.
+RETABLISSEMENT_SLUGS = {
+    RestorationStep.UNDER_ASSESSMENT: "en_evaluation",
+    RestorationStep.EXPECTED: "prevu",
+    RestorationStep.UNDER_REVISION: "en_revision",
+}
+
 RETABLISSEMENT_OPTIONS = ["en_evaluation", "prevu", "en_revision"]
 
 RETABLISSEMENT_DESCRIPTIONS = {

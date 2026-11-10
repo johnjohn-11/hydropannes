@@ -39,7 +39,6 @@ from pyhydropannes import (
     unknown_interruption_fields,
     unknown_root_fields,
 )
-from pyhydropannes.const import OUTAGE_ONGOING
 
 from .const import (
     CONF_LIEU_CONSO,
@@ -191,7 +190,7 @@ class HydroPannesDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 self._fire_change_event(result)
 
         self.etat = LocationState.from_payload(result, now=dt_util.utcnow())
-        self._adjust_update_interval(result)
+        self._adjust_update_interval()
         self.last_success_time = dt_util.utcnow()
         return result
 
@@ -328,15 +327,13 @@ class HydroPannesDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             API_HISTORY_SIZE,
         )
 
-    def _adjust_update_interval(self, data: dict[str, Any]) -> None:
+    def _adjust_update_interval(self) -> None:
         """Switch between fast and normal polling intervals.
 
         Uses ACTIVE_OUTAGE_UPDATE_INTERVAL (60 s) during an active outage for more responsive end-of-panne detection, and falls back to the normal UPDATE_INTERVAL (180 s) otherwise.
         """
         target_seconds = (
-            ACTIVE_OUTAGE_UPDATE_INTERVAL
-            if self._is_active_outage_in_data(data)
-            else UPDATE_INTERVAL
+            ACTIVE_OUTAGE_UPDATE_INTERVAL if self.etat.has_ongoing_interruption else UPDATE_INTERVAL
         )
         target = timedelta(seconds=target_seconds)
         if self.update_interval != target:
@@ -346,30 +343,6 @@ class HydroPannesDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 target_seconds,
                 self.lieu_conso,
             )
-
-    def _is_active_outage_in_data(self, data: dict[str, Any]) -> bool:
-        """Return True if the payload contains at least one active outage, which switches to fast polling.
-
-        An unplanned interruption whose own etat is under way counts whatever the root etat, as on the site. Otherwise the root etat must be "N" with an interruption that has no dateFin or one in the future. It works on the raw payload, before coordinator.data is set, so it does not use the helper mixin.
-        """
-        interruptions = data.get("interruptions", [])
-        if any(
-            not i.get("interruptionPlanifiee") and i.get("etat") in OUTAGE_ONGOING
-            for i in interruptions
-        ):
-            return True
-        if data.get("etat") != "N":
-            return False
-        now = dt_util.now()
-        for intr in interruptions:
-            date_fin_str = intr.get("dateFin")
-            if not date_fin_str:
-                # No end date → outage is still ongoing.
-                return True
-            dt = dt_util.parse_datetime(date_fin_str)
-            if dt and dt_util.as_local(dt) > now:
-                return True
-        return False
 
     # -----------------------------------------------------------------------
     # Change notification

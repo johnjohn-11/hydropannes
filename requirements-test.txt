@@ -7,4 +7,4 @@ pytest-homeassistant-custom-component==0.13.375
 ruff==0.17.3
 
 # Same version as the requirement in manifest.json: Home Assistant installs it, the test environment does not.
-pyhydropannes==0.1.1
+pyhydropannes==0.2.0

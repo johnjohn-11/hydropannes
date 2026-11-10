@@ -12,31 +12,30 @@ from homeassistant.components.sensor import (
 )
 from homeassistant.const import EntityCategory, UnitOfTime
 from homeassistant.util import dt as dt_util
-from pyhydropannes import round_up_quarter
-from pyhydropannes.const import PLANNED_POSTPONED, PLANNED_SHIFTED, ROOT_OFF, ROOT_ON
+from pyhydropannes import EndKind
 
 from .const import (
-    CAUSE_CODES,
     CAUSE_DESCRIPTIONS,
     CAUSE_DESCRIPTIONS_EN,
     CAUSE_OPTIONS,
+    CAUSE_SLUGS,
     INFO_PANNES_OPTIONS,
-    INTERVENTION_CODES,
-    INTERVENTION_CODES_MAJEUR,
-    NIVEAU_URGENCE_CODES,
+    INFO_PANNES_SLUGS,
     NIVEAU_URGENCE_OPTIONS,
+    NIVEAU_URGENCE_SLUGS,
     RAISON_ANNULATION,
     RETABLISSEMENT_DESCRIPTIONS,
     RETABLISSEMENT_DESCRIPTIONS_EN,
     RETABLISSEMENT_DESCRIPTIONS_MAJEUR,
     RETABLISSEMENT_DESCRIPTIONS_MAJEUR_EN,
     RETABLISSEMENT_OPTIONS,
+    RETABLISSEMENT_SLUGS,
     STATUT_INTERVENTION_DESCRIPTIONS,
     STATUT_INTERVENTION_DESCRIPTIONS_EN,
     STATUT_INTERVENTION_DESCRIPTIONS_MAJEUR,
     STATUT_INTERVENTION_DESCRIPTIONS_MAJEUR_EN,
     STATUT_INTERVENTION_OPTIONS,
-    TYPE_FIN_PREVUE_CODES,
+    STATUT_INTERVENTION_SLUGS,
 )
 from .entity import HydroPannesEntity
 
@@ -51,6 +50,12 @@ if TYPE_CHECKING:
 
 # The description attribute is fixed text derived from the state, so it is kept out of the recorder.
 _UNRECORDED_DESCRIPTION = frozenset({"description"})
+
+_END_ICONS = {
+    EndKind.POSTPONED: "mdi:calendar-clock",
+    EndKind.ACTUAL: "mdi:clock-check",
+    EndKind.ESTIMATED: "mdi:clock-alert",
+}
 
 
 def _nb_client_arrondi(nb_client: int, *, english: bool = False) -> str:
@@ -113,50 +118,8 @@ class HydroPannesInfoPannesSensor(HydroPannesSensorBase):
         """Return the service status string."""
         if not self.coordinator.data:
             return None
-
-        root_etat = self._etat.status
-        interruptions = self._etat.interruptions
-        now = dt_util.utcnow()
-
-        if not interruptions:
-            if root_etat == ROOT_ON:
-                return "aucune_panne"
-            if root_etat == ROOT_OFF:
-                return "panne_en_cours"
-            return None
-
-        if self._etat.out_of_sync:
-            return "panne_en_cours"
-
-        active_outage = self._etat.active_outage
-        if active_outage and self._etat.is_gradual_restoration(active_outage):
-            return "reprise_graduelle"
-
-        if active_outage:
-            if active_outage.is_major:
-                return "panne_majeure"
-            return "panne_en_cours"
-
-        planned = self._etat.planned
-        if self._etat.terminated_outage and not (planned and planned.supersedes_terminated(now)):
-            return "service_retabli"
-
-        if planned:
-            if planned.is_postponed:
-                return "interruption_planifiee_reportee"
-            if planned.is_cancelled:
-                return "interruption_planifiee_annulee"
-            if planned.is_terminated(now):
-                return "interruption_planifiee_terminee"
-            if root_etat == ROOT_OFF:
-                return "interruption_planifiee_en_cours"
-            return "interruption_planifiee_a_venir"
-
-        if root_etat == ROOT_ON:
-            return "aucune_panne"
-        if root_etat == ROOT_OFF:
-            return "panne_en_cours"
-        return None
+        status = self._etat.service_status
+        return INFO_PANNES_SLUGS[status] if status else None
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
@@ -186,12 +149,9 @@ class HydroPannesNiveauUrgenceSensor(HydroPannesSensorBase):
         An unrecognized code yields None rather than a made-up state: Home Assistant rejects any value outside _attr_options.
         """
         interruption = self._etat.current
-        if not interruption:
+        if not interruption or not interruption.urgency:
             return None
-        niveau = interruption.urgency_code
-        if not niveau:
-            return None
-        return NIVEAU_URGENCE_CODES.get(niveau)
+        return NIVEAU_URGENCE_SLUGS[interruption.urgency]
 
 
 class HydroPannesAdressesToucheesSensor(HydroPannesSensorBase):
@@ -243,54 +203,25 @@ class HydroPannesDateFinSensor(HydroPannesSensorBase):
     _attr_device_class = SensorDeviceClass.TIMESTAMP
     _unique_id_suffix = "datefin"
 
-    def _get_end_time_info(self) -> tuple[datetime | None, bool, bool]:
-        """Return (end_time, is_actual, is_postponed)."""
-        outage = self._etat.current
-        if not outage:
-            return None, False, False
-        if outage.status in (PLANNED_POSTPONED, PLANNED_SHIFTED):
-            new_fin = outage.effective_end
-            if new_fin:
-                return new_fin, False, True
-            # No new end date: don't fall through to the abandoned dateFin.
-            return None, False, True
-        date_fin = outage.end
-        if date_fin:
-            return date_fin, True, False
-        date_fin_estimee = outage.estimated_end_max
-        if date_fin_estimee:
-            return date_fin_estimee, False, False
-        return None, False, False
-
     @property
     def native_value(self) -> datetime | None:
         """Return the effective end time."""
-        end_time, _, _ = self._get_end_time_info()
-        return end_time
+        outage = self._etat.current
+        return outage.display_end if outage else None
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
         """Expose the earliest estimated end when Hydro-Québec gives a range, as the site shows "between" the two."""
-        end_time, is_actual, is_postponed = self._get_end_time_info()
         outage = self._etat.current
-        if end_time is None or is_actual or is_postponed or not outage:
-            return {}
-        fin_min = outage.estimated_end_min
-        if fin_min and fin_min < end_time:
-            return {"fin_estimee_min": dt_util.as_local(fin_min).isoformat()}
-        return {}
+        fin_min = outage.estimated_end_earliest if outage else None
+        return {"fin_estimee_min": dt_util.as_local(fin_min).isoformat()} if fin_min else {}
 
     @property
     def icon(self) -> str:
         """Return an icon reflecting the type of end time."""
-        end_time, is_actual, is_postponed = self._get_end_time_info()
-        if end_time is None:
-            return "mdi:clock-end"
-        if is_postponed:
-            return "mdi:calendar-clock"
-        if is_actual:
-            return "mdi:clock-check"
-        return "mdi:clock-alert"
+        outage = self._etat.current
+        kind = outage.end_kind if outage and outage.display_end else None
+        return _END_ICONS[kind] if kind else "mdi:clock-end"
 
 
 class HydroPannesStatutInterventionSensor(HydroPannesSensorBase):
@@ -304,39 +235,9 @@ class HydroPannesStatutInterventionSensor(HydroPannesSensorBase):
 
     @property
     def native_value(self) -> str | None:
-        """Return the current intervention step slug.
-
-        An unrecognized typeFinPrevue yields None rather than a made-up state:
-        Home Assistant rejects any value outside _attr_options.
-        """
-        outage = self._etat.current
-        if not outage:
-            return None
-        planned = outage.planned
-        # Checked before termination: the site shows a cancelled planned interruption as cancelled even once its slot is past.
-        if planned and outage.is_cancelled:
-            return "interruption_planifiee_annulee"
-        if outage.is_terminated(dt_util.utcnow()):
-            return "service_retabli"
-        if outage.is_postponed:
-            return "interruption_planifiee_reportee"
-        if self._etat.is_gradual_restoration(outage):
-            return "reprise_graduelle"
-        if self._etat.is_planned_in_progress(outage):
-            # The site's planned-interruption tracker shows restoration as the current step once an end is known.
-            return "retablissement_prevu" if outage.effective_end else "travaux_en_cours"
-        if planned:
-            # Planned but not under way (root etat not "N"), as the info-pannes sensor reports it. The site shows no step for it.
-            return "interruption_planifiee_a_venir"
-        code = outage.intervention_code
-        type_fin = outage.end_type_code
-        if code == "L" and outage.is_major:
-            return INTERVENTION_CODES_MAJEUR["L"]
-        if code in INTERVENTION_CODES:
-            return INTERVENTION_CODES[code]
-        if type_fin:
-            return TYPE_FIN_PREVUE_CODES.get(type_fin)
-        return None
+        """Return the current intervention step slug, None when the site shows no step."""
+        step = self._etat.intervention_step
+        return STATUT_INTERVENTION_SLUGS[step] if step else None
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
@@ -373,28 +274,9 @@ class HydroPannesRetablissementSensor(HydroPannesSensorBase):
 
     @property
     def native_value(self) -> str | None:
-        """Return the restoration step, or None without an active unplanned outage.
-
-        Mirrors the site's rule. The estimated end is rounded up to the quarter hour before being compared to now. Without an estimate, a crew on the way or on site means the time is being revised. The site also tests a typeFinPrevu field the API never sends (it sends typeFinPrevue), so that test never changes the outcome and is left out.
-        """
-        if self._etat.out_of_sync:
-            return None
-        outage = self._etat.active_outage
-        if not outage:
-            planned = self._etat.planned
-            if planned and self._etat.is_planned_in_progress(planned):
-                # A planned interruption has a known end: the site shows it as expected, without revision.
-                return "prevu" if planned.effective_end else None
-            return None
-        fin_estimee = outage.estimated_end_max
-        if fin_estimee:
-            # Rounded in local time, as the site does: a quarter hour is not the same in every offset.
-            if round_up_quarter(dt_util.as_local(fin_estimee)) <= dt_util.now():
-                return "en_revision"
-            return "prevu"
-        if outage.intervention_code in ("L", "R"):
-            return "en_revision"
-        return "en_evaluation"
+        """Return the restoration step of the site's tracker, None without an interruption under way."""
+        step = self._etat.restoration_step
+        return RETABLISSEMENT_SLUGS[step] if step else None
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
@@ -428,15 +310,10 @@ class HydroPannesCauseSensor(HydroPannesSensorBase):
     def native_value(self) -> str | None:
         """Return the cause slug.
 
-        "indeterminee" when Hydro-Québec reports no code or a code outside CAUSE_CODES, as the Info-pannes site does. The raw code is kept in the code_cause attribute either way.
+        "indeterminee" when Hydro-Québec reports no code or one the Info-pannes site does not map. The raw code is kept in the code_cause attribute either way.
         """
         outage = self._etat.current
-        if not outage:
-            return None
-        code = outage.cause_code
-        if code is None:
-            return "indeterminee"
-        return CAUSE_CODES.get(code, "indeterminee")
+        return CAUSE_SLUGS[outage.cause] if outage else None
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
@@ -471,14 +348,8 @@ class HydroPannesDureeSensor(HydroPannesSensorBase):
         Uses the effective start/end dates so postponed or rescheduled planned interruptions are measured against their real (rescheduled) window rather than the cancelled original slot. Returns None when the interruption has not started yet (e.g. an upcoming planned intervention), which avoids reporting a negative duration. When the interruption is ongoing (no effective end date), the elapsed time up to now is returned.
         """
         outage = self._etat.current
-        if not outage:
-            return None
-        effective_debut, effective_fin = outage.effective_start, outage.effective_end
-        now = dt_util.utcnow()
-        if not effective_debut or effective_debut > now:
-            return None
-        end = effective_fin or now
-        return max(round((end - effective_debut).total_seconds()), 0)
+        elapsed = outage.elapsed(dt_util.utcnow()) if outage else None
+        return round(elapsed.total_seconds()) if elapsed is not None else None
 
 
 class HydroPannesDelaiAvantRetablissementSensor(HydroPannesSensorBase):
@@ -493,14 +364,8 @@ class HydroPannesDelaiAvantRetablissementSensor(HydroPannesSensorBase):
     @property
     def native_value(self) -> int | None:
         """Return seconds until estimated restoration, or None."""
-        outage = self._etat.current
-        if not outage or outage.is_terminated(dt_util.utcnow()) or not self._etat.is_active(outage):
-            return None
-        date_fin_estimee = outage.estimated_end_max
-        if not date_fin_estimee:
-            return None
-        remaining = (date_fin_estimee - dt_util.now()).total_seconds()
-        return round(remaining) if remaining >= 0 else None
+        remaining = self._etat.time_to_restoration
+        return round(remaining.total_seconds()) if remaining is not None else None
 
 
 class HydroPannesDerniereMAJSensor(HydroPannesSensorBase):
