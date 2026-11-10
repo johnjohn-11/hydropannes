@@ -23,10 +23,11 @@ class FakeCoordinator:
         self,
         data: dict[str, Any] | None,
         last_success_time: datetime | None = None,
+        now: datetime | None = None,
     ) -> None:
         """Store the API payload the mixin will interpret."""
         self.data = data
-        self.etat = LocationState.from_payload(data or {})
+        self.etat = LocationState.from_payload(data or {}, now=now)
         self.last_success_time = last_success_time
 
 

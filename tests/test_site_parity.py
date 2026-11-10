@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta
 from typing import Any
-from unittest.mock import patch
 
 from homeassistant.util import dt as dt_util
 from pyhydropannes import parse_datetime, round_up_quarter
@@ -29,10 +28,10 @@ from custom_components.hydropannes.sensor import (
 from .conftest import FakeCoordinator, hours_from_now, make_interruption, make_payload
 
 
-def build(cls, payload: dict[str, Any] | None):
-    """Instantiate a sensor around a payload, bypassing the HA constructor."""
+def build(cls, payload: dict[str, Any] | None, now: datetime | None = None):
+    """Instantiate a sensor around a payload read at ``now``, bypassing the HA constructor."""
     sensor = cls.__new__(cls)
-    sensor.coordinator = FakeCoordinator(payload)
+    sensor.coordinator = FakeCoordinator(payload, now=now)
     return sensor
 
 
@@ -127,11 +126,10 @@ def test_estimate_just_expired_stays_prevu_until_the_quarter() -> None:
     # One minute ago, but rounded up to a quarter hour that is still ahead of now.
     now = datetime(2026, 9, 25, 14, 20, tzinfo=dt_util.UTC)
     intr = make_interruption(dateFin=None, dateFinEstimeeMax="2026-09-25T14:19:00+00:00")
-    sensor = build(HydroPannesRetablissementSensor, make_payload(etat="N", interruptions=[intr]))
-    with patch.object(dt_util, "now", return_value=now):
-        assert sensor.native_value == "prevu"
-    with patch.object(dt_util, "now", return_value=now + timedelta(minutes=11)):
-        assert sensor.native_value == "en_revision"
+    payload = make_payload(etat="N", interruptions=[intr])
+    assert build(HydroPannesRetablissementSensor, payload, now=now).native_value == "prevu"
+    later = now + timedelta(minutes=11)
+    assert build(HydroPannesRetablissementSensor, payload, now=later).native_value == "en_revision"
 
 
 def test_retablissement_major_description() -> None:

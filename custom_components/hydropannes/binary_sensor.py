@@ -14,11 +14,6 @@ from homeassistant.components.binary_sensor import BinarySensorEntity
 from homeassistant.components.binary_sensor.const import BinarySensorDeviceClass
 from homeassistant.util import dt as dt_util
 from pyhydropannes import parse_datetime
-from pyhydropannes.const import (
-    GRADUAL_RESTORATION_END_MARGIN,
-    GRADUAL_RESTORATION_PLANNED_MINUTES,
-    ROOT_OFF,
-)
 
 from .entity import HydroPannesEntity
 
@@ -99,7 +94,7 @@ class HydroPannesEtatServiceBinarySensor(HydroPannesBinarySensorBase):
         if not self.coordinator.data:
             return None
         # "N" means the service point is not fed, whether or not an interruption object can be matched to it. An unplanned interruption under way also counts, as the site shows it as an outage even while the root etat still says "A".
-        return self._etat.status == ROOT_OFF or self._etat.active_outage is not None
+        return self._etat.service_problem
 
 
 class HydroPannesInterventionPlanifieeBinarySensor(HydroPannesBinarySensorBase):
@@ -134,20 +129,18 @@ class HydroPannesInterventionPlanifieeBinarySensor(HydroPannesBinarySensorBase):
 
     def _resume(self, intr: Interruption) -> dict[str, Any]:
         """Summarize a planned interruption the way the site's planned-interruption card shows it."""
-        fin = intr.effective_end
-        duree = intr.planned_duration_minutes
         item: dict[str, Any] = {
             "debut": _iso(intr.effective_start),
-            "fin": _iso(fin),
-            "duree_prevue": duree,
+            "fin": _iso(intr.effective_end),
+            "duree_prevue": intr.planned_duration_minutes,
         }
-        # From 480 minutes of planned work the site warns about a gradual restoration and shows the end as a window up to 5 hours later.
-        if duree is not None and duree >= GRADUAL_RESTORATION_PLANNED_MINUTES:
+        # For a long planned interruption the site warns about a gradual restoration and shows the end as a window.
+        if intr.may_restore_gradually:
             item["reprise_graduelle_possible"] = True
-            if fin:
-                item["fin_au_plus_tard"] = _iso(fin + GRADUAL_RESTORATION_END_MARGIN)
+            if intr.latest_end:
+                item["fin_au_plus_tard"] = _iso(intr.latest_end)
         # On an interruption not yet postponed, the report dates are the fallback slot the site lists under "En cas de report".
-        if not intr.is_postponed and intr.postponed_start:
-            item["report_debut"] = _iso(intr.postponed_start)
-            item["report_fin"] = _iso(intr.postponed_end)
+        if fallback := intr.fallback_window:
+            item["report_debut"] = _iso(fallback[0])
+            item["report_fin"] = _iso(fallback[1])
         return item
