@@ -130,6 +130,7 @@ jobs:
             "custom_components/hydropannes/config_flow.py"
             "custom_components/hydropannes/diagnostics.py"
             "custom_components/hydropannes/entity.py"
+            "custom_components/hydropannes/frontend/hydropannes-card.js"
             "custom_components/hydropannes/strings.json"
             "custom_components/hydropannes/icons.json"
             "custom_components/hydropannes/translations/en.json"

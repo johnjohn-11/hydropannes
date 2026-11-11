@@ -8,8 +8,10 @@ An immediate data refresh can be triggered per entity with the built-in ``homeas
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 from typing import TYPE_CHECKING
 
+from homeassistant.components.http import StaticPathConfig  # type: ignore[attr-defined]
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.helpers import (
@@ -17,12 +19,14 @@ from homeassistant.helpers import (
     entity_registry as er,
     issue_registry as ir,
 )
+from homeassistant.loader import async_get_integration
 
 from .const import CONF_NOM_LIEU, DOMAIN
 from .coordinator import HydroPannesDataUpdateCoordinator, issue_ids
 
 if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
+    from homeassistant.helpers.typing import ConfigType
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -34,6 +38,28 @@ REMOVED_ENTITY_SUFFIXES = ("api_compatibility",)
 type HydroPannesConfigEntry = ConfigEntry[HydroPannesDataUpdateCoordinator]
 
 CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
+
+CARD_URL = f"/{DOMAIN}/hydropannes-card.js"
+CARD_PATH = Path(__file__).parent / "frontend" / "hydropannes-card.js"
+
+
+async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
+    """Serve the dashboard card and have the frontend load it.
+
+    http and frontend are after_dependencies: a Home Assistant running without them still sets the integration up, without the card.
+    """
+    if "http" not in hass.config.components:
+        return True
+    await hass.http.async_register_static_paths(
+        [StaticPathConfig(CARD_URL, str(CARD_PATH), cache_headers=False)]
+    )
+    if "frontend" in hass.config.components:
+        from homeassistant.components.frontend import add_extra_js_url
+
+        integration = await async_get_integration(hass, DOMAIN)
+        # The version in the URL makes browsers fetch the card again after an update.
+        add_extra_js_url(hass, f"{CARD_URL}?v={integration.version}")
+    return True
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: HydroPannesConfigEntry) -> bool:

@@ -1,6 +1,7 @@
 {
   "domain": "hydropannes",
   "name": "Hydro-Pannes",
+  "after_dependencies": ["frontend", "http"],
   "codeowners": ["@johnjohn-11"],
   "config_flow": true,
   "dependencies": [],
