@@ -422,8 +422,10 @@ const STYLE = `
   .planned .value, .planned .note { text-align: left; }
 `;
 
-if (!customElements.get("hydropannes-card")) {
-  customElements.define("hydropannes-card", HydroPannesCard);
+// The frontend loads this module alongside its own app, which replaces window.customElements with a scoped registry polyfill. Defined before that swap, the card lands in the native registry where dashboards never look, so wait for home-assistant to be defined and use whichever registry is current then.
+customElements.whenDefined("home-assistant").then(() => {
+  if (window.customElements.get("hydropannes-card")) return;
+  window.customElements.define("hydropannes-card", HydroPannesCard);
   window.customCards = window.customCards || [];
   window.customCards.push({
     type: "hydropannes-card",
@@ -431,4 +433,4 @@ if (!customElements.get("hydropannes-card")) {
     description: "Suivi d'une panne ou d'une interruption planifiée, comme sur Info-pannes.",
     preview: true,
   });
-}
+});
