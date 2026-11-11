@@ -208,6 +208,17 @@ actions:
 
 </details>
 
+## Carte de suivi
+
+L'intégration fournit une carte de tableau de bord qui reprend le suivi du site Info-pannes : l'état du lieu, les étapes de l'intervention pendant une panne, le début, la fin prévue, la cause, les adresses touchées et la prochaine interruption planifiée.
+
+```yaml
+type: custom:hydropannes-card
+entity: sensor.maison_info_pannes
+```
+
+`entity` est le capteur Info-pannes du lieu. Les autres entités sont trouvées sur le même appareil. `title` remplace le nom de l'appareil affiché en haut de la carte.
+
 ## Exemple de carte
 
 Une carte Markdown qui s'affiche seulement pendant une panne ou une interruption planifiée :

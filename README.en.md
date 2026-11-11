@@ -208,6 +208,17 @@ actions:
 
 </details>
 
+## Tracker card
+
+The integration ships a dashboard card laid out like the Info-pannes tracker: the status of the location, the intervention steps during an outage, the start, the expected end, the cause, the affected addresses and the next planned interruption.
+
+```yaml
+type: custom:hydropannes-card
+entity: sensor.maison_info_pannes
+```
+
+`entity` is the Info-pannes sensor of the location. The other entities are found on the same device. `title` replaces the device name shown at the top of the card.
+
 ## Card example
 
 A Markdown card shown only during an outage or a planned interruption:
