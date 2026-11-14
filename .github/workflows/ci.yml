@@ -82,7 +82,7 @@ jobs:
         run: pip install -r requirements-test.txt
 
       - name: Run pytest
-        run: pytest
+        run: pytest --cov=custom_components.hydropannes --cov-report=term-missing --cov-fail-under=95
 
   validate:
     name: Validate
