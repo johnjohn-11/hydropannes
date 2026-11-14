@@ -30,7 +30,7 @@ Or in HACS: the 3 dots at the top right → **Custom repositories**, add `https:
 
 ### Manual installation
 
-Copy the `custom_components/hydropannes` folder of the latest [release](https://github.com/johnjohn-11/hydropannes/releases/latest) into `config/custom_components/`, then restart Home Assistant.
+Download `hydropannes.zip` from the latest [release](https://github.com/johnjohn-11/hydropannes/releases/latest), extract its content into `config/custom_components/hydropannes/`, then restart Home Assistant.
 
 ## Configuration
 
@@ -95,7 +95,7 @@ triggers:
     entity_id: binary_sensor.home_service_status
     to: "on"
 actions:
-  - action: notify.mobile_app
+  - action: notify.mobile_app_your_phone
     data:
       title: "⚡ Power outage"
       message: >
@@ -115,7 +115,7 @@ triggers:
     offset: "-12:00:00"
     entity_id: calendar.home_planned_interruptions
 actions:
-  - action: notify.mobile_app
+  - action: notify.mobile_app_your_phone
     data:
       title: "📅 Planned interruption tomorrow"
       message: >
@@ -137,7 +137,7 @@ triggers:
       - unknown
       - unavailable
 actions:
-  - action: notify.mobile_app
+  - action: notify.mobile_app_your_phone
     data:
       title: "✅ Service restored"
       message: >
@@ -161,7 +161,7 @@ triggers:
       - unknown
       - unavailable
 actions:
-  - action: notify.mobile_app
+  - action: notify.mobile_app_your_phone
     data:
       title: "{{ '🚫' if trigger.to_state.state == 'interruption_planifiee_annulee' else '📅' }} {{ state_translated('sensor.home_outage_info') }}"
       message: >
@@ -198,7 +198,7 @@ conditions:
       - panne_majeure
       - reprise_graduelle
 actions:
-  - action: notify.mobile_app
+  - action: notify.mobile_app_your_phone
     data:
       title: "🕐 New restoration time"
       message: >
@@ -288,6 +288,7 @@ Fired whenever a location's data changes, with `entry_id`, `lieu_consommation`, 
 
 - **The number is rejected**: it must have exactly 10 digits.
 - **Entities are unavailable**: the Hydro-Québec API does not answer or answered in an unexpected format. The error message is in the logs, and a card appears in **Repairs** if the API structure changed.
+- **Debug logging**: on the integration page, the 3 dots → **Enable debug logging**. Reproduce the problem, then disable it to download the log.
 - **Report a problem**: attach the diagnostics report (the location's 3 dots → **Download diagnostics**, the location number is masked in it) to an [issue](https://github.com/johnjohn-11/hydropannes/issues).
 
 ## Credits

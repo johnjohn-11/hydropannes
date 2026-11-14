@@ -30,7 +30,7 @@ Ou dans HACS : les 3 points en haut à droite → **Dépôts personnalisés**, a
 
 ### Installation manuelle
 
-Copier le dossier `custom_components/hydropannes` de la dernière [release](https://github.com/johnjohn-11/hydropannes/releases/latest) dans `config/custom_components/`, puis redémarrer Home Assistant.
+Télécharger `hydropannes.zip` de la dernière [release](https://github.com/johnjohn-11/hydropannes/releases/latest), extraire son contenu dans `config/custom_components/hydropannes/`, puis redémarrer Home Assistant.
 
 ## Configuration
 
@@ -95,7 +95,7 @@ triggers:
     entity_id: binary_sensor.maison_etat_du_service
     to: "on"
 actions:
-  - action: notify.mobile_app
+  - action: notify.mobile_app_votre_telephone
     data:
       title: "⚡ Panne électrique"
       message: >
@@ -115,7 +115,7 @@ triggers:
     offset: "-12:00:00"
     entity_id: calendar.maison_interruptions_planifiees
 actions:
-  - action: notify.mobile_app
+  - action: notify.mobile_app_votre_telephone
     data:
       title: "📅 Interruption planifiée demain"
       message: >
@@ -137,7 +137,7 @@ triggers:
       - unknown
       - unavailable
 actions:
-  - action: notify.mobile_app
+  - action: notify.mobile_app_votre_telephone
     data:
       title: "✅ Service rétabli"
       message: >
@@ -161,7 +161,7 @@ triggers:
       - unknown
       - unavailable
 actions:
-  - action: notify.mobile_app
+  - action: notify.mobile_app_votre_telephone
     data:
       title: "{{ '🚫' if trigger.to_state.state == 'interruption_planifiee_annulee' else '📅' }} {{ state_translated('sensor.maison_info_pannes') }}"
       message: >
@@ -198,7 +198,7 @@ conditions:
       - panne_majeure
       - reprise_graduelle
 actions:
-  - action: notify.mobile_app
+  - action: notify.mobile_app_votre_telephone
     data:
       title: "🕐 Nouvelle heure de rétablissement"
       message: >
@@ -288,6 +288,7 @@ content: >
 
 - **Le numéro est refusé** : il doit comporter exactement 10 chiffres.
 - **Les entités sont indisponibles** : l'API d'Hydro-Québec ne répond pas ou a répondu dans un format inattendu. Le message d'erreur est dans les journaux et une carte apparaît dans **Réparations** si la structure de l'API a changé.
+- **Journalisation de débogage** : sur la page de l'intégration, les 3 points → **Activer la journalisation de débogage**. Reproduire le problème, puis la désactiver pour télécharger le journal.
 - **Signaler un problème** : joignez le rapport de diagnostic (les 3 points du lieu → **Télécharger les diagnostics**, le numéro de lieu y est masqué) à une [issue](https://github.com/johnjohn-11/hydropannes/issues).
 
 ## Crédits
