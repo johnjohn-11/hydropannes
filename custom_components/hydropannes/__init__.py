@@ -12,7 +12,6 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from homeassistant.components.http import StaticPathConfig  # type: ignore[attr-defined]
-from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.helpers import (
     config_validation as cv,
@@ -22,7 +21,7 @@ from homeassistant.helpers import (
 from homeassistant.loader import async_get_integration
 
 from .const import CONF_NOM_LIEU, DOMAIN
-from .coordinator import HydroPannesDataUpdateCoordinator, issue_ids
+from .coordinator import HydroPannesConfigEntry, HydroPannesDataUpdateCoordinator, issue_ids
 
 if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
@@ -34,8 +33,6 @@ PLATFORMS: list[Platform] = [Platform.SENSOR, Platform.BINARY_SENSOR, Platform.C
 
 # Unique-id suffixes of entities the integration no longer provides. The migration to 2.3 removes their registry entries so they do not linger as unavailable.
 REMOVED_ENTITY_SUFFIXES = ("api_compatibility",)
-
-type HydroPannesConfigEntry = ConfigEntry[HydroPannesDataUpdateCoordinator]
 
 CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 

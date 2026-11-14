@@ -15,7 +15,7 @@ from .coordinator import HydroPannesDataUpdateCoordinator
 if TYPE_CHECKING:
     from asyncio import Handle
 
-    from . import HydroPannesConfigEntry
+    from .coordinator import HydroPannesConfigEntry
 
 # Read by entities before the first successful poll, so a property never has to check for None.
 _NO_DATA = LocationState.from_payload({})

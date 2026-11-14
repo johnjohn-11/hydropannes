@@ -45,7 +45,7 @@ if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
     from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
-    from . import HydroPannesConfigEntry
+    from .coordinator import HydroPannesConfigEntry
 
 
 # The description attribute is fixed text derived from the state, so it is kept out of the recorder.

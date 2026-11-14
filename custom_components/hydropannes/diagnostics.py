@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
 
-    from . import HydroPannesConfigEntry
+    from .coordinator import HydroPannesConfigEntry
 
 
 async def async_get_config_entry_diagnostics(

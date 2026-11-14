@@ -16,7 +16,7 @@ if TYPE_CHECKING:
     from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
     from pyhydropannes import Interruption
 
-    from . import HydroPannesConfigEntry
+    from .coordinator import HydroPannesConfigEntry
 
 PARALLEL_UPDATES = 0
 

@@ -70,6 +70,9 @@ ACTIVE_OUTAGE_UPDATE_INTERVAL = 60  # seconds
 API_HISTORY_SIZE = 5
 
 
+type HydroPannesConfigEntry = ConfigEntry[HydroPannesDataUpdateCoordinator]
+
+
 def issue_ids(entry_id: str) -> tuple[str, str]:
     """Return the ids of the schema-change and invalid-response repair issues of an entry."""
     return f"api_incompatible_{entry_id}", f"api_invalid_response_{entry_id}"
@@ -78,7 +81,9 @@ def issue_ids(entry_id: str) -> tuple[str, str]:
 class HydroPannesDataUpdateCoordinator(DataUpdateCoordinator[LocationState]):
     """Coordinator managing data fetching, caching, and change notification."""
 
-    def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
+    config_entry: HydroPannesConfigEntry
+
+    def __init__(self, hass: HomeAssistant, entry: HydroPannesConfigEntry) -> None:
         """Initialize the coordinator.
 
         Args:
@@ -87,9 +92,6 @@ class HydroPannesDataUpdateCoordinator(DataUpdateCoordinator[LocationState]):
 
         """
         self.lieu_conso: str = entry.data[CONF_LIEU_CONSO]
-
-        # Captured here so the change event doesn't rely on self.config_entry, typed Optional by the base coordinator.
-        self._entry_id: str = entry.entry_id
 
         self.api_compatible: bool = True
 
@@ -362,7 +364,7 @@ class HydroPannesDataUpdateCoordinator(DataUpdateCoordinator[LocationState]):
         self.hass.bus.async_fire(
             EVENT_DATA_CHANGED,
             {
-                "entry_id": self._entry_id,
+                "entry_id": self.config_entry.entry_id,
                 "lieu_consommation": self.lieu_conso,
                 "timestamp": dt_util.utcnow().isoformat(),
                 "data": data,
