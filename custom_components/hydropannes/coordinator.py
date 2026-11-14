@@ -129,7 +129,8 @@ class HydroPannesDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         super().__init__(
             hass,
             _LOGGER,
-            name=DOMAIN,
+            # Home Assistant puts the name in its own update logs, so it tells the locations apart.
+            name=f"{DOMAIN} {self.lieu_conso}",
             config_entry=entry,
             update_interval=timedelta(seconds=UPDATE_INTERVAL),
         )

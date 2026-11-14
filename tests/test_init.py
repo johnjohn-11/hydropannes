@@ -84,6 +84,7 @@ async def test_affected_addresses_unit_comes_from_translations(
 
     state = _state(hass, entry, "sensor", "nbclient")
     assert state.attributes["unit_of_measurement"] == "clients"
+    assert entry.runtime_data.name == f"{DOMAIN} {LIEU}"
 
 
 async def test_unique_ids_are_stable(hass: HomeAssistant, aioclient_mock) -> None:
