@@ -11,7 +11,7 @@
 repos:
   - repo: https://github.com/astral-sh/ruff-pre-commit
     # Lancer `pre-commit autoupdate` pour épingler la dernière version.
-    rev: v0.16.8
+    rev: v0.17.3
     hooks:
       - id: ruff
         args: [--fix]
