@@ -208,6 +208,12 @@ actions:
 
 </details>
 
+## Notification blueprint
+
+[![Import the blueprint](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fgithub.com%2Fjohnjohn-11%2Fhydropannes%2Fblob%2Fmain%2Fblueprints%2Fautomation%2Fhydropannes%2Fnotifications.yaml)
+
+Sends a notification on each change of a location's Outage info state (outage, major outage, restoration, planned interruption announced, started, ended, cancelled or postponed), with the start, end, cause, work step and affected addresses. Optionally, it also warns of a new step, a new end time or a change in the number of affected addresses during an outage. The texts are in French.
+
 ## Tracker card
 
 The integration ships a dashboard card laid out like the Info-pannes tracker: the status of the location, the intervention steps during an outage, the start, the expected end, the cause, the affected addresses and the next planned interruption.

@@ -1,0 +1,226 @@
+blueprint:
+  name: Hydro-Pannes (Notifications)
+  description: |
+    # Notifications de pannes et d'interruptions planifiées
+
+    Envoie une notification quand l'état **Info-pannes** d'un lieu change : panne en cours, panne majeure, rétablissement graduel, service rétabli, ainsi que l'annonce, le début, la fin, l'annulation ou le report d'une interruption planifiée.
+
+    ## Configuration
+
+    ### Capteurs Info-pannes
+
+    Choisissez un ou plusieurs capteurs **Info-pannes** (`sensor.*_info_pannes`). Le nom du lieu dans la notification est celui de l'appareil.
+
+    ### Action de notification
+
+    Les variables `title` et `message` contiennent le texte prêt à envoyer. La variable `lieu` contient le nom du lieu et `etat` l'état Info-pannes, par exemple pour envoyer une notification critique seulement pour un lieu.
+
+    ### Détails
+
+    Le message ajoute le début, la fin, la cause, l'étape des travaux et les adresses touchées quand Hydro-Québec les fournit. Ces valeurs viennent des capteurs du même appareil, trouvés par leur identifiant : gardez les identifiants créés par l'intégration.
+
+    ### Mises à jour pendant une panne (optionnel)
+
+    Choisissez les capteurs **Statut intervention**, **Date début**, **Date fin** et **Adresses touchées** des lieux à suivre. Pendant une panne, vous êtes averti d'une nouvelle étape des travaux, d'une nouvelle heure de fin ou d'un changement du nombre d'adresses touchées. Pendant une interruption planifiée à venir ou en cours, vous êtes averti d'un report du début, d'une nouvelle heure de fin ou d'un changement du nombre d'adresses touchées. Ces avis partent au moins une minute après le début de la panne ou l'annonce de l'interruption. Laissez vide pour ne pas les recevoir.
+  domain: automation
+  source_url: https://github.com/johnjohn-11/hydropannes/blob/main/blueprints/automation/hydropannes/notifications.yaml
+  input:
+    outage_sensors:
+      name: Capteurs Info-pannes
+      description: Les capteurs Info-pannes des lieux à suivre.
+      selector:
+        entity:
+          multiple: true
+          filter:
+            - integration: hydropannes
+              domain: sensor
+              device_class: enum
+    notify_outages:
+      name: Pannes
+      description: Notifier les pannes, les rétablissements graduels et le retour du service.
+      default: true
+      selector:
+        boolean:
+    notify_planned:
+      name: Interruptions planifiées
+      description: Notifier l'annonce, le début, la fin, l'annulation et le report des interruptions planifiées.
+      default: true
+      selector:
+        boolean:
+    updates:
+      name: Mises à jour
+      icon: mdi:update
+      collapsed: true
+      input:
+        update_sensors:
+          name: Capteurs de détails
+          description: Les capteurs Statut intervention, Date début, Date fin et Adresses touchées des lieux à suivre.
+          default: []
+          selector:
+            entity:
+              multiple: true
+              filter:
+                - integration: hydropannes
+                  domain: sensor
+    notification_action:
+      name: Action de notification
+      description: Action exécutée avec les variables title, message, lieu et etat.
+      default:
+        - action: notify.notify
+          data:
+            title: "{{ title }}"
+            message: "{{ message }}"
+      selector:
+        action:
+
+mode: parallel
+max: 10
+
+triggers:
+  - trigger: state
+    id: etat
+    entity_id: !input outage_sensors
+    not_from:
+      - unknown
+      - unavailable
+    not_to:
+      - unknown
+      - unavailable
+  - trigger: state
+    id: maj
+    entity_id: !input update_sensors
+    not_from:
+      - unknown
+      - unavailable
+    not_to:
+      - unknown
+      - unavailable
+
+variables:
+  outage_sensors: !input outage_sensors
+  notify_outages: !input notify_outages
+  notify_planned: !input notify_planned
+  entites: "{{ device_entities(device_id(trigger.entity_id)) | select('match', 'sensor\\.') | list }}"
+  principal: >-
+    {{ trigger.entity_id if trigger.id == 'etat'
+       else outage_sensors | select('in', entites) | first | default('') }}
+  etat: "{{ states(principal) if principal else '' }}"
+  etat_precedent: "{{ trigger.from_state.state if trigger.id == 'etat' else etat }}"
+  en_cours: ['panne_en_cours', 'panne_majeure', 'reprise_graduelle']
+  planifiee: ['interruption_planifiee_a_venir', 'interruption_planifiee_en_cours']
+  lieu: >-
+    {%- set d = device_id(trigger.entity_id) -%}
+    {{ device_attr(d, 'name_by_user') or device_attr(d, 'name') or trigger.to_state.name }}
+  # Entity id endings of each detail sensor, as Home Assistant generates them in French and in English.
+  suffixes:
+    debut: ["_date_debut", "_start_date"]
+    fin: ["_date_fin", "_end_date"]
+    cause: ["_cause"]
+    statut: ["_statut_intervention", "_intervention_status"]
+    adresses: ["_adresses_touchees", "_addresses_affected"]
+    duree: ["_duree", "_duration"]
+  details: >-
+    {%- set ns = namespace(d={}) -%}
+    {%- for cle, fins in suffixes.items() -%}
+      {%- set trouve = entites | select('search', '(' ~ (fins | join('|')) ~ ')$') | first | default(none) -%}
+      {%- if trouve and states(trouve) not in ['unknown', 'unavailable', ''] -%}
+        {%- set ns.d = dict(ns.d, **{cle: trouve}) -%}
+      {%- endif -%}
+    {%- endfor -%}
+    {{ ns.d }}
+  type_maj: >-
+    {%- set ns = namespace(t='') -%}
+    {%- if trigger.id == 'maj' -%}
+      {%- for cle in ['statut', 'debut', 'fin', 'adresses'] -%}
+        {%- if trigger.entity_id is search('(' ~ (suffixes[cle] | join('|')) ~ ')$') -%}{%- set ns.t = cle -%}{%- endif -%}
+      {%- endfor -%}
+    {%- endif -%}
+    {{ ns.t }}
+  libelle_etat: "{{ state_translated(principal) if principal else '' }}"
+  est_panne: "{{ etat in en_cours + ['service_retabli'] }}"
+  en_panne_avant: "{{ etat_precedent in en_cours }}"
+  title: >-
+    {%- if trigger.id == 'maj' -%}
+      {%- if type_maj == 'statut' -%}🔄 {{ lieu }} - Nouvelle étape
+      {%- elif type_maj == 'debut' -%}📅 {{ lieu }} - Interruption planifiée reportée
+      {%- elif type_maj == 'fin' -%}🕐 {{ lieu }} - Heure de fin mise à jour
+      {%- elif trigger.to_state.state | int(0) < trigger.from_state.state | int(0) -%}🏠 {{ lieu }} - Rétablissement partiel
+      {%- else -%}🏠 {{ lieu }} - Plus d'adresses touchées
+      {%- endif -%}
+    {%- else -%}
+      {%- set icones = {
+        'panne_en_cours': '❌', 'panne_majeure': '🚨', 'reprise_graduelle': '🔁', 'service_retabli': '✅',
+        'interruption_planifiee_a_venir': '📅', 'interruption_planifiee_en_cours': '🔧',
+        'interruption_planifiee_terminee': '✅', 'interruption_planifiee_annulee': '🚫',
+        'interruption_planifiee_reportee': '📅'} -%}
+      {{ icones.get(etat, 'ℹ️') }} {{ lieu }} - {{ libelle_etat }}
+    {%- endif -%}
+  message: >-
+    {%- macro horodatage(valeur) -%}
+      {{- as_timestamp(valeur) | timestamp_custom('%Y-%m-%d %H:%M', true) if as_timestamp(valeur, none) else "En cours d'évaluation" -}}
+    {%- endmacro -%}
+    {%- macro heure(cle) -%}
+      {%- set e = details.get(cle) -%}
+      {{- horodatage(states(e)) if e else '' -}}
+    {%- endmacro -%}
+    {%- set lignes = [] -%}
+    {%- if trigger.id == 'maj' -%}
+      {%- set avant = trigger.from_state.state -%}
+      {%- set apres = trigger.to_state.state -%}
+      {%- if type_maj == 'statut' -%}
+        {%- set lignes = lignes + ['🚧 ' ~ state_translated(trigger.entity_id)] -%}
+      {%- elif type_maj == 'debut' -%}
+        {%- set lignes = lignes + ['🕐 Début prévu : ' ~ horodatage(avant) ~ ' → ' ~ horodatage(apres)] -%}
+      {%- elif type_maj == 'fin' -%}
+        {%- set lignes = lignes + ['🕐 ' ~ horodatage(avant) ~ ' → ' ~ horodatage(apres)] -%}
+      {%- else -%}
+        {%- set lignes = lignes + ['🏠 ' ~ avant ~ ' → ' ~ apres ~ ' adresses touchées'] -%}
+      {%- endif -%}
+      {%- if type_maj != 'fin' -%}{%- set lignes = lignes + [('🕐 Fin prévue : ' if etat in planifiee else '🕐 Fin estimée : ') ~ (heure('fin') or "En cours d'évaluation")] -%}{%- endif -%}
+      {%- if type_maj != 'statut' and details.get('statut') -%}{%- set lignes = lignes + ['🚧 Statut : ' ~ state_translated(details.statut)] -%}{%- endif -%}
+      {%- if type_maj != 'adresses' and details.get('adresses') -%}{%- set lignes = lignes + ['🏠 Adresses touchées : ' ~ states(details.adresses)] -%}{%- endif -%}
+      {%- set lignes = lignes + ['🕓 Mis à jour : ' ~ now().strftime('%Y-%m-%d %H:%M')] -%}
+    {%- else -%}
+      {%- if heure('debut') -%}{%- set lignes = lignes + ['🕐 Début : ' ~ heure('debut')] -%}{%- endif -%}
+      {%- if etat == 'service_retabli' -%}
+        {%- set lignes = lignes + ['🕐 Rétabli à : ' ~ (heure('fin') or now().strftime('%Y-%m-%d %H:%M'))] -%}
+        {%- if details.get('duree') -%}
+          {%- set s = states(details.duree) | float(0) * (3600 if state_attr(details.duree, 'unit_of_measurement') == 'h' else 60 if state_attr(details.duree, 'unit_of_measurement') == 'min' else 1) -%}
+          {%- set tm = (s / 60) | round | int -%}
+          {%- set lignes = lignes + ['⏱️ Durée : ' ~ ((tm // 60 ~ 'h ') if tm >= 60 else '') ~ tm % 60 ~ 'min'] -%}
+        {%- endif -%}
+        {%- if not en_panne_avant -%}{%- set lignes = lignes + ['ℹ️ Panne terminée avant le premier relevé'] -%}{%- endif -%}
+      {%- elif heure('fin') -%}
+        {%- set lignes = lignes + [('🕐 Fin estimée : ' if est_panne else '🕐 Fin prévue : ') ~ heure('fin')] -%}
+      {%- elif etat in en_cours -%}
+        {%- set lignes = lignes + ["🕐 Fin estimée : En cours d'évaluation"] -%}
+      {%- endif -%}
+      {%- if details.get('statut') and etat != 'service_retabli' -%}{%- set lignes = lignes + ['🚧 Statut : ' ~ state_translated(details.statut)] -%}{%- endif -%}
+      {%- if details.get('cause') -%}{%- set lignes = lignes + ['⚠️ Cause : ' ~ state_translated(details.cause)] -%}{%- endif -%}
+      {%- if details.get('adresses') and etat != 'service_retabli' -%}{%- set lignes = lignes + ['🏠 Adresses touchées : ' ~ states(details.adresses)] -%}{%- endif -%}
+      {%- set raison = state_attr(principal, 'raison_annulation') -%}
+      {%- set raisons = {
+        'travaux_deja_realises': 'Travaux déjà réalisés', 'demande_tiers': "Demande d'un tiers",
+        'conditions_meteorologiques': 'Conditions météorologiques', 'autres_travaux_urgents': 'Autres travaux urgents',
+        'planification_modifiee': 'Modification de la planification des travaux'} -%}
+      {%- if raison -%}{%- set lignes = lignes + ['📝 Raison : ' ~ raisons.get(raison, raison)] -%}{%- endif -%}
+      {%- if etat == 'panne_majeure' -%}{%- set lignes = lignes + ['⚡ Cette situation pourrait affecter les délais de rétablissement'] -%}{%- endif -%}
+    {%- endif -%}
+    {{ lignes | join('\n') if lignes else libelle_etat }}
+
+conditions:
+  - condition: template
+    value_template: >-
+      {%- if trigger.id == 'maj' -%}
+        {{ ((notify_outages and etat in en_cours and type_maj in ['statut', 'fin', 'adresses'])
+            or (notify_planned and etat in planifiee and type_maj in ['debut', 'fin', 'adresses']))
+           and trigger.from_state.state != trigger.to_state.state
+           and (now() - states[principal].last_changed).total_seconds() > 60 }}
+      {%- else -%}
+        {{ (notify_outages and etat in en_cours + ['service_retabli'])
+           or (notify_planned and etat.startswith('interruption_planifiee_')) }}
+      {%- endif -%}
+
+actions:
+  - choose: []
+    default: !input notification_action

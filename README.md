@@ -208,6 +208,12 @@ actions:
 
 </details>
 
+## Blueprint de notification
+
+[![Importer le blueprint](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fgithub.com%2Fjohnjohn-11%2Fhydropannes%2Fblob%2Fmain%2Fblueprints%2Fautomation%2Fhydropannes%2Fnotifications.yaml)
+
+Envoie une notification à chaque changement de l'état Info-pannes d'un lieu (panne, panne majeure, rétablissement, interruption planifiée annoncée, commencée, terminée, annulée ou reportée), avec le début, la fin, la cause, l'étape des travaux et les adresses touchées. En option, il avertit aussi d'une nouvelle étape, d'une nouvelle heure de fin ou d'un changement du nombre d'adresses touchées pendant une panne. Les textes sont en français.
+
 ## Carte de suivi
 
 L'intégration fournit une carte de tableau de bord qui reprend le suivi du site Info-pannes : l'état du lieu, les étapes de l'intervention pendant une panne, le début, la fin prévue, la cause, les adresses touchées et la prochaine interruption planifiée.
