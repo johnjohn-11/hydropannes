@@ -659,3 +659,15 @@ async def test_reload_clears_the_repair_issue_of_the_previous_coordinator(
     await hass.async_block_till_done()
 
     assert ir.async_get(hass).async_get_issue(DOMAIN, issue_id) is None
+
+
+async def test_entry_of_a_newer_version_is_not_set_up(hass: HomeAssistant, aioclient_mock) -> None:
+    """An entry written by a newer major version fails its migration instead of being read."""
+    aioclient_mock.get(API_URL.format(LIEU), json=PAYLOAD)
+    entry = MockConfigEntry(
+        domain=DOMAIN, unique_id=LIEU, data={CONF_LIEU_CONSO: LIEU}, title="Maison", version=3
+    )
+    entry.add_to_hass(hass)
+
+    assert not await hass.config_entries.async_setup(entry.entry_id)
+    assert entry.state is ConfigEntryState.MIGRATION_ERROR

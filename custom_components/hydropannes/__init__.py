@@ -86,6 +86,10 @@ async def async_migrate_entry(hass: HomeAssistant, entry: HydroPannesConfigEntry
 
     Version 1 stored the location name in ``entry.data`` next to the entry title, kept in step by a dedicated options flow. The title is now the only source of truth — it is what Home Assistant's own Rename action updates — so the stored copy is dropped; leaving it would let the two drift apart.
     """
+    if entry.version > 2:
+        # Written by a newer version of the integration: its data cannot be read safely.
+        return False
+
     if entry.version == 1:
         data = {k: v for k, v in entry.data.items() if k != CONF_NOM_LIEU}
         hass.config_entries.async_update_entry(entry, data=data, version=2)
