@@ -85,7 +85,7 @@ def _redact_data(data: dict[str, Any]) -> dict[str, Any]:
     if "idLieuConso" in redacted:
         redacted["idLieuConso"] = _mask(str(redacted["idLieuConso"]))
 
-    # The municipality code locates the address as surely as the number does.
+    # The municipality code tells which town the location is in.
     for interruption in redacted.get("interruptions") or []:
         if isinstance(interruption, dict) and "codeMunicipal" in interruption:
             interruption["codeMunicipal"] = "**REDACTED**"
