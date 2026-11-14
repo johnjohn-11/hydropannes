@@ -166,10 +166,14 @@ class HydroPannesDataUpdateCoordinator(DataUpdateCoordinator[LocationState]):
             self._raise_failure(str(err), "connection_error", attempts=str(err.attempts))
         except HydroPannesStatusError as err:
             self._raise_failure(str(err), "api_status", status=str(err.status))
-        except (HydroPannesInvalidResponseError, HydroPannesLocationNotFoundError) as err:
+        except HydroPannesLocationNotFoundError:
+            self._flag_invalid_response()
+            # The exception's own message is the location number, which must stay out of the log and the diagnostics.
+            self._raise_failure("API returned an empty list", "invalid_response")
+        except HydroPannesInvalidResponseError as err:
             # Surface this through Repairs too: the update fails, so every entity goes unavailable and none can report it.
             self._flag_invalid_response()
-            self._raise_failure(str(err) or "API returned an empty list", "invalid_response")
+            self._raise_failure(str(err), "invalid_response")
         except HydroPannesError as err:
             self._raise_failure(str(err), "unexpected_payload")
 

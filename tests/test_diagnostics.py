@@ -68,3 +68,24 @@ async def test_report_masks_the_number_and_the_title(hass: HomeAssistant, aiocli
     assert CODE_MUNICIPAL not in str(report)
     assert entry.runtime_data.data.raw["idLieuConso"] == LIEU
     assert entry.runtime_data.data.raw["interruptions"][0]["codeMunicipal"] == CODE_MUNICIPAL
+
+
+async def test_report_hides_the_number_after_an_empty_answer(
+    hass: HomeAssistant, aioclient_mock
+) -> None:
+    """The error kept from an empty list does not carry the number into the report."""
+    aioclient_mock.get(API_URL.format(LIEU), json=PAYLOAD)
+    entry = MockConfigEntry(domain=DOMAIN, unique_id=LIEU, data={CONF_LIEU_CONSO: LIEU})
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    aioclient_mock.clear_requests()
+    aioclient_mock.get(API_URL.format(LIEU), json=[])
+    await entry.runtime_data.async_refresh()
+    await hass.async_block_till_done()
+
+    report = await async_get_config_entry_diagnostics(hass, entry)
+
+    assert report["coordinator"]["last_error"]["message"] == "API returned an empty list"
+    assert LIEU not in str(report)
