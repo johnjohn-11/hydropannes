@@ -91,7 +91,7 @@ class HydroPannesEtatServiceBinarySensor(HydroPannesBinarySensorBase):
     @property
     def is_on(self) -> bool | None:
         """Return True when power is out or a planned interruption is actively in progress."""
-        if not self.coordinator.data:
+        if self.coordinator.data is None:
             return None
         # "N" means the service point is not fed, whether or not an interruption object can be matched to it. An unplanned interruption under way also counts, as the site shows it as an outage even while the root etat still says "A".
         return self._etat.service_problem
@@ -111,7 +111,7 @@ class HydroPannesInterventionPlanifieeBinarySensor(HydroPannesBinarySensorBase):
     @property
     def is_on(self) -> bool | None:
         """Return True if a planned intervention that is neither cancelled nor terminated exists."""
-        if not self.coordinator.data:
+        if self.coordinator.data is None:
             return None
         return bool(self._etat.pending_planned)
 

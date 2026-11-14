@@ -61,7 +61,7 @@ async def test_setup_and_unload(hass: HomeAssistant, aioclient_mock) -> None:
     await hass.async_block_till_done()
 
     assert entry.state is ConfigEntryState.LOADED
-    assert entry.runtime_data.data["idLieuConso"] == LIEU
+    assert entry.runtime_data.data.raw["idLieuConso"] == LIEU
     # Sensor and binary_sensor entities were created for this location.
     assert hass.states.async_entity_ids()
 

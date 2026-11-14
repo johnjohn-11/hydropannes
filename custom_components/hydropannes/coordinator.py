@@ -75,7 +75,7 @@ def issue_ids(entry_id: str) -> tuple[str, str]:
     return f"api_incompatible_{entry_id}", f"api_invalid_response_{entry_id}"
 
 
-class HydroPannesDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
+class HydroPannesDataUpdateCoordinator(DataUpdateCoordinator[LocationState]):
     """Coordinator managing data fetching, caching, and change notification."""
 
     def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
@@ -112,9 +112,6 @@ class HydroPannesDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         # UTC timestamp of the most recent successful fetch. Consumed by the "Dernière MAJ" sensor and the diagnostics report; the base DataUpdateCoordinator exposes no such attribute.
         self.last_success_time: datetime | None = None
 
-        # Reading of the last successful payload. Kept, like data, when an update fails.
-        self.etat: LocationState = LocationState.from_payload({})
-
         self.client = HydroPannesClient(
             async_get_clientsession(hass),
             request_timeout=REQUEST_TIMEOUT,
@@ -139,7 +136,7 @@ class HydroPannesDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     # Core update loop
     # -----------------------------------------------------------------------
 
-    async def _async_update_data(self) -> dict[str, Any]:
+    async def _async_update_data(self) -> LocationState:
         """Fetch the latest outage data from the Hydro-Québec API.
 
         On persistent failure, raises UpdateFailed; HA then marks entities unavailable and keeps retrying on the normal schedule.
@@ -176,24 +173,27 @@ class HydroPannesDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         except HydroPannesError as err:
             self._raise_failure(str(err), "unexpected_payload")
 
-    def _process_payload(self, result: dict[str, Any]) -> dict[str, Any]:
-        """Update the coordinator's bookkeeping from a payload."""
+    def _process_payload(self, result: dict[str, Any]) -> LocationState:
+        """Update the coordinator's bookkeeping from a payload and return its reading.
+
+        The reading is computed once per poll, at the poll time: every entity reads the same instant.
+        """
         self._clear_invalid_response()
         self._check_root_fields(result)
         self._warn_unknown_root_fields(result)
         self._warn_unknown_interruption_fields(result)
 
-        if result != self.data:
+        if self.data is None or result != self.data.raw:
             self.total_changes += 1
             self._append_history(result)
             # The first payload after a start or reload is not a change, so no event: an automation logging changes would otherwise get one on every restart.
             if self.data is not None:
                 self._fire_change_event(result)
 
-        self.etat = LocationState.from_payload(result, now=dt_util.utcnow())
-        self._adjust_update_interval()
+        state = LocationState.from_payload(result, now=dt_util.utcnow())
+        self._adjust_update_interval(state)
         self.last_success_time = dt_util.utcnow()
-        return result
+        return state
 
     # -----------------------------------------------------------------------
     # API response validation
@@ -328,13 +328,13 @@ class HydroPannesDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             API_HISTORY_SIZE,
         )
 
-    def _adjust_update_interval(self) -> None:
+    def _adjust_update_interval(self, state: LocationState) -> None:
         """Switch between fast and normal polling intervals.
 
         Uses ACTIVE_OUTAGE_UPDATE_INTERVAL (60 s) during an active outage for more responsive end-of-panne detection, and falls back to the normal UPDATE_INTERVAL (180 s) otherwise.
         """
         target_seconds = (
-            ACTIVE_OUTAGE_UPDATE_INTERVAL if self.etat.has_ongoing_interruption else UPDATE_INTERVAL
+            ACTIVE_OUTAGE_UPDATE_INTERVAL if state.has_ongoing_interruption else UPDATE_INTERVAL
         )
         target = timedelta(seconds=target_seconds)
         if self.update_interval != target:

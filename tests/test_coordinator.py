@@ -191,7 +191,7 @@ async def test_transient_server_error_recovers_on_retry(hass: HomeAssistant) -> 
         coordinator = _coordinator(hass)
         result = await coordinator._async_update_data()
 
-    assert result == IDLE_PAYLOAD[0]
+    assert result.raw == IDLE_PAYLOAD[0]
     assert session.get.call_count == 2
     assert coordinator.total_errors == 0
 

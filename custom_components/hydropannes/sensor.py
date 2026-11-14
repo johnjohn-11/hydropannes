@@ -116,7 +116,7 @@ class HydroPannesInfoPannesSensor(HydroPannesSensorBase):
     @property
     def native_value(self) -> str | None:
         """Return the service status string."""
-        if not self.coordinator.data:
+        if self.coordinator.data is None:
             return None
         status = self._etat.service_status
         return INFO_PANNES_SLUGS[status] if status else None

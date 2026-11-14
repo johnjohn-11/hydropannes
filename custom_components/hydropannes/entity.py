@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 from homeassistant.core import callback
 from homeassistant.helpers.device_registry import DeviceEntryType, DeviceInfo
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
+from pyhydropannes import LocationState
 
 from .const import ATTRIBUTION, DOMAIN
 from .coordinator import HydroPannesDataUpdateCoordinator
@@ -14,9 +15,10 @@ from .coordinator import HydroPannesDataUpdateCoordinator
 if TYPE_CHECKING:
     from asyncio import Handle
 
-    from pyhydropannes import LocationState
-
     from . import HydroPannesConfigEntry
+
+# Read by entities before the first successful poll, so a property never has to check for None.
+_NO_DATA = LocationState.from_payload({})
 
 
 class HydroPannesEntity(CoordinatorEntity[HydroPannesDataUpdateCoordinator]):
@@ -76,7 +78,7 @@ class HydroPannesEntity(CoordinatorEntity[HydroPannesDataUpdateCoordinator]):
     @property
     def _etat(self) -> LocationState:
         """Return the reading of the last successful payload, computed once per poll by the coordinator."""
-        return self.coordinator.etat
+        return self.coordinator.data or _NO_DATA
 
     @property
     def _english(self) -> bool:

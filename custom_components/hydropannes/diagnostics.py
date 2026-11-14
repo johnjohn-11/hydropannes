@@ -67,7 +67,7 @@ async def async_get_config_entry_diagnostics(
             "options": dict(entry.options),
         },
         "coordinator": coordinator_info,
-        "current_data": _redact_data(coordinator.data) if coordinator.data else None,
+        "current_data": _redact_data(dict(coordinator.data.raw)) if coordinator.data else None,
         "api_history": api_history,
     }
 

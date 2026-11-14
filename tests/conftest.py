@@ -16,7 +16,7 @@ import pytest
 class FakeCoordinator:
     """Minimal stand-in for HydroPannesDataUpdateCoordinator.
 
-    Only exposes the ``data`` attribute the helper mixin reads.
+    Exposes the reading of the payload as ``data``, like the real coordinator.
     """
 
     def __init__(
@@ -26,8 +26,7 @@ class FakeCoordinator:
         now: datetime | None = None,
     ) -> None:
         """Store the API payload the mixin will interpret."""
-        self.data = data
-        self.etat = LocationState.from_payload(data or {}, now=now)
+        self.data = None if data is None else LocationState.from_payload(data, now=now)
         self.last_success_time = last_success_time
 
 

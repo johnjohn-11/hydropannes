@@ -66,5 +66,5 @@ async def test_report_masks_the_number_and_the_title(hass: HomeAssistant, aiocli
     assert report["current_data"]["interruptions"][0]["codeMunicipal"] == "**REDACTED**"
     assert LIEU not in str(report)
     assert CODE_MUNICIPAL not in str(report)
-    assert entry.runtime_data.data["idLieuConso"] == LIEU
-    assert entry.runtime_data.data["interruptions"][0]["codeMunicipal"] == CODE_MUNICIPAL
+    assert entry.runtime_data.data.raw["idLieuConso"] == LIEU
+    assert entry.runtime_data.data.raw["interruptions"][0]["codeMunicipal"] == CODE_MUNICIPAL
