@@ -87,7 +87,8 @@
         }
       },
       "adresses_touchees": {
-        "name": "Addresses affected"
+        "name": "Addresses affected",
+        "unit_of_measurement": "clients"
       },
       "date_debut": {
         "name": "Start date"

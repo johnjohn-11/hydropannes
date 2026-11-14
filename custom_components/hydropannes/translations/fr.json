@@ -87,7 +87,8 @@
         }
       },
       "adresses_touchees": {
-        "name": "Adresses touchées"
+        "name": "Adresses touchées",
+        "unit_of_measurement": "clients"
       },
       "date_debut": {
         "name": "Date début"

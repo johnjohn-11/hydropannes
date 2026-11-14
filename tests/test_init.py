@@ -70,6 +70,22 @@ async def test_setup_and_unload(hass: HomeAssistant, aioclient_mock) -> None:
     assert entry.state is ConfigEntryState.NOT_LOADED
 
 
+@pytest.mark.parametrize("language", ["fr", "en"])
+async def test_affected_addresses_unit_comes_from_translations(
+    hass: HomeAssistant, aioclient_mock, language: str
+) -> None:
+    """The unit is translated, and stays "clients" in every language so statistics keep one unit."""
+    hass.config.language = language
+    aioclient_mock.get(API_URL.format(LIEU), json=PAYLOAD)
+    entry = _entry()
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    state = _state(hass, entry, "sensor", "nbclient")
+    assert state.attributes["unit_of_measurement"] == "clients"
+
+
 async def test_unique_ids_are_stable(hass: HomeAssistant, aioclient_mock) -> None:
     """Every entity keeps the unique_id it was registered with; a change would orphan it."""
     aioclient_mock.get(API_URL.format(LIEU), json=PAYLOAD)

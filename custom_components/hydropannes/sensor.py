@@ -158,7 +158,7 @@ class HydroPannesAdressesToucheesSensor(HydroPannesSensorBase):
     """Sensor reporting the number of affected addresses."""
 
     _attr_translation_key = "adresses_touchees"
-    _attr_native_unit_of_measurement = "clients"
+    # The unit comes from the translations. Kept "clients" in every language: a different unit would split the long-term statistics.
     _attr_state_class = SensorStateClass.MEASUREMENT
     _unique_id_suffix = "nbclient"
     _unrecorded_attributes = frozenset({"arrondi"})
