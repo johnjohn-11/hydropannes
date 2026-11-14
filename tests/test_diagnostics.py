@@ -15,7 +15,22 @@ if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
 
 LIEU = "0123456789"
-PAYLOAD = [{"etat": "A", "idLieuConso": LIEU, "interruptions": []}]
+CODE_MUNICIPAL = "99999"
+PAYLOAD = [
+    {
+        "etat": "A",
+        "idLieuConso": LIEU,
+        "interruptions": [
+            {
+                "dateDebut": "2026-01-01T08:00:00",
+                "dateFin": "2026-01-01T09:00:00",
+                "etat": "T",
+                "interruptionPlanifiee": False,
+                "codeMunicipal": CODE_MUNICIPAL,
+            }
+        ],
+    }
+]
 
 
 @pytest.fixture(autouse=True)
@@ -48,5 +63,8 @@ async def test_report_masks_the_number_and_the_title(hass: HomeAssistant, aiocli
     assert report["coordinator"]["last_update_success"] is True
     assert report["coordinator"]["total_polls"] == 1
     assert report["coordinator"]["last_error"] is None
+    assert report["current_data"]["interruptions"][0]["codeMunicipal"] == "**REDACTED**"
     assert LIEU not in str(report)
+    assert CODE_MUNICIPAL not in str(report)
     assert entry.runtime_data.data["idLieuConso"] == LIEU
+    assert entry.runtime_data.data["interruptions"][0]["codeMunicipal"] == CODE_MUNICIPAL
