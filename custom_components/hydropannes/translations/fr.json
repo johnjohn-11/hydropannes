@@ -15,7 +15,12 @@
         "data": {
           "code_postal": "Code postal",
           "numero_civique": "Numéro civique",
-          "appartement": "Appartement (facultatif)"
+          "appartement": "Appartement"
+        },
+        "data_description": {
+          "code_postal": "Le code postal de l'adresse, par exemple A1A 1A1.",
+          "numero_civique": "Le numéro de l'immeuble dans la rue.",
+          "appartement": "Laisser vide si l'adresse n'a pas de numéro d'appartement."
         }
       },
       "choix": {
@@ -23,13 +28,19 @@
         "description": "Plusieurs lieux de consommation correspondent à cette adresse.",
         "data": {
           "lieu_consommation": "Lieu de consommation"
+        },
+        "data_description": {
+          "lieu_consommation": "L'adresse de chaque lieu, suivie de son numéro."
         }
       },
       "nom": {
         "title": "Nommer le lieu",
         "description": "Lieu de consommation {lieu_consommation} trouvé au {adresse}.",
         "data": {
-          "nom_lieu": "Nom du lieu (ex. : Maison, Chalet)"
+          "nom_lieu": "Nom du lieu"
+        },
+        "data_description": {
+          "nom_lieu": "Nomme l'appareil et ses entités, par exemple Maison ou Chalet."
         }
       },
       "numero": {
@@ -37,7 +48,11 @@
         "description": "Entrez les informations de votre lieu de consommation",
         "data": {
           "lieu_consommation": "Numéro de lieu de consommation",
-          "nom_lieu": "Nom du lieu (ex. : Maison, Chalet)"
+          "nom_lieu": "Nom du lieu"
+        },
+        "data_description": {
+          "lieu_consommation": "Le numéro à 10 chiffres qu'Hydro-Québec donne à l'adresse desservie.",
+          "nom_lieu": "Nomme l'appareil et ses entités, par exemple Maison ou Chalet."
         }
       },
       "reconfigure": {
@@ -45,6 +60,9 @@
         "description": "Mettez à jour le numéro de lieu de consommation pour ce lieu.",
         "data": {
           "lieu_consommation": "Numéro de lieu de consommation"
+        },
+        "data_description": {
+          "lieu_consommation": "Le numéro à 10 chiffres du lieu de consommation à suivre désormais."
         }
       }
     },

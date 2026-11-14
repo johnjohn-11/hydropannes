@@ -15,7 +15,12 @@
         "data": {
           "code_postal": "Postal code",
           "numero_civique": "Civic number",
-          "appartement": "Apartment (optional)"
+          "appartement": "Apartment"
+        },
+        "data_description": {
+          "code_postal": "The postal code of the address, such as A1A 1A1.",
+          "numero_civique": "The building number on the street.",
+          "appartement": "Leave empty if the address has no apartment number."
         }
       },
       "choix": {
@@ -23,13 +28,19 @@
         "description": "Several consumption locations match this address.",
         "data": {
           "lieu_consommation": "Consumption location"
+        },
+        "data_description": {
+          "lieu_consommation": "The address of each location, followed by its number."
         }
       },
       "nom": {
         "title": "Name the location",
         "description": "Consumption location {lieu_consommation} found at {adresse}.",
         "data": {
-          "nom_lieu": "Location name (e.g., Home, Cottage)"
+          "nom_lieu": "Location name"
+        },
+        "data_description": {
+          "nom_lieu": "Names the device and its entities, for example Home or Cottage."
         }
       },
       "numero": {
@@ -37,7 +48,11 @@
         "description": "Enter your consumption location information",
         "data": {
           "lieu_consommation": "Consumption location number",
-          "nom_lieu": "Location name (e.g., Home, Cottage)"
+          "nom_lieu": "Location name"
+        },
+        "data_description": {
+          "lieu_consommation": "The 10-digit number Hydro-Québec gives to the address it serves.",
+          "nom_lieu": "Names the device and its entities, for example Home or Cottage."
         }
       },
       "reconfigure": {
@@ -45,6 +60,9 @@
         "description": "Update the consumption location number for this location.",
         "data": {
           "lieu_consommation": "Consumption location number"
+        },
+        "data_description": {
+          "lieu_consommation": "The 10-digit number of the consumption location to follow from now on."
         }
       }
     },
