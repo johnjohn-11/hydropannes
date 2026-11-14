@@ -24,6 +24,9 @@ blueprint:
     Choisissez les capteurs **Statut intervention**, **Date début**, **Date fin** et **Adresses touchées** des lieux à suivre. Pendant une panne, vous êtes averti d'une nouvelle étape des travaux, d'une nouvelle heure de fin ou d'un changement du nombre d'adresses touchées. Pendant une interruption planifiée à venir ou en cours, vous êtes averti d'un report du début, d'une nouvelle heure de fin ou d'un changement du nombre d'adresses touchées. Ces avis partent au moins une minute après le début de la panne ou l'annonce de l'interruption. Laissez vide pour ne pas les recevoir.
   domain: automation
   source_url: https://github.com/johnjohn-11/hydropannes/blob/main/blueprints/automation/hydropannes/notifications.yaml
+  homeassistant:
+    # The plural triggers, conditions and actions keys.
+    min_version: "2024.10.0"
   input:
     outage_sensors:
       name: Capteurs Info-pannes
