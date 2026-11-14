@@ -131,7 +131,7 @@ actions:
 ```yaml
 triggers:
   - trigger: state
-    entity_id: sensor.maison_info_pannes
+    entity_id: sensor.home_outage_info
     to: service_retabli
     not_from:
       - unknown
@@ -141,8 +141,8 @@ actions:
     data:
       title: "✅ Service restored"
       message: >
-        ⏱️ Duration: {{ states('sensor.maison_duree', with_unit=True) }}
-        ⚠️ Cause: {{ state_translated('sensor.maison_cause') }}
+        ⏱️ Duration: {{ states('sensor.home_duration', with_unit=True) }}
+        ⚠️ Cause: {{ state_translated('sensor.home_cause') }}
 ```
 
 </details>
@@ -153,7 +153,7 @@ actions:
 ```yaml
 triggers:
   - trigger: state
-    entity_id: sensor.maison_info_pannes
+    entity_id: sensor.home_outage_info
     to:
       - interruption_planifiee_annulee
       - interruption_planifiee_reportee
@@ -163,7 +163,7 @@ triggers:
 actions:
   - action: notify.mobile_app
     data:
-      title: "{{ '🚫' if trigger.to_state.state == 'interruption_planifiee_annulee' else '📅' }} {{ state_translated('sensor.maison_info_pannes') }}"
+      title: "{{ '🚫' if trigger.to_state.state == 'interruption_planifiee_annulee' else '📅' }} {{ state_translated('sensor.home_outage_info') }}"
       message: >
         {% set reasons = {
           'planification_modifiee': 'Work schedule changed',
@@ -171,7 +171,7 @@ actions:
           'demande_tiers': 'Changed at the request of a third party',
           'conditions_meteorologiques': 'Weather conditions',
           'autres_travaux_urgents': 'Other urgent work'} %}
-        {% set reason = state_attr('sensor.maison_info_pannes', 'raison_annulation') %}
+        {% set reason = state_attr('sensor.home_outage_info', 'raison_annulation') %}
         📝 Reason: {{ reasons.get(reason, reason) if reason else 'not given' }}
 ```
 
@@ -183,7 +183,7 @@ actions:
 ```yaml
 triggers:
   - trigger: state
-    entity_id: sensor.maison_date_fin
+    entity_id: sensor.home_end_date
     not_from:
       - unknown
       - unavailable
@@ -192,7 +192,7 @@ triggers:
       - unavailable
 conditions:
   - condition: state
-    entity_id: sensor.maison_info_pannes
+    entity_id: sensor.home_outage_info
     state:
       - panne_en_cours
       - panne_majeure
@@ -220,7 +220,7 @@ The integration ships a dashboard card laid out like the Info-pannes tracker: th
 
 ```yaml
 type: custom:hydropannes-card
-entity: sensor.maison_info_pannes
+entity: sensor.home_outage_info
 ```
 
 `entity` is the Info-pannes sensor of the location. The other entities are found on the same device. `title` replaces the device name shown at the top of the card.
@@ -236,32 +236,32 @@ A Markdown card shown only during an outage or a planned interruption:
 type: markdown
 visibility:
   - condition: state
-    entity: sensor.maison_info_pannes
+    entity: sensor.home_outage_info
     state_not: aucune_panne
   - condition: state
-    entity: sensor.maison_info_pannes
+    entity: sensor.home_outage_info
     state_not: unavailable
 content: >
-  {% set etat = states('sensor.maison_info_pannes') %}
+  {% set etat = states('sensor.home_outage_info') %}
   {% set emojis = {'panne_en_cours': '❌', 'panne_majeure': '🚨',
     'reprise_graduelle': '🔁', 'service_retabli': '✅',
     'interruption_planifiee_a_venir': '📅', 'interruption_planifiee_en_cours': '🔧',
     'interruption_planifiee_terminee': '✅', 'interruption_planifiee_annulee': '🚫',
     'interruption_planifiee_reportee': '📅'} %}
-  {% set debut = as_timestamp(states('sensor.maison_date_debut'), 0) %}
-  {% set fin = as_timestamp(states('sensor.maison_date_fin'), 0) %}
+  {% set debut = as_timestamp(states('sensor.home_start_date'), 0) %}
+  {% set fin = as_timestamp(states('sensor.home_end_date'), 0) %}
 
-  ## {{ emojis.get(etat, '⚡') }} {{ state_translated('sensor.maison_info_pannes') }}
+  ## {{ emojis.get(etat, '⚡') }} {{ state_translated('sensor.home_outage_info') }}
 
   🕐 **Start**: {{ debut | timestamp_custom('%d/%m %H:%M') if debut else 'Unknown' }}
 
   ⏳ **Estimated end**: {{ fin | timestamp_custom('%d/%m %H:%M') if fin else 'Unknown' }}
 
-  {% if has_value('sensor.maison_cause') %}⚠️ **Cause**: {{ state_translated('sensor.maison_cause') }}{% endif %}
+  {% if has_value('sensor.home_cause') %}⚠️ **Cause**: {{ state_translated('sensor.home_cause') }}{% endif %}
 
-  {% if has_value('sensor.maison_statut_intervention') %}🚧 **Status**: {{ state_translated('sensor.maison_statut_intervention') }}{% endif %}
+  {% if has_value('sensor.home_intervention_status') %}🚧 **Status**: {{ state_translated('sensor.home_intervention_status') }}{% endif %}
 
-  {% if has_value('sensor.maison_adresses_touchees') %}🏠 **Affected addresses**: {{ states('sensor.maison_adresses_touchees') }}{% endif %}
+  {% if has_value('sensor.home_addresses_affected') %}🏠 **Affected addresses**: {{ states('sensor.home_addresses_affected') }}{% endif %}
 ```
 
 </details>
