@@ -627,3 +627,35 @@ async def test_summary_entities_are_written_after_the_detail_sensors(
 
     assert _state(hass, entry, "sensor", "info_pannes").state == "service_retabli"
     assert seen and "unknown" not in seen
+
+
+@pytest.mark.parametrize(
+    ("broken", "issue_prefix"),
+    [
+        pytest.param({"not": "a list"}, "api_invalid_response", id="invalid_response"),
+        pytest.param([{"etat": "A"}], "api_incompatible", id="missing_root_fields"),
+    ],
+)
+async def test_reload_clears_the_repair_issue_of_the_previous_coordinator(
+    hass: HomeAssistant, aioclient_mock, broken, issue_prefix
+) -> None:
+    """A valid payload read after a reload clears the issue raised before it."""
+    aioclient_mock.get(API_URL.format(LIEU), json=PAYLOAD)
+    entry = _entry()
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    aioclient_mock.clear_requests()
+    aioclient_mock.get(API_URL.format(LIEU), json=broken)
+    await entry.runtime_data.async_refresh()
+    await hass.async_block_till_done()
+    issue_id = f"{issue_prefix}_{entry.entry_id}"
+    assert ir.async_get(hass).async_get_issue(DOMAIN, issue_id) is not None
+
+    aioclient_mock.clear_requests()
+    aioclient_mock.get(API_URL.format(LIEU), json=PAYLOAD)
+    await hass.config_entries.async_reload(entry.entry_id)
+    await hass.async_block_till_done()
+
+    assert ir.async_get(hass).async_get_issue(DOMAIN, issue_id) is None

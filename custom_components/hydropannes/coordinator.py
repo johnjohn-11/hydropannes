@@ -207,8 +207,8 @@ class HydroPannesDataUpdateCoordinator(DataUpdateCoordinator[LocationState]):
         """Raise or clear the schema-change repair issue from the root fields present."""
         missing_root = missing_root_fields(result)
         if not missing_root:
-            if not self.api_compatible:
-                ir.async_delete_issue(self.hass, DOMAIN, self._api_issue_id)
+            # Whatever api_compatible says: the issue may have been raised by the coordinator a reload or a setup retry replaced.
+            ir.async_delete_issue(self.hass, DOMAIN, self._api_issue_id)
             self.api_compatible = True
             self._missing_root_logged = False
             return
@@ -282,9 +282,10 @@ class HydroPannesDataUpdateCoordinator(DataUpdateCoordinator[LocationState]):
         )
 
     def _clear_invalid_response(self) -> None:
-        """Clear the invalid-response repair issue once the payload is sane."""
-        if not self._invalid_response_flagged:
-            return
+        """Clear the invalid-response repair issue once the payload is sane.
+
+        Whatever the flag says: the issue may have been raised by the coordinator a reload or a setup retry replaced.
+        """
         self._invalid_response_flagged = False
         ir.async_delete_issue(self.hass, DOMAIN, self._invalid_response_issue_id)
 
