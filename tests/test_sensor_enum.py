@@ -231,8 +231,9 @@ def test_info_pannes_states(payload, expected) -> None:
     [
         ("A", "92", {"raison_annulation": "conditions_meteorologiques"}),
         ("R", "93", {"raison_annulation": "autres_travaux_urgents"}),
-        ("A", None, {}),
-        ("P", "92", {}),  # neither cancelled nor postponed: no reason shown
+        ("A", None, {"raison_annulation": None}),
+        # Neither cancelled nor postponed: no reason shown.
+        ("P", "92", {"raison_annulation": None}),
     ],
 )
 def test_info_pannes_exposes_raison_annulation(etat, code_remarque, expected) -> None:
@@ -304,11 +305,12 @@ def test_cause_exposes_raw_code_as_attribute() -> None:
     }
 
 
-def test_cause_without_code_exposes_only_description() -> None:
+def test_cause_without_code_keeps_an_empty_code_cause() -> None:
     intr = make_interruption(dateFin=None)
     payload = make_payload(etat="N", interruptions=[intr])
     assert build(HydroPannesCauseSensor, payload).extra_state_attributes == {
-        "description": CAUSE_DESCRIPTIONS["indeterminee"]
+        "description": CAUSE_DESCRIPTIONS["indeterminee"],
+        "code_cause": None,
     }
 
 

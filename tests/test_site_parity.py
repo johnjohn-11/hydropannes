@@ -153,7 +153,7 @@ def test_retablissement_major_description() -> None:
 def test_retablissement_none_without_outage_or_planned_in_progress(payload) -> None:
     sensor = build(HydroPannesRetablissementSensor, payload)
     assert sensor.native_value is None
-    assert sensor.extra_state_attributes == {}
+    assert sensor.extra_state_attributes == {"description": None}
 
 
 # ---------------------------------------------------------------------------
@@ -172,8 +172,8 @@ def test_retablissement_none_without_outage_or_planned_in_progress(payload) -> N
         (999, {"arrondi": "plus de 500"}),
         (1000, {"arrondi": "plus de 1000"}),
         (2492, {"arrondi": "plus de 1000"}),
-        (0, {}),
-        (None, {}),
+        (0, {"arrondi": None}),
+        (None, {"arrondi": None}),
     ],
 )
 def test_nb_client_arrondi(nb_client, expected) -> None:
@@ -415,7 +415,7 @@ def test_fin_estimee_min_exposed_for_a_range() -> None:
 
 
 @pytest.mark.parametrize("same_as_max", [False, True])
-def test_fin_estimee_min_absent_without_a_range(same_as_max) -> None:
+def test_fin_estimee_min_empty_without_a_range(same_as_max) -> None:
     fin_max = hours_from_now(3)
     intr = make_interruption(
         dateFin=None,
@@ -423,7 +423,7 @@ def test_fin_estimee_min_absent_without_a_range(same_as_max) -> None:
         dateFinEstimeeMax=fin_max,
     )
     sensor = build(HydroPannesDateFinSensor, make_payload(etat="N", interruptions=[intr]))
-    assert sensor.extra_state_attributes == {}
+    assert sensor.extra_state_attributes == {"fin_estimee_min": None}
 
 
 @pytest.mark.parametrize(

@@ -128,10 +128,10 @@ class HydroPannesInfoPannesSensor(HydroPannesSensorBase):
             "interruption_planifiee_annulee",
             "interruption_planifiee_reportee",
         ):
-            return {}
+            return {"raison_annulation": None}
         planned = self._etat.planned
         raison = RAISON_ANNULATION.get(planned.cancellation_reason or "") if planned else None
-        return {"raison_annulation": raison} if raison else {}
+        return {"raison_annulation": raison}
 
 
 class HydroPannesNiveauUrgenceSensor(HydroPannesSensorBase):
@@ -176,7 +176,7 @@ class HydroPannesAdressesToucheesSensor(HydroPannesSensorBase):
         """Expose the rounded wording the Info-pannes site shows instead of the exact count."""
         nb_client = self.native_value
         if not isinstance(nb_client, int) or nb_client <= 0:
-            return {}
+            return {"arrondi": None}
         return {"arrondi": _nb_client_arrondi(nb_client, english=self._english)}
 
 
@@ -214,7 +214,7 @@ class HydroPannesDateFinSensor(HydroPannesSensorBase):
         """Expose the earliest estimated end when Hydro-Québec gives a range, as the site shows "between" the two."""
         outage = self._etat.current
         fin_min = outage.estimated_end_earliest if outage else None
-        return {"fin_estimee_min": dt_util.as_local(fin_min).isoformat()} if fin_min else {}
+        return {"fin_estimee_min": dt_util.as_local(fin_min).isoformat() if fin_min else None}
 
     @property
     def icon(self) -> str:
@@ -244,7 +244,7 @@ class HydroPannesStatutInterventionSensor(HydroPannesSensorBase):
         """Explain the current step, with the major-outage wording when it applies."""
         statut = self.native_value
         if statut is None:
-            return {}
+            return {"description": None}
         outage = self._etat.current
         description = None
         if outage and outage.is_major:
@@ -260,7 +260,7 @@ class HydroPannesStatutInterventionSensor(HydroPannesSensorBase):
             else STATUT_INTERVENTION_DESCRIPTIONS
         )
         description = description or normal.get(statut)
-        return {"description": description} if description else {}
+        return {"description": description}
 
 
 class HydroPannesRetablissementSensor(HydroPannesSensorBase):
@@ -283,7 +283,7 @@ class HydroPannesRetablissementSensor(HydroPannesSensorBase):
         """Explain the restoration step, with the major-outage wording when it applies."""
         etape = self.native_value
         if etape is None:
-            return {}
+            return {"description": None}
         outage = self._etat.active_outage
         description = None
         if outage and outage.is_major:
@@ -324,12 +324,9 @@ class HydroPannesCauseSensor(HydroPannesSensorBase):
         outage = self._etat.current
         cause = self.native_value
         if not outage or cause is None:
-            return {}
+            return {"description": None, "code_cause": None}
         descriptions = CAUSE_DESCRIPTIONS_EN if self._english else CAUSE_DESCRIPTIONS
-        attrs = {"description": descriptions[cause]}
-        if outage.cause_code is not None:
-            attrs["code_cause"] = outage.cause_code
-        return attrs
+        return {"description": descriptions[cause], "code_cause": outage.cause_code}
 
 
 class HydroPannesDureeSensor(HydroPannesSensorBase):
